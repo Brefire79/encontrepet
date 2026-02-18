@@ -590,10 +590,18 @@ const App = (() => {
   function fixCorruptedDataUrl(url) {
     if (!url || typeof url !== 'string') return '';
     if (url.startsWith('data:image/')) return url;
-    // Reparar iterações de escape (pode ter double/triple encoding)
+    
     let fixed = url;
-    // Primeiro: reverter 'blocked:' → 'data:' se aplicável
-    fixed = fixed.replace(/^blocked:/i, 'data:');
+    
+    // Reverter 'blocked:' → 'data:' (pode ter sido corrompido pelo sanitize antigo)
+    if (fixed.startsWith('blocked:')) {
+      fixed = 'data:' + fixed.substring(8);
+    }
+    
+    // Se já está ok após trocar blocked → data
+    if (fixed.startsWith('data:image/')) return fixed;
+    
+    // Caso tenha HTML entities, decodificar iterativamente
     for (let i = 0; i < 5; i++) {
       const prev = fixed;
       fixed = fixed
@@ -606,7 +614,14 @@ const App = (() => {
       if (fixed.startsWith('data:image/')) return fixed;
       if (fixed === prev) break;
     }
-    return url; // Não conseguiu reparar — retorna original
+    
+    // Último recurso: talvez blocked: + entities misturados
+    if (fixed.startsWith('data:') && fixed.includes('base64,')) {
+      return fixed;
+    }
+    
+    console.warn('[fixCorruptedDataUrl] Não conseguiu reparar:', url.substring(0, 80));
+    return ''; // Retorna vazio para não quebrar o <img>
   }
 
   function renderAlertCard(pet) {
@@ -1134,8 +1149,11 @@ const App = (() => {
       const realPhone = pet.contato_telefone || '';
       const loc = isOwner ? pet.endereco : (displayPet.endereco_publico || displayPet.endereco || '');
 
+      const rawFoto = displayPet.foto_comprimida || '';
+      const fixedFoto = fixCorruptedDataUrl(rawFoto);
+      
       container.innerHTML = `
-        ${displayPet.foto_comprimida ? `<img class="detalhes-photo" src="${fixCorruptedDataUrl(displayPet.foto_comprimida)}" alt="">` :
+        ${fixedFoto && fixedFoto.startsWith('data:image/') ? `<img class="detalhes-photo" src="${fixedFoto}" alt="">` :
           `<div class="detalhes-photo" style="height:200px;display:flex;align-items:center;justify-content:center;background:var(--bg);"><i class="fas fa-paw" style="font-size:4rem;color:var(--text-muted)"></i></div>`}
         <div class="detalhes-body">
           <div class="detalhes-badges">
