@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#FF6B35">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="App gratuito para encontrar pets perdidos. Reporte rápido, alerta por proximidade e matching com IA.">
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  
+  <title>Encontre Pet - Encontre seu melhor amigo</title>
+  
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- Firebase SDK (apenas Firestore - SEM Auth do Firebase) -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
+  <!-- TensorFlow.js + MobileNet (IA gratuita no navegador - carregamento lazy) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js" defer></script>
+</head>
+<body>
+
+  <!-- ===== AUTH SCREEN (Login / Cadastro) ===== -->
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-container">
+      <div class="auth-logo">
+        <i class="fas fa-paw"></i>
+        <h1>Encontre Pet</h1>
+        <p>Ajudando a reunir famílias 🐾</p>
+      </div>
+
+      <!-- Login Form -->
+      <div id="auth-login" class="auth-form">
+        <h2>Entrar</h2>
+        <div class="form-group">
+          <label><i class="fas fa-envelope"></i> E-mail</label>
+          <input type="email" id="login-email" class="form-input" placeholder="seu@email.com" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Senha</label>
+          <div class="input-password">
+            <input type="password" id="login-password" class="form-input" placeholder="Sua senha" autocomplete="current-password">
+            <button type="button" class="btn-toggle-pass" data-target="login-password"><i class="fas fa-eye"></i></button>
+          </div>
+        </div>
+        <div id="login-error" class="auth-error hidden"></div>
+        <button id="btn-login" class="btn-primary btn-large">
+          <i class="fas fa-sign-in-alt"></i> <span>Entrar</span>
+        </button>
+        <div class="auth-divider"><span>ou</span></div>
+        <button id="btn-anonymous" class="btn-ghost">
+          <i class="fas fa-user-secret"></i> <span>Continuar sem conta</span>
+        </button>
+        <p class="auth-switch">Não tem conta? <a href="#" id="link-to-register">Cadastre-se grátis</a></p>
+      </div>
+
+      <!-- Register Form -->
+      <div id="auth-register" class="auth-form hidden">
+        <h2>Criar Conta Gratuita</h2>
+        <div class="form-group">
+          <label><i class="fas fa-user"></i> Nome</label>
+          <input type="text" id="register-name" class="form-input" placeholder="Seu nome" autocomplete="name">
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-envelope"></i> E-mail</label>
+          <input type="email" id="register-email" class="form-input" placeholder="seu@email.com" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Senha</label>
+          <div class="input-password">
+            <input type="password" id="register-password" class="form-input" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+            <button type="button" class="btn-toggle-pass" data-target="register-password"><i class="fas fa-eye"></i></button>
+          </div>
+          <div id="password-strength" class="password-strength"></div>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Confirmar Senha</label>
+          <input type="password" id="register-password2" class="form-input" placeholder="Repita a senha" autocomplete="new-password">
+        </div>
+        <div id="register-error" class="auth-error hidden"></div>
+        <button id="btn-register" class="btn-primary btn-large">
+          <i class="fas fa-user-plus"></i> <span>Criar Conta Gratuita</span>
+        </button>
+        <p class="auth-switch">Já tem conta? <a href="#" id="link-to-login">Faça login</a></p>
+      </div>
+
+      <div class="auth-footer">
+        <p><i class="fas fa-shield-alt"></i> Seus dados estão protegidos</p>
+        <p>Localização nunca é exibida com precisão</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SPLASH SCREEN ===== -->
+  <div id="splash-screen" class="splash-screen">
+    <div class="splash-content">
+      <div class="splash-icon">
+        <i class="fas fa-paw"></i>
+      </div>
+      <h1>Encontre Pet</h1>
+      <p>Ajudando a reunir famílias</p>
+      <div class="splash-loader">
+        <div class="loader-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== UPDATE BANNER (Modal de atualização obrigatória) ===== -->
+  <div id="update-banner" class="update-banner hidden">
+    <div class="update-overlay"></div>
+    <div class="update-modal">
+      <div class="update-icon-wrap">
+        <div class="update-icon-circle">
+          <i class="fas fa-arrow-up"></i>
+        </div>
+      </div>
+      <h2>Nova versão disponível! 🎉</h2>
+      <p>Melhorias e correções foram aplicadas.<br>Atualize agora para a melhor experiência.</p>
+      <button id="btn-update" class="btn-update-main">
+        <i class="fas fa-sync-alt"></i> Atualizar Agora
+      </button>
+      <span class="update-hint">Leva apenas 1 segundo</span>
+    </div>
+  </div>
+
+  <!-- ===== HEADER ===== -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo">
+        <i class="fas fa-paw"></i>
+        <span>Encontre Pet</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <button id="btn-notificacoes" class="header-btn" aria-label="Notificações">
+        <i class="fas fa-bell"></i>
+        <span id="notif-badge" class="badge hidden">0</span>
+      </button>
+      <button id="btn-menu" class="header-btn" aria-label="Menu">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== SIDE MENU ===== -->
+  <div id="side-menu-overlay" class="overlay hidden"></div>
+  <nav id="side-menu" class="side-menu">
+    <div class="menu-header">
+      <div class="menu-avatar" id="menu-avatar">
+        <i class="fas fa-user-circle"></i>
+      </div>
+      <h3 id="menu-user-name">Encontre Pet</h3>
+      <p class="menu-subtitle" id="menu-user-email">100% Gratuito</p>
+    </div>
+    <ul class="menu-list">
+      <li data-page="home"><i class="fas fa-home"></i> Início</li>
+      <li data-page="meus-reportes"><i class="fas fa-list"></i> Meus Reportes</li>
+      <li data-page="notificacoes"><i class="fas fa-bell"></i> Notificações</li>
+      <li data-page="mapa"><i class="fas fa-map-marked-alt"></i> Mapa de Alertas</li>
+      <li class="menu-divider"></li>
+      <li data-page="perfil"><i class="fas fa-user-cog"></i> Meu Perfil</li>
+      <li data-page="privacidade"><i class="fas fa-shield-alt"></i> Privacidade</li>
+      <li data-page="como-funciona"><i class="fas fa-info-circle"></i> Como Funciona</li>
+      <li data-page="patrocinadores"><i class="fas fa-handshake"></i> Patrocinadores</li>
+      <li data-page="sobre"><i class="fas fa-heart"></i> Sobre o App</li>
+      <li class="menu-divider"></li>
+      <li id="menu-logout"><i class="fas fa-sign-out-alt"></i> Sair</li>
+    </ul>
+    <div class="menu-footer">
+      <p>Versão 1.0.0</p>
+      <p><i class="fas fa-paw"></i> Feito com amor pelos pets</p>
+    </div>
+  </nav>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main id="main-content" class="main-content">
+
+    <!-- ===== HOME PAGE ===== -->
+    <section id="page-home" class="page active">
+      <!-- Hero Section -->
+      <div class="hero-section">
+        <div class="hero-bg">
+          <div class="hero-overlay"></div>
+        </div>
+        <div class="hero-content">
+          <h2>Perdeu seu pet?</h2>
+          <p>Alerte milhares de pessoas próximas em segundos!</p>
+          <div class="hero-stats">
+            <div class="stat-item">
+              <span id="stat-pets" class="stat-number">0</span>
+              <span class="stat-label">Pets Reportados</span>
+            </div>
+            <div class="stat-item">
+              <span id="stat-encontrados" class="stat-number">0</span>
+              <span class="stat-label">Encontrados</span>
+            </div>
+            <div class="stat-item">
+              <span id="stat-avistamentos" class="stat-number">0</span>
+              <span class="stat-label">Avistamentos</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div class="quick-actions">
+        <button id="btn-perdi-pet" class="action-card action-lost">
+          <div class="action-icon">
+            <i class="fas fa-search"></i>
+          </div>
+          <div class="action-text">
+            <h3>Perdi meu Pet</h3>
+            <p>Reporte rápido com foto e localização</p>
+          </div>
+          <i class="fas fa-chevron-right"></i>
+        </button>
+
+        <button id="btn-vi-pet" class="action-card action-found">
+          <div class="action-icon">
+            <i class="fas fa-camera"></i>
+          </div>
+          <div class="action-text">
+            <h3>Vi um Pet Perdido</h3>
+            <p>Tire uma foto e ajude a encontrar o dono</p>
+          </div>
+          <i class="fas fa-chevron-right"></i>
+        </button>
+      </div>
+
+      <!-- Raio de Alcance Info -->
+      <div class="info-cards">
+        <div class="info-card">
+          <div class="info-icon dog-icon">
+            <i class="fas fa-dog"></i>
+          </div>
+          <div class="info-text">
+            <h4>Cães</h4>
+            <p>Alerta em raio de <strong>5 km</strong></p>
+          </div>
+        </div>
+        <div class="info-card">
+          <div class="info-icon cat-icon">
+            <i class="fas fa-cat"></i>
+          </div>
+          <div class="info-text">
+            <h4>Gatos</h4>
+            <p>Alerta em raio de <strong>2 km</strong></p>
+          </div>
+        </div>
+        <div class="info-card">
+          <div class="info-icon other-icon">
+            <i class="fas fa-dove"></i>
+          </div>
+          <div class="info-text">
+            <h4>Outros</h4>
+            <p>Alerta em raio de <strong>3 km</strong></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feed de Alertas Recentes -->
+      <div class="section-header">
+        <h3><i class="fas fa-bullhorn"></i> Alertas Recentes na Região</h3>
+        <button id="btn-ver-todos" class="btn-link">Ver todos</button>
+      </div>
+      <div id="feed-alertas" class="feed-alertas">
+        <div class="empty-state">
+          <i class="fas fa-paw"></i>
+          <p>Nenhum alerta na sua região ainda.</p>
+          <p class="text-muted">Ative a localização para ver alertas próximos.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== REPORTAR PET PERDIDO - PASSO 1 (RÁPIDO) ===== -->
+    <section id="page-reportar-rapido" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2>Reporte Rápido</h2>
+        <div class="step-indicator">
+          <span class="step active">1</span>
+          <span class="step-line"></span>
+          <span class="step">2</span>
+        </div>
+      </div>
+
+      <div class="form-container">
+        <div class="urgency-banner">
+          <i class="fas fa-bolt"></i>
+          <span>Preencha o mínimo e dispare o alerta! Complete depois.</span>
+        </div>
+
+        <!-- Foto Upload -->
+        <div class="upload-area" id="upload-area-perdido">
+          <input type="file" id="foto-perdido" accept="image/*" hidden>
+          <input type="file" id="foto-perdido-camera" accept="image/*" capture="environment" hidden>
+          <div class="upload-placeholder" id="upload-placeholder-perdido">
+            <i class="fas fa-camera"></i>
+            <p>Toque para tirar ou escolher foto</p>
+            <span class="text-muted">A foto será comprimida automaticamente</span>
+          </div>
+          <div class="upload-preview hidden" id="upload-preview-perdido">
+            <img id="img-preview-perdido" alt="Preview">
+            <button class="btn-remove-photo" id="btn-remove-perdido"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="upload-progress hidden" id="upload-progress-perdido">
+            <div class="progress-header">
+              <span class="progress-label">Preparando...</span>
+              <span class="progress-percent">0%</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width:0%"></div>
+            </div>
+            <div class="progress-steps">
+              <span class="step-dot active"></span>
+              <span class="step-dot"></span>
+              <span class="step-dot"></span>
+              <span class="step-dot"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tipo de Animal -->
+        <div class="form-group">
+          <label>Tipo de Animal *</label>
+          <div class="radio-cards">
+            <label class="radio-card">
+              <input type="radio" name="tipo-animal" value="cao" checked>
+              <div class="radio-card-content">
+                <i class="fas fa-dog"></i>
+                <span>Cão</span>
+                <small>Raio: 5km</small>
+              </div>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="tipo-animal" value="gato">
+              <div class="radio-card-content">
+                <i class="fas fa-cat"></i>
+                <span>Gato</span>
+                <small>Raio: 2km</small>
+              </div>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="tipo-animal" value="outro">
+              <div class="radio-card-content">
+                <i class="fas fa-dove"></i>
+                <span>Outro</span>
+                <small>Raio: 3km</small>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Especificar tipo (aparece quando "Outro" é selecionado) -->
+        <div class="form-group hidden" id="grupo-tipo-outro-perdido">
+          <label><i class="fas fa-paw"></i> Qual animal?</label>
+          <div class="tipo-outro-chips">
+            <label class="chip-option"><input type="radio" name="subtipo-perdido" value="ave"><span>🐦 Ave</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-perdido" value="coelho"><span>🐰 Coelho</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-perdido" value="hamster"><span>🐹 Hamster</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-perdido" value="tartaruga"><span>🐢 Tartaruga</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-perdido" value="peixe"><span>🐟 Peixe</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-perdido" value="reptil"><span>🦎 Réptil</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-perdido" value="ferret"><span>🦦 Furão</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-perdido" value="personalizado"><span>✏️ Outro</span></label>
+          </div>
+          <input type="text" id="tipo-outro-texto-perdido" class="form-input hidden" placeholder="Ex: Porquinho-da-índia, Chinchila..." maxlength="50">
+        </div>
+
+        <!-- Localização -->
+        <div class="form-group">
+          <label><i class="fas fa-map-marker-alt"></i> Local onde foi perdido *</label>
+          <button id="btn-get-location" class="btn-location">
+            <i class="fas fa-crosshairs"></i>
+            <span>Usar minha localização atual</span>
+          </button>
+          <div id="location-info" class="location-info hidden">
+            <i class="fas fa-check-circle"></i>
+            <span id="location-text">Localização capturada</span>
+          </div>
+          <input type="text" id="endereco-manual" placeholder="Ou digite o endereço/bairro" class="form-input">
+          <input type="hidden" id="lat-perdido">
+          <input type="hidden" id="lng-perdido">
+        </div>
+
+        <!-- Características Rápidas -->
+        <div class="form-group">
+          <label>Cor predominante</label>
+          <div class="color-chips">
+            <label class="color-chip"><input type="radio" name="cor-pet" value="preto"><span style="background:#333">Preto</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="branco"><span style="background:#f0f0f0;color:#333;border-color:#ddd">Branco</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="marrom"><span style="background:#8B4513">Marrom</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="caramelo"><span style="background:#D2691E">Caramelo</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="cinza"><span style="background:#808080">Cinza</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="rajado"><span style="background:linear-gradient(45deg,#8B4513 25%,#D2691E 75%)">Rajado</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="malhado"><span style="background:linear-gradient(45deg,#333 30%,#fff 70%);color:#555">Malhado</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="preto_branco"><span style="background:linear-gradient(135deg,#333 50%,#f0f0f0 50%);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5)">P&B</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="bicolor"><span style="background:linear-gradient(135deg,#8B4513 50%,#F5DEB3 50%)">Bicolor</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="tricolor"><span style="background:linear-gradient(135deg,#333 33%,#D2691E 33%,#D2691E 66%,#f0f0f0 66%);text-shadow:0 1px 2px rgba(0,0,0,0.5)">Tricolor</span></label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Porte</label>
+          <div class="radio-pills">
+            <label class="radio-pill"><input type="radio" name="porte-pet" value="pequeno"><span>Pequeno</span></label>
+            <label class="radio-pill"><input type="radio" name="porte-pet" value="medio"><span>Médio</span></label>
+            <label class="radio-pill"><input type="radio" name="porte-pet" value="grande"><span>Grande</span></label>
+          </div>
+        </div>
+
+        <!-- Observação Rápida -->
+        <div class="form-group">
+          <label>Observação rápida</label>
+          <textarea id="obs-rapida" class="form-textarea" placeholder="Ex: Usando coleira azul, manca da pata esquerda, muito dócil..." rows="3"></textarea>
+        </div>
+
+        <!-- Recompensa -->
+        <div class="form-group recompensa-group">
+          <label class="switch-label">
+            <span>Ofereço recompensa</span>
+            <label class="switch">
+              <input type="checkbox" id="check-recompensa">
+              <span class="switch-slider"></span>
+            </label>
+          </label>
+          <input type="text" id="valor-recompensa" class="form-input hidden" placeholder="Valor ou descrição da recompensa">
+        </div>
+
+        <!-- Contato Rápido -->
+        <div class="form-group">
+          <label><i class="fas fa-phone"></i> Telefone para contato *</label>
+          <input type="tel" id="telefone-rapido" class="form-input" placeholder="(00) 00000-0000">
+        </div>
+
+        <!-- Botão Disparar Alerta -->
+        <button id="btn-disparar-alerta" class="btn-primary btn-large btn-pulse" disabled>
+          <i class="fas fa-bolt"></i>
+          <span>DISPARAR ALERTA AGORA</span>
+        </button>
+
+        <p class="form-note">
+          <i class="fas fa-info-circle"></i>
+          O alerta será enviado para pessoas em um raio de até <strong id="raio-info">5 km</strong>. 
+          Você poderá completar o cadastro depois.
+        </p>
+      </div>
+    </section>
+
+    <!-- ===== CADASTRO COMPLETO (PASSO 2) ===== -->
+    <section id="page-cadastro-completo" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2>Completar Cadastro</h2>
+        <div class="step-indicator">
+          <span class="step completed"><i class="fas fa-check"></i></span>
+          <span class="step-line completed"></span>
+          <span class="step active">2</span>
+        </div>
+      </div>
+
+      <div class="form-container">
+        <div class="success-banner">
+          <i class="fas fa-check-circle"></i>
+          <span>Alerta disparado! Complete os dados para melhorar a busca.</span>
+        </div>
+
+        <div class="form-group">
+          <label>Nome do Pet</label>
+          <input type="text" id="nome-pet-completo" class="form-input" placeholder="Nome do seu pet">
+        </div>
+
+        <div class="form-group">
+          <label>Raça</label>
+          <input type="text" id="raca-completo" class="form-input" placeholder="Raça ou SRD (vira-lata)">
+        </div>
+
+        <div class="form-group">
+          <label>Sexo</label>
+          <div class="radio-pills">
+            <label class="radio-pill"><input type="radio" name="sexo-pet" value="macho"><span>Macho</span></label>
+            <label class="radio-pill"><input type="radio" name="sexo-pet" value="femea"><span>Fêmea</span></label>
+            <label class="radio-pill"><input type="radio" name="sexo-pet" value="indefinido"><span>Não sei</span></label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Data em que foi perdido</label>
+          <input type="date" id="data-perda" class="form-input">
+        </div>
+
+        <div class="form-group">
+          <label>Descrição detalhada</label>
+          <textarea id="descricao-completa" class="form-textarea" placeholder="Características marcantes, comportamento, se tem microchip, coleira, etc." rows="4"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Seu nome</label>
+          <input type="text" id="nome-tutor" class="form-input" placeholder="Seu nome completo">
+        </div>
+
+        <div class="form-group">
+          <label>E-mail</label>
+          <input type="email" id="email-tutor" class="form-input" placeholder="seu@email.com">
+        </div>
+
+        <button id="btn-salvar-completo" class="btn-primary btn-large">
+          <i class="fas fa-save"></i>
+          <span>Salvar Cadastro Completo</span>
+        </button>
+
+        <button id="btn-pular-cadastro" class="btn-text">
+          Pular por agora →
+        </button>
+      </div>
+    </section>
+
+    <!-- ===== AVISTAMENTO ===== -->
+    <section id="page-avistamento" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2>Vi um Pet Perdido</h2>
+      </div>
+
+      <div class="form-container">
+        <div class="info-banner">
+          <i class="fas fa-magic"></i>
+          <span>Tire uma foto! Nossa IA vai comparar com pets reportados e avisar o dono automaticamente.</span>
+        </div>
+
+        <!-- Foto Upload -->
+        <div class="upload-area" id="upload-area-avistamento">
+          <input type="file" id="foto-avistamento" accept="image/*" hidden>
+          <input type="file" id="foto-avistamento-camera" accept="image/*" capture="environment" hidden>
+          <div class="upload-placeholder" id="upload-placeholder-avistamento">
+            <i class="fas fa-camera"></i>
+            <p>Tire uma foto do animal</p>
+            <span class="text-muted">A IA analisará automaticamente</span>
+          </div>
+          <div class="upload-preview hidden" id="upload-preview-avistamento">
+            <img id="img-preview-avistamento" alt="Preview">
+            <button class="btn-remove-photo" id="btn-remove-avistamento"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="upload-progress hidden" id="upload-progress-avistamento">
+            <div class="progress-header">
+              <span class="progress-label">Preparando...</span>
+              <span class="progress-percent">0%</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width:0%"></div>
+            </div>
+            <div class="progress-steps">
+              <span class="step-dot active"></span>
+              <span class="step-dot"></span>
+              <span class="step-dot"></span>
+              <span class="step-dot"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Analysis Result -->
+        <div id="ai-analysis-result" class="ai-result hidden">
+          <div class="ai-header">
+            <i class="fas fa-robot"></i>
+            <span>Análise da IA</span>
+          </div>
+          <div id="ai-matches" class="ai-matches">
+            <!-- Matches will be inserted here -->
+          </div>
+        </div>
+
+        <!-- Tipo de Animal -->
+        <div class="form-group">
+          <label>Tipo de Animal</label>
+          <div class="radio-cards small">
+            <label class="radio-card">
+              <input type="radio" name="tipo-avistamento" value="cao" checked>
+              <div class="radio-card-content">
+                <i class="fas fa-dog"></i>
+                <span>Cão</span>
+              </div>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="tipo-avistamento" value="gato">
+              <div class="radio-card-content">
+                <i class="fas fa-cat"></i>
+                <span>Gato</span>
+              </div>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="tipo-avistamento" value="outro">
+              <div class="radio-card-content">
+                <i class="fas fa-dove"></i>
+                <span>Outro</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Especificar tipo (aparece quando "Outro" é selecionado) -->
+        <div class="form-group hidden" id="grupo-tipo-outro-avistamento">
+          <label><i class="fas fa-paw"></i> Qual animal?</label>
+          <div class="tipo-outro-chips">
+            <label class="chip-option"><input type="radio" name="subtipo-avistamento" value="ave"><span>🐦 Ave</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-avistamento" value="coelho"><span>🐰 Coelho</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-avistamento" value="hamster"><span>🐹 Hamster</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-avistamento" value="tartaruga"><span>🐢 Tartaruga</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-avistamento" value="peixe"><span>🐟 Peixe</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-avistamento" value="reptil"><span>🦎 Réptil</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-avistamento" value="ferret"><span>🦦 Furão</span></label>
+            <label class="chip-option"><input type="radio" name="subtipo-avistamento" value="personalizado"><span>✏️ Outro</span></label>
+          </div>
+          <input type="text" id="tipo-outro-texto-avistamento" class="form-input hidden" placeholder="Ex: Porquinho-da-índia, Chinchila..." maxlength="50">
+        </div>
+
+        <!-- Localização -->
+        <div class="form-group">
+          <label><i class="fas fa-map-marker-alt"></i> Local do avistamento</label>
+          <button id="btn-get-location-avistamento" class="btn-location">
+            <i class="fas fa-crosshairs"></i>
+            <span>Usar minha localização atual</span>
+          </button>
+          <div id="location-info-avistamento" class="location-info hidden">
+            <i class="fas fa-check-circle"></i>
+            <span id="location-text-avistamento">Localização capturada</span>
+          </div>
+          <input type="hidden" id="lat-avistamento">
+          <input type="hidden" id="lng-avistamento">
+        </div>
+
+        <!-- Cor e Porte -->
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Cor</label>
+            <select id="cor-avistamento" class="form-select">
+              <option value="">Selecione</option>
+              <option value="preto">Preto</option>
+              <option value="branco">Branco</option>
+              <option value="marrom">Marrom</option>
+              <option value="caramelo">Caramelo</option>
+              <option value="cinza">Cinza</option>
+              <option value="rajado">Rajado</option>
+              <option value="malhado">Malhado</option>
+              <option value="preto_branco">Preto e Branco</option>
+              <option value="bicolor">Bicolor</option>
+              <option value="tricolor">Tricolor</option>
+            </select>
+          </div>
+          <div class="form-group half">
+            <label>Porte</label>
+            <select id="porte-avistamento" class="form-select">
+              <option value="">Selecione</option>
+              <option value="pequeno">Pequeno</option>
+              <option value="medio">Médio</option>
+              <option value="grande">Grande</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Observações</label>
+          <textarea id="obs-avistamento" class="form-textarea" placeholder="Estado do animal, se tinha coleira, local exato..." rows="3"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Seu contato (opcional)</label>
+          <input type="tel" id="contato-avistamento" class="form-input" placeholder="(00) 00000-0000">
+        </div>
+
+        <button id="btn-reportar-avistamento" class="btn-secondary btn-large" disabled>
+          <i class="fas fa-paper-plane"></i>
+          <span>Enviar Avistamento</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ===== DETALHES DO PET ===== -->
+    <section id="page-detalhes" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2>Detalhes do Pet</h2>
+      </div>
+      <div id="detalhes-content" class="detalhes-container">
+        <!-- Populated dynamically -->
+      </div>
+    </section>
+
+    <!-- ===== MEUS REPORTES ===== -->
+    <section id="page-meus-reportes" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2>Meus Reportes</h2>
+      </div>
+      <div id="meus-reportes-list" class="reportes-list">
+        <div class="empty-state">
+          <i class="fas fa-clipboard-list"></i>
+          <p>Você ainda não fez nenhum reporte.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== NOTIFICAÇÕES ===== -->
+    <section id="page-notificacoes" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2>Notificações</h2>
+      </div>
+      <div id="notificacoes-list" class="notificacoes-list">
+        <div class="empty-state">
+          <i class="fas fa-bell-slash"></i>
+          <p>Nenhuma notificação ainda.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== MAPA ===== -->
+    <section id="page-mapa" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2>Mapa de Alertas</h2>
+      </div>
+      <div id="map-container" class="map-container">
+        <div id="map-canvas" class="map-canvas"></div>
+        <div class="map-legend">
+          <div class="legend-item"><span class="legend-dot red"></span> Perdido</div>
+          <div class="legend-item"><span class="legend-dot green"></span> Avistado</div>
+          <div class="legend-item"><span class="legend-dot blue"></span> Você</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== COMO FUNCIONA ===== -->
+    <section id="page-como-funciona" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2>Como Funciona</h2>
+      </div>
+      <div class="content-page">
+        <div class="how-it-works">
+          <div class="step-card">
+            <div class="step-number">1</div>
+            <div class="step-icon"><i class="fas fa-camera"></i></div>
+            <h3>Tire uma Foto</h3>
+            <p>Suba uma foto do seu pet. A imagem será comprimida automaticamente para não usar espaço.</p>
+          </div>
+          <div class="step-card">
+            <div class="step-number">2</div>
+            <div class="step-icon"><i class="fas fa-map-marker-alt"></i></div>
+            <h3>Localização</h3>
+            <p>Informe onde o pet foi perdido. O app usa GPS para precisão.</p>
+          </div>
+          <div class="step-card">
+            <div class="step-number">3</div>
+            <div class="step-icon"><i class="fas fa-bolt"></i></div>
+            <h3>Alerta Instantâneo</h3>
+            <p>O alerta é disparado para pessoas próximas: <strong>5km para cães</strong>, <strong>2km para gatos</strong>.</p>
+          </div>
+          <div class="step-card">
+            <div class="step-number">4</div>
+            <div class="step-icon"><i class="fas fa-robot"></i></div>
+            <h3>IA Compara Fotos</h3>
+            <p>Quando alguém avista um pet, a IA compara as fotos. Com <strong>92%+ de similaridade</strong>, o dono é notificado automaticamente!</p>
+          </div>
+          <div class="step-card">
+            <div class="step-number">5</div>
+            <div class="step-icon"><i class="fas fa-heart"></i></div>
+            <h3>Reencontro!</h3>
+            <p>O dono entra em contato e busca seu melhor amigo. Tudo gratuito!</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PERFIL ===== -->
+    <section id="page-perfil" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2>Meu Perfil</h2>
+      </div>
+      <div class="content-page">
+        <div class="profile-card">
+          <div class="profile-avatar" id="profile-avatar">
+            <i class="fas fa-user-circle"></i>
+          </div>
+          <div id="profile-info" class="profile-info">
+            <h3 id="profile-name">Carregando...</h3>
+            <p id="profile-email" class="text-muted"></p>
+            <span id="account-type-badge" class="account-badge"></span>
+          </div>
+        </div>
+        <div class="form-container">
+          <div class="form-group">
+            <label><i class="fas fa-user"></i> Nome</label>
+            <input type="text" id="profile-edit-name" class="form-input" placeholder="Seu nome">
+          </div>
+          <div class="form-group">
+            <label><i class="fas fa-phone"></i> Telefone</label>
+            <input type="tel" id="profile-edit-phone" class="form-input" placeholder="(00) 00000-0000">
+          </div>
+          <div class="form-group">
+            <label><i class="fas fa-city"></i> Cidade</label>
+            <input type="text" id="profile-edit-city" class="form-input" placeholder="Sua cidade">
+          </div>
+          <button id="btn-save-profile" class="btn-primary">
+            <i class="fas fa-save"></i> <span>Salvar Alterações</span>
+          </button>
+        </div>
+
+        <!-- Alterar Senha -->
+        <div id="password-section" class="form-container" style="margin-top:16px">
+          <h4 style="margin-bottom:12px"><i class="fas fa-key"></i> Alterar Senha</h4>
+          <div class="form-group">
+            <label>Senha atual</label>
+            <input type="password" id="current-password" class="form-input" placeholder="Sua senha atual">
+          </div>
+          <div class="form-group">
+            <label>Nova senha</label>
+            <input type="password" id="new-password" class="form-input" placeholder="Mínimo 6 caracteres">
+          </div>
+          <div class="form-group">
+            <label>Confirmar nova senha</label>
+            <input type="password" id="new-password2" class="form-input" placeholder="Repita a nova senha">
+          </div>
+          <button id="btn-change-password" class="btn-secondary">
+            <i class="fas fa-lock"></i> <span>Alterar Senha</span>
+          </button>
+        </div>
+
+        <div class="profile-stats">
+          <div class="stat-box"><span id="profile-stat-reports">0</span><small>Reportes</small></div>
+          <div class="stat-box"><span id="profile-stat-sightings">0</span><small>Avistamentos</small></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PRIVACIDADE ===== -->
+    <section id="page-privacidade" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2>Privacidade e Segurança</h2>
+      </div>
+      <div class="content-page">
+        <div class="privacy-section">
+          <div class="privacy-icon"><i class="fas fa-map-marker-alt"></i></div>
+          <h3>Proteção de Localização</h3>
+          <p>Sua localização <strong>nunca é mostrada com precisão</strong> para outros usuários. Usamos ofuscação automática para proteger você.</p>
+          <div class="form-group">
+            <label class="switch-label">
+              <span>Localização aproximada (recomendado)</span>
+              <label class="switch">
+                <input type="checkbox" id="privacy-approx-location" checked>
+                <span class="switch-slider"></span>
+              </label>
+            </label>
+            <p class="form-hint">Quando ativo, sua localização é ofuscada em um raio para proteger seu endereço real.</p>
+          </div>
+          <div class="form-group">
+            <label>Raio de ofuscação</label>
+            <div class="range-container">
+              <input type="range" id="privacy-radius" min="200" max="2000" step="100" value="500" class="form-range">
+              <span id="privacy-radius-label" class="range-label">500m</span>
+            </div>
+            <p class="form-hint">Quanto maior o raio, mais protegida sua localização. Outros verão apenas a região aproximada.</p>
+          </div>
+        </div>
+
+        <div class="privacy-section">
+          <div class="privacy-icon"><i class="fas fa-eye-slash"></i></div>
+          <h3>Dados Pessoais</h3>
+          <p>Seus dados de contato são <strong>mascarados</strong> na exibição pública. Apenas quem você autorizar verá suas informações completas.</p>
+          <div class="form-group">
+            <label class="switch-label">
+              <span>Perfil público</span>
+              <label class="switch">
+                <input type="checkbox" id="privacy-public-profile">
+                <span class="switch-slider"></span>
+              </label>
+            </label>
+            <p class="form-hint">Se desativado, seu nome e foto não aparecem nos reportes.</p>
+          </div>
+        </div>
+
+        <div class="privacy-section">
+          <div class="privacy-icon"><i class="fas fa-bell"></i></div>
+          <h3>Notificações</h3>
+          <div class="form-group">
+            <label class="switch-label">
+              <span>Receber alertas de matching</span>
+              <label class="switch">
+                <input type="checkbox" id="privacy-notifications" checked>
+                <span class="switch-slider"></span>
+              </label>
+            </label>
+          </div>
+        </div>
+
+        <button id="btn-save-privacy" class="btn-primary">
+          <i class="fas fa-shield-alt"></i> <span>Salvar Configurações</span>
+        </button>
+
+        <div class="privacy-info">
+          <h4><i class="fas fa-lock"></i> Como protegemos seus dados</h4>
+          <ul>
+            <li><i class="fas fa-check"></i> Localização ofuscada automaticamente</li>
+            <li><i class="fas fa-check"></i> Telefone e e-mail mascarados publicamente</li>
+            <li><i class="fas fa-check"></i> Fotos comprimidas no seu dispositivo (não enviamos originais)</li>
+            <li><i class="fas fa-check"></i> Análise de IA roda 100% no seu navegador</li>
+            <li><i class="fas fa-check"></i> Dados sanitizados contra injeção de código</li>
+            <li><i class="fas fa-check"></i> Conexão segura (HTTPS)</li>
+            <li><i class="fas fa-check"></i> Sem rastreamento ou anúncios</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SOBRE ===== -->
+    <!-- ===== PATROCINADORES ===== -->
+    <section id="page-patrocinadores" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2>Patrocinadores</h2>
+      </div>
+      <div class="content-page">
+
+        <!-- Hero Patrocinador -->
+        <div class="sponsor-hero">
+          <div class="sponsor-hero-icon">
+            <i class="fas fa-handshake"></i>
+          </div>
+          <h3>Apoie o Encontre Pet</h3>
+          <p>Seja um patrocinador e ajude milhares de famílias a reencontrarem seus pets. Sua marca ganha visibilidade e os usuários ganham benefícios!</p>
+        </div>
+
+        <!-- Benefícios para patrocinadores -->
+        <div class="sponsor-benefits">
+          <h4><i class="fas fa-star"></i> Por que patrocinar?</h4>
+          <div class="benefit-cards">
+            <div class="benefit-card">
+              <div class="benefit-icon"><i class="fas fa-eye"></i></div>
+              <strong>Visibilidade</strong>
+              <p>Sua marca exposta para milhares de tutores de pets na região</p>
+            </div>
+            <div class="benefit-card">
+              <div class="benefit-icon"><i class="fas fa-heart"></i></div>
+              <strong>Causa Social</strong>
+              <p>Associe sua marca a uma causa nobre — ajudar animais perdidos</p>
+            </div>
+            <div class="benefit-card">
+              <div class="benefit-icon"><i class="fas fa-tags"></i></div>
+              <strong>Descontos Exclusivos</strong>
+              <p>Ofereça cupons e descontos especiais para os usuários do app</p>
+            </div>
+            <div class="benefit-card">
+              <div class="benefit-icon"><i class="fas fa-bullhorn"></i></div>
+              <strong>Divulgação</strong>
+              <p>Banner destaque, notificações e presença nas redes sociais</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Planos -->
+        <div class="sponsor-plans">
+          <h4><i class="fas fa-gem"></i> Planos de Patrocínio</h4>
+
+          <div class="plan-card plan-bronze">
+            <div class="plan-badge">🥉 Bronze</div>
+            <div class="plan-price">
+              <span class="plan-value">R$ 49</span><span class="plan-period">/mês</span>
+            </div>
+            <ul class="plan-features">
+              <li><i class="fas fa-check"></i> Logo na seção de parceiros</li>
+              <li><i class="fas fa-check"></i> Menção nas redes sociais</li>
+              <li><i class="fas fa-check"></i> 1 cupom de desconto/mês</li>
+            </ul>
+          </div>
+
+          <div class="plan-card plan-prata">
+            <div class="plan-badge">🥈 Prata</div>
+            <div class="plan-popular">Mais Popular</div>
+            <div class="plan-price">
+              <span class="plan-value">R$ 99</span><span class="plan-period">/mês</span>
+            </div>
+            <ul class="plan-features">
+              <li><i class="fas fa-check"></i> Tudo do Bronze +</li>
+              <li><i class="fas fa-check"></i> Banner destaque no app</li>
+              <li><i class="fas fa-check"></i> 3 cupons de desconto/mês</li>
+              <li><i class="fas fa-check"></i> Notificação para usuários da região</li>
+            </ul>
+          </div>
+
+          <div class="plan-card plan-ouro">
+            <div class="plan-badge">🥇 Ouro</div>
+            <div class="plan-price">
+              <span class="plan-value">R$ 199</span><span class="plan-period">/mês</span>
+            </div>
+            <ul class="plan-features">
+              <li><i class="fas fa-check"></i> Tudo do Prata +</li>
+              <li><i class="fas fa-check"></i> Selo "Apoiador Oficial" exclusivo</li>
+              <li><i class="fas fa-check"></i> Cupons ilimitados</li>
+              <li><i class="fas fa-check"></i> Destaque na tela inicial</li>
+              <li><i class="fas fa-check"></i> Relatório mensal de impacto</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Parceiros atuais (placeholder para futuros) -->
+        <div class="sponsor-current">
+          <h4><i class="fas fa-store"></i> Nossos Parceiros</h4>
+          <div class="sponsor-empty">
+            <div class="sponsor-empty-icon">
+              <i class="fas fa-store-alt"></i>
+            </div>
+            <p><strong>Seja o primeiro!</strong></p>
+            <p>Ainda estamos buscando nossos primeiros parceiros. Sua empresa pode ser pioneira em apoiar essa causa!</p>
+          </div>
+        </div>
+
+        <!-- Cupons disponíveis (placeholder) -->
+        <div class="sponsor-coupons">
+          <h4><i class="fas fa-ticket-alt"></i> Cupons e Ofertas</h4>
+          <div class="coupon-empty">
+            <i class="fas fa-gift"></i>
+            <p>Em breve cupons e descontos exclusivos dos nossos parceiros aparecerão aqui!</p>
+          </div>
+        </div>
+
+        <!-- CTA contato -->
+        <div class="sponsor-cta">
+          <h4>Quer ser patrocinador?</h4>
+          <p>Entre em contato e faça parte dessa causa!</p>
+          <a href="mailto:encontrepet26@gmail.com?subject=Quero%20ser%20patrocinador%20-%20Encontre%20Pet" class="btn-sponsor-contact">
+            <i class="fas fa-envelope"></i> encontrepet26@gmail.com
+          </a>
+          <div class="sponsor-social">
+            <p><i class="fas fa-paw"></i> Juntos salvamos mais vidas!</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ===== SOBRE ===== -->
+    <section id="page-sobre" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2>Sobre</h2>
+      </div>
+      <div class="content-page">
+        <div class="about-section">
+          <div class="about-logo">
+            <i class="fas fa-paw"></i>
+          </div>
+          <h3>Encontre Pet</h3>
+          <p class="about-version">Versão 1.0.0</p>
+          <p class="about-desc">
+            O <strong>Encontre Pet</strong> é um app 100% gratuito criado com o objetivo de ajudar 
+            pessoas a encontrarem seus pets perdidos ou abandonados. Utilizamos tecnologia de 
+            geolocalização e inteligência artificial para conectar quem perdeu com quem encontrou.
+          </p>
+          <div class="about-features">
+            <div class="about-feature">
+              <i class="fas fa-hand-holding-heart"></i>
+              <span>100% Gratuito</span>
+            </div>
+            <div class="about-feature">
+              <i class="fas fa-shield-alt"></i>
+              <span>Sem cadastro obrigatório</span>
+            </div>
+            <div class="about-feature">
+              <i class="fas fa-robot"></i>
+              <span>IA para matching de fotos</span>
+            </div>
+            <div class="about-feature">
+              <i class="fas fa-map-marked-alt"></i>
+              <span>Alertas por proximidade</span>
+            </div>
+          </div>
+          <p class="about-footer">
+            Feito com <i class="fas fa-heart" style="color:#e74c3c"></i> para todos os amantes de animais.
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== BOTTOM NAV ===== -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-page="home">
+      <i class="fas fa-home"></i>
+      <span>Início</span>
+    </button>
+    <button class="nav-item" data-page="reportar-rapido" id="nav-reportar">
+      <i class="fas fa-search"></i>
+      <span>Reportar</span>
+    </button>
+    <button class="nav-item nav-center" id="nav-sos">
+      <div class="nav-center-btn">
+        <i class="fas fa-plus"></i>
+      </div>
+      <span>SOS Pet</span>
+    </button>
+    <button class="nav-item" data-page="avistamento" id="nav-avistamento">
+      <i class="fas fa-camera"></i>
+      <span>Vi um Pet</span>
+    </button>
+    <button class="nav-item" data-page="mapa">
+      <i class="fas fa-map"></i>
+      <span>Mapa</span>
+    </button>
+  </nav>
+
+  <!-- ===== SOS MODAL ===== -->
+  <div id="sos-modal" class="modal hidden">
+    <div class="modal-overlay"></div>
+    <div class="modal-content sos-modal-content">
+      <h3><i class="fas fa-exclamation-triangle"></i> SOS Pet</h3>
+      <p>O que aconteceu?</p>
+      <div class="sos-options">
+        <button class="sos-option" data-action="perdi">
+          <i class="fas fa-search-location"></i>
+          <span>Perdi meu Pet</span>
+          <small>Reporte rápido com alerta</small>
+        </button>
+        <button class="sos-option" data-action="vi">
+          <i class="fas fa-eye"></i>
+          <span>Vi um Pet Perdido</span>
+          <small>A IA vai comparar com reportes</small>
+        </button>
+      </div>
+      <button class="btn-text modal-close">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- ===== PHOTO SOURCE MODAL ===== -->
+  <div id="photo-source-modal" class="modal hidden">
+    <div class="modal-overlay" id="photo-modal-overlay"></div>
+    <div class="photo-source-sheet">
+      <div class="photo-source-header">
+        <h3><i class="fas fa-image"></i> Adicionar Foto</h3>
+        <button id="photo-modal-close" class="btn-close-modal"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="photo-source-options">
+        <button id="photo-opt-camera" class="photo-source-btn">
+          <div class="photo-source-icon camera-icon">
+            <i class="fas fa-camera"></i>
+          </div>
+          <div class="photo-source-text">
+            <strong>Câmera</strong>
+            <span>Tirar foto agora</span>
+          </div>
+        </button>
+        <button id="photo-opt-gallery" class="photo-source-btn">
+          <div class="photo-source-icon gallery-icon">
+            <i class="fas fa-images"></i>
+          </div>
+          <div class="photo-source-text">
+            <strong>Galeria</strong>
+            <span>Escolher foto existente</span>
+          </div>
+        </button>
+      </div>
+      <button id="photo-opt-cancel" class="btn-cancel-photo">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- ===== TOAST NOTIFICATIONS ===== -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- ===== LOADING OVERLAY ===== -->
+  <div id="loading-overlay" class="loading-overlay hidden">
+    <div class="loading-spinner">
+      <i class="fas fa-paw fa-spin"></i>
+      <p id="loading-text">Processando...</p>
+    </div>
+  </div>
+
+  <!-- Scripts - Ordem importa! Firebase Config deve ser o primeiro -->
+  <script src="js/firebase-config.js"></script>
+  <script src="js/security.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/image-utils.js"></script>
+  <script src="js/geo-utils.js"></script>
+  <script src="js/ai-match.js"></script>
+  <script src="js/ai-vision.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>

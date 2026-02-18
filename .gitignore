@@ -1,0 +1,26 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (caso adicionem no futuro)
+node_modules/
+npm-debug.log
+
+# Env (nunca commitar)
+.env
+.env.local
+.env.production
+
+# Test files
+test/
+*.test.js
+
+# Build (projeto é estático — sem build)
+dist/
+build/
