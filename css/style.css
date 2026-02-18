@@ -510,7 +510,8 @@ a { color: var(--primary); text-decoration: none; }
 .hero-stats {
   display: flex;
   justify-content: center;
-  gap: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .stat-item {
@@ -3400,4 +3401,305 @@ a { color: var(--primary); text-decoration: none; }
   .account-badge.verified { background: #1A3A20; }
   .account-badge.anonymous { background: #3A3520; }
   .btn-ghost { color: var(--text-light); border-color: var(--border); }
+}
+
+/* ===== PAINEL DE EFETIVIDADE ===== */
+.painel-efetividade {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+
+.efetividade-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+
+.efetividade-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.efetividade-icon.sucesso {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.efetividade-icon.app {
+  background: #E3F2FD;
+  color: #1565C0;
+}
+
+.efetividade-icon.usuarios {
+  background: #FFF3E0;
+  color: #E65100;
+}
+
+.efetividade-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.efetividade-valor {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text-dark);
+  line-height: 1.2;
+}
+
+.efetividade-info small {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* ===== HISTÓRIAS DE SUCESSO ===== */
+.historias-sucesso {
+  padding: 0 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.success-story-card {
+  display: flex;
+  gap: 12px;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  box-shadow: var(--shadow-sm);
+  border-left: 4px solid #4CAF50;
+  animation: slideInUp 0.3s ease;
+}
+
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.success-story-photo {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.success-story-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.success-story-photo > i {
+  font-size: 1.5rem;
+  color: var(--text-muted);
+}
+
+.success-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  background: #4CAF50;
+  color: white;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  border: 2px solid white;
+}
+
+.success-story-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.success-story-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-dark);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.success-date {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.success-story-how {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.success-story-msg {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.3;
+}
+
+.success-story-stars {
+  color: #FFC107;
+  font-size: 0.85rem;
+  letter-spacing: 2px;
+}
+
+.success-app-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #E3F2FD;
+  color: #1565C0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  width: fit-content;
+}
+
+/* ===== MODAL PET ENCONTRADO (FEEDBACK) ===== */
+.found-feedback-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-main);
+  border-radius: 20px 20px 0 0;
+  padding: 20px 20px 30px;
+  z-index: 1001;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.found-feedback-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.found-celebration {
+  font-size: 3rem;
+  margin-bottom: 8px;
+}
+
+.found-feedback-header h3 {
+  font-size: 1.3rem;
+  color: var(--text-dark);
+  margin-bottom: 4px;
+}
+
+.found-feedback-header p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.found-feedback-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.radio-group {
+  display: flex;
+  gap: 12px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: 0.2s;
+  font-size: 0.9rem;
+}
+
+.radio-option:has(input:checked) {
+  border-color: var(--primary);
+  background: rgba(255, 111, 0, 0.08);
+}
+
+.radio-option input[type="radio"] {
+  display: none;
+}
+
+.star-rating {
+  display: flex;
+  gap: 6px;
+  font-size: 1.8rem;
+  cursor: pointer;
+}
+
+.star-rating .star {
+  color: #DDD;
+  transition: color 0.15s, transform 0.15s;
+}
+
+.star-rating .star.active {
+  color: #FFC107;
+  transform: scale(1.15);
+}
+
+.star-rating .star:hover {
+  color: #FFD54F;
+  transform: scale(1.2);
+}
+
+.found-feedback-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.found-feedback-actions .btn-text {
+  text-align: center;
+  padding: 10px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .efetividade-icon.sucesso { background: #1B3A1C; }
+  .efetividade-icon.app { background: #0D2137; }
+  .efetividade-icon.usuarios { background: #3A2510; }
+  .success-story-card { border-left-color: #388E3C; }
+  .success-app-badge { background: #0D2137; }
+  .radio-option:has(input:checked) { background: rgba(255, 111, 0, 0.15); }
+  .found-feedback-sheet { background: var(--bg-card); }
 }

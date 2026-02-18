@@ -41,6 +41,7 @@ const App = (() => {
     setupProfilePage();
     setupPrivacyPage();
     setupPasswordToggles();
+    initFoundFeedbackModal();
 
     // 6. Splash screen
     setTimeout(() => {
@@ -537,8 +538,61 @@ const App = (() => {
       animateCounter('stat-pets', stats.totalPets);
       animateCounter('stat-encontrados', stats.encontrados);
       animateCounter('stat-avistamentos', stats.avistamentos);
+      animateCounter('stat-usuarios', stats.usuarios);
+
+      // Painel de efetividade
+      const elTaxa = document.getElementById('ef-taxa');
+      if (elTaxa) elTaxa.textContent = stats.taxaSucesso + '%';
+      const elApp = document.getElementById('ef-app-ajudou');
+      if (elApp) elApp.textContent = stats.appAjudou;
+      const elUsuarios = document.getElementById('ef-usuarios');
+      if (elUsuarios) elUsuarios.textContent = stats.usuarios;
+
+      // Histórias de sucesso
+      renderSuccessStories(stats.historiasSucesso || []);
+
       await loadAlertsFeed();
     } catch (err) { console.error('[App] Home error:', err); }
+  }
+
+  function renderSuccessStories(stories) {
+    const container = document.getElementById('historias-sucesso');
+    if (!container) return;
+    if (stories.length === 0) {
+      container.innerHTML = `<div class="empty-state"><i class="fas fa-heart"></i>
+        <p>Nenhuma história de reencontro ainda.</p>
+        <p class="text-muted">Quando um pet for marcado como encontrado, ele aparecerá aqui!</p></div>`;
+      return;
+    }
+    container.innerHTML = stories.map(pet => {
+      const foto = pet.foto_comprimida ? fixCorruptedDataUrl(pet.foto_comprimida) : '';
+      const nome = Security.sanitize(pet.nome_pet || 'Pet');
+      const como = pet.feedback_como_encontrou || '';
+      const comoTexto = {
+        'app_alerta': '📱 Via alerta do app',
+        'app_avistamento': '👁️ Via avistamento no app',
+        'redes_sociais': '📲 Redes sociais',
+        'cartaz': '📄 Cartaz na rua',
+        'voltou_sozinho': '🏠 Voltou sozinho',
+        'outro': '💬 Outro'
+      }[como] || '';
+      const msg = Security.sanitize(pet.feedback_mensagem || '');
+      const data = pet.data_encontrado ? new Date(pet.data_encontrado).toLocaleDateString('pt-BR') : '';
+      const estrelas = pet.feedback_nota ? '★'.repeat(pet.feedback_nota) + '☆'.repeat(5 - pet.feedback_nota) : '';
+      return `<div class="success-story-card">
+        <div class="success-story-photo">
+          ${foto ? `<img src="${foto}" alt="${nome}">` : `<i class="fas fa-paw"></i>`}
+          <div class="success-badge"><i class="fas fa-check-circle"></i></div>
+        </div>
+        <div class="success-story-info">
+          <div class="success-story-name">${nome} <span class="success-date">${data}</span></div>
+          ${comoTexto ? `<div class="success-story-how">${comoTexto}</div>` : ''}
+          ${msg ? `<div class="success-story-msg">"${msg}"</div>` : ''}
+          ${estrelas ? `<div class="success-story-stars">${estrelas}</div>` : ''}
+          ${pet.feedback_app_ajudou ? `<span class="success-app-badge"><i class="fas fa-mobile-alt"></i> App ajudou!</span>` : ''}
+        </div>
+      </div>`;
+    }).join('');
   }
 
   function animateCounter(id, target) {
@@ -877,6 +931,7 @@ const App = (() => {
 
       hideLoading();
       showToast(`🚨 Alerta disparado em raio de ${GeoUtils.getSearchRadius(tipo)}km!`, 'success');
+      incrementarContadorPerfil('pets_reportados');
       navigateTo('cadastro-completo');
       state.photoData = null;
       document.getElementById('foto-perdido').value = '';
@@ -1121,6 +1176,7 @@ const App = (() => {
       });
       hideLoading();
       showToast('Avistamento enviado! Obrigado! 🐾', 'success');
+      incrementarContadorPerfil('avistamentos_count');
       clearPhoto('avistamento');
       navigateTo('home');
     } catch (err) {
@@ -1243,11 +1299,7 @@ const App = (() => {
       container.querySelectorAll('[data-found]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          if (confirm('Pet encontrado? 🎉')) {
-            await DB.marcarEncontrado(btn.dataset.found);
-            showToast('Pet encontrado! 🎉', 'success');
-            loadMyReports();
-          }
+          openFoundFeedbackModal(btn.dataset.found);
         });
       });
     } catch { container.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Erro ao carregar.</p></div>'; }
@@ -1417,6 +1469,102 @@ const App = (() => {
     const modal = document.getElementById('photo-source-modal');
     if (modal) modal.classList.add('hidden');
     activePhotoTarget = null;
+  }
+
+  // ====== MODAL PET ENCONTRADO (FEEDBACK) ======
+
+  let foundPetId = null;
+  let foundNota = 0;
+
+  function openFoundFeedbackModal(petId) {
+    foundPetId = petId;
+    foundNota = 0;
+    const modal = document.getElementById('found-feedback-modal');
+    if (!modal) return;
+    // Reset form
+    document.getElementById('found-como').value = '';
+    document.querySelectorAll('input[name="found-app-ajudou"]').forEach(r => r.checked = false);
+    document.getElementById('found-mensagem').value = '';
+    document.querySelectorAll('#found-nota .star').forEach(s => s.classList.remove('active'));
+    modal.classList.remove('hidden');
+  }
+
+  function closeFoundFeedbackModal() {
+    const modal = document.getElementById('found-feedback-modal');
+    if (modal) modal.classList.add('hidden');
+    foundPetId = null;
+    foundNota = 0;
+  }
+
+  function initFoundFeedbackModal() {
+    // Estrelas
+    document.querySelectorAll('#found-nota .star').forEach(star => {
+      star.addEventListener('click', () => {
+        foundNota = parseInt(star.dataset.nota);
+        document.querySelectorAll('#found-nota .star').forEach((s, i) => {
+          s.classList.toggle('active', i < foundNota);
+        });
+      });
+    });
+
+    // Enviar com feedback
+    document.getElementById('btn-send-feedback')?.addEventListener('click', async () => {
+      if (!foundPetId) return;
+      const como = document.getElementById('found-como').value;
+      const appAjudouEl = document.querySelector('input[name="found-app-ajudou"]:checked');
+      const appAjudou = appAjudouEl ? appAjudouEl.value === 'sim' : false;
+      const mensagem = document.getElementById('found-mensagem').value.trim();
+
+      try {
+        showLoading('Salvando...');
+        await DB.marcarEncontrado(foundPetId, {
+          como,
+          appAjudou,
+          mensagem,
+          nota: foundNota
+        });
+        // Incrementar contador no perfil
+        await incrementarContadorPerfil('pets_encontrados');
+        hideLoading();
+        closeFoundFeedbackModal();
+        showToast('Pet encontrado! 🎉 Obrigado pelo feedback!', 'success');
+        loadMyReports();
+      } catch (err) {
+        hideLoading();
+        showToast('Erro ao salvar. Tente novamente.', 'error');
+      }
+    });
+
+    // Pular feedback
+    document.getElementById('btn-skip-feedback')?.addEventListener('click', async () => {
+      if (!foundPetId) return;
+      try {
+        showLoading('Salvando...');
+        await DB.marcarEncontrado(foundPetId);
+        hideLoading();
+        closeFoundFeedbackModal();
+        showToast('Pet encontrado! 🎉', 'success');
+        loadMyReports();
+      } catch (err) {
+        hideLoading();
+        showToast('Erro ao salvar.', 'error');
+      }
+    });
+
+    // Fechar
+    document.getElementById('found-modal-overlay')?.addEventListener('click', closeFoundFeedbackModal);
+  }
+
+  async function incrementarContadorPerfil(campo) {
+    try {
+      const userData = Auth.getUserData();
+      if (!userData || userData.isAnonymous) return;
+      const profile = userData.profile || {};
+      const current = parseInt(profile[campo]) || 0;
+      await Auth.updateProfile({ [campo]: current + 1 });
+    } catch (err) {
+      console.warn('[App] Erro ao incrementar contador:', err);
+    }
   }
 
   // ====== UTILIDADES ======

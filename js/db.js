@@ -393,8 +393,16 @@ const DB = (() => {
     });
   }
 
-  async function marcarEncontrado(petId) {
-    return await update(TABLES.PETS, petId, { status: 'encontrado' });
+  async function marcarEncontrado(petId, feedback = {}) {
+    const updateData = {
+      status: 'encontrado',
+      data_encontrado: new Date().toISOString(),
+      feedback_como_encontrou: feedback.como || '',
+      feedback_app_ajudou: feedback.appAjudou || false,
+      feedback_mensagem: Security.sanitize(feedback.mensagem || ''),
+      feedback_nota: feedback.nota || 0
+    };
+    return await update(TABLES.PETS, petId, updateData);
   }
 
   /**
@@ -530,16 +538,38 @@ const DB = (() => {
     try {
       const petsResult = await list(TABLES.PETS, { limit: 500 });
       const avistResult = await list(TABLES.AVISTAMENTOS, { limit: 500 });
+      const usersResult = await list(TABLES.USUARIOS, { limit: 500 });
       const allPets = petsResult.data || [];
+      const encontrados = allPets.filter(p => p.status === 'encontrado');
+      const totalPetsAtivos = allPets.filter(p => p.status === 'ativo').length;
+      const totalEncontrados = encontrados.length;
+      const totalPets = allPets.length;
+
+      // Taxa de sucesso (%)
+      const taxaSucesso = totalPets > 0 ? Math.round((totalEncontrados / totalPets) * 100) : 0;
+
+      // Pets com feedback positivo (app ajudou)
+      const appAjudou = encontrados.filter(p => p.feedback_app_ajudou === true).length;
 
       return {
-        totalPets: allPets.filter(p => p.status === 'ativo').length,
-        encontrados: allPets.filter(p => p.status === 'encontrado').length,
-        avistamentos: (avistResult.data || []).length
+        totalPets: totalPetsAtivos,
+        encontrados: totalEncontrados,
+        avistamentos: (avistResult.data || []).length,
+        usuarios: (usersResult.data || []).filter(u => !u.is_anonymous).length,
+        taxaSucesso,
+        appAjudou,
+        historiasSucesso: encontrados
+          .filter(p => p.feedback_mensagem || p.feedback_app_ajudou)
+          .sort((a, b) => {
+            const tA = a.data_encontrado ? new Date(a.data_encontrado).getTime() : 0;
+            const tB = b.data_encontrado ? new Date(b.data_encontrado).getTime() : 0;
+            return tB - tA;
+          })
+          .slice(0, 10)
       };
     } catch (err) {
       console.error('[DB] Stats error:', err);
-      return { totalPets: 0, encontrados: 0, avistamentos: 0 };
+      return { totalPets: 0, encontrados: 0, avistamentos: 0, usuarios: 0, taxaSucesso: 0, appAjudou: 0, historiasSucesso: [] };
     }
   }
 
