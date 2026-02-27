@@ -725,6 +725,8 @@ const App = (() => {
     uploadArea.addEventListener('click', (e) => {
       // Não abrir modal se clicou no botão de remover foto
       if (e.target.closest('.btn-remove-photo')) return;
+      // Ignorar cliques programáticos vindos dos inputs de arquivo (evita reabrir o modal)
+      if (e.target.tagName === 'INPUT' && e.target.type === 'file') return;
       // Não abrir modal se preview está visível (foto já carregada)
       const preview = document.getElementById('upload-preview-perdido');
       if (preview && !preview.classList.contains('hidden')) return;
@@ -986,6 +988,8 @@ const App = (() => {
 
     uploadArea.addEventListener('click', (e) => {
       if (e.target.closest('.btn-remove-photo')) return;
+      // Ignorar cliques programáticos vindos dos inputs de arquivo (evita reabrir o modal)
+      if (e.target.tagName === 'INPUT' && e.target.type === 'file') return;
       const preview = document.getElementById('upload-preview-avistamento');
       if (preview && !preview.classList.contains('hidden')) return;
       showPhotoSourceModal('avistamento');
