@@ -487,6 +487,11 @@ const App = (() => {
       if (navItem) navItem.classList.add('active');
       if (page === 'home') document.querySelector('.nav-item[data-page="home"]')?.classList.add('active');
 
+      // Marcar item ativo no menu lateral
+      document.querySelectorAll('.menu-list li[data-page]').forEach(li => li.classList.remove('menu-active'));
+      const menuItem = document.querySelector(`.menu-list li[data-page="${page}"]`);
+      if (menuItem) menuItem.classList.add('menu-active');
+
       onPageLoad(page);
     }
   }
@@ -514,6 +519,25 @@ const App = (() => {
     const overlay = document.getElementById('side-menu-overlay');
     if (overlay) { overlay.classList.remove('show'); setTimeout(() => overlay.classList.add('hidden'), 300); }
   }
+
+  // Swipe para fechar o menu lateral (arrastar para a direita)
+  (function initMenuSwipe() {
+    let startX = 0, startY = 0, tracking = false;
+    const menu = document.getElementById('side-menu');
+    if (!menu) return;
+    menu.addEventListener('touchstart', (e) => {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      tracking = true;
+    }, { passive: true });
+    menu.addEventListener('touchmove', (e) => {
+      if (!tracking) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = Math.abs(e.touches[0].clientY - startY);
+      if (dx > 60 && dy < 40) { closeSideMenu(); tracking = false; }
+    }, { passive: true });
+    menu.addEventListener('touchend', () => { tracking = false; }, { passive: true });
+  })();
 
   function setupSOSModal() {
     const modal = document.getElementById('sos-modal');
