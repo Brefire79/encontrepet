@@ -394,9 +394,16 @@ const DB = (() => {
   }
 
   async function marcarEncontrado(petId, feedback = {}) {
+    const desfecho = feedback.desfecho || 'encontrado_vivo';
+    const statusMap = {
+      'encontrado_vivo': 'encontrado',
+      'encontrado_morto': 'encerrado_falecido',
+      'desistencia': 'encerrado_desistencia'
+    };
     const updateData = {
-      status: 'encontrado',
-      data_encontrado: new Date().toISOString(),
+      status: statusMap[desfecho] || 'encontrado',
+      desfecho: desfecho,
+      data_encerrado: new Date().toISOString(),
       feedback_como_encontrou: feedback.como || '',
       feedback_app_ajudou: feedback.appAjudou || false,
       feedback_mensagem: Security.sanitize(feedback.mensagem || ''),
@@ -540,16 +547,18 @@ const DB = (() => {
       const avistResult = await list(TABLES.AVISTAMENTOS, { limit: 500 });
       const usersResult = await list(TABLES.USUARIOS, { limit: 500 });
       const allPets = petsResult.data || [];
-      const encontrados = allPets.filter(p => p.status === 'encontrado');
+      const encerrados = allPets.filter(p => p.status !== 'ativo');
+      const encontradosVivos = allPets.filter(p => p.status === 'encontrado' || p.desfecho === 'encontrado_vivo');
       const totalPetsAtivos = allPets.filter(p => p.status === 'ativo').length;
-      const totalEncontrados = encontrados.length;
+      const totalEncontrados = encontradosVivos.length;
       const totalPets = allPets.length;
 
-      // Taxa de sucesso (%)
-      const taxaSucesso = totalPets > 0 ? Math.round((totalEncontrados / totalPets) * 100) : 0;
+      // Taxa de sucesso (%) — pets encontrados vivos / total encerrados
+      const totalEncerrados = encerrados.length;
+      const taxaSucesso = totalEncerrados > 0 ? Math.round((totalEncontrados / totalEncerrados) * 100) : 0;
 
       // Pets com feedback positivo (app ajudou)
-      const appAjudou = encontrados.filter(p => p.feedback_app_ajudou === true).length;
+      const appAjudou = encerrados.filter(p => p.feedback_app_ajudou === true).length;
 
       return {
         totalPets: totalPetsAtivos,
@@ -558,11 +567,11 @@ const DB = (() => {
         usuarios: (usersResult.data || []).filter(u => !u.is_anonymous).length,
         taxaSucesso,
         appAjudou,
-        historiasSucesso: encontrados
+        historiasSucesso: encontradosVivos
           .filter(p => p.feedback_mensagem || p.feedback_app_ajudou)
           .sort((a, b) => {
-            const tA = a.data_encontrado ? new Date(a.data_encontrado).getTime() : 0;
-            const tB = b.data_encontrado ? new Date(b.data_encontrado).getTime() : 0;
+            const tA = a.data_encerrado ? new Date(a.data_encerrado).getTime() : 0;
+            const tB = b.data_encerrado ? new Date(b.data_encerrado).getTime() : 0;
             return tB - tA;
           })
           .slice(0, 10)

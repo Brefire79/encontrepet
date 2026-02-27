@@ -3748,4 +3748,164 @@ a { color: var(--primary); text-decoration: none; }
   .success-app-badge { background: #0D2137; }
   .radio-option:has(input:checked) { background: rgba(255, 111, 0, 0.15); }
   .found-feedback-sheet { background: var(--bg-card); }
+  .desfecho-btn { background: var(--bg-secondary); }
+  .desfecho-btn:hover { background: var(--bg-main); }
+  .reportes-tabs { background: var(--bg-card); }
+  .reporte-encerrado { opacity: 0.85; }
+}
+
+/* ===== ABAS REPORTES (Ativos / Histórico) ===== */
+.reportes-tabs {
+  display: flex;
+  gap: 0;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: var(--header-height);
+  z-index: 10;
+}
+
+.reportes-tab {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.reportes-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.reportes-tab:hover {
+  color: var(--text);
+}
+
+.tab-badge {
+  background: var(--primary);
+  color: white;
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+/* ===== DESFECHO OPTIONS ===== */
+.desfecho-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 4px;
+}
+
+.desfecho-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: 0.2s;
+  text-align: left;
+  width: 100%;
+}
+
+.desfecho-btn:hover {
+  border-color: var(--text-muted);
+  background: var(--bg-secondary);
+}
+
+.desfecho-btn:active {
+  transform: scale(0.98);
+}
+
+.desfecho-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.desfecho-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.desfecho-text strong {
+  font-size: 0.95rem;
+  color: var(--text-dark);
+}
+
+.desfecho-text span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.desfecho-feliz:hover { border-color: #4CAF50; }
+.desfecho-triste:hover { border-color: #9E9E9E; }
+.desfecho-desistir:hover { border-color: #FF9800; }
+
+.feedback-step.hidden { display: none; }
+
+/* ===== REPORTE ENCERRADO ===== */
+.reporte-encerrado {
+  position: relative;
+}
+
+.reporte-encerrado .reporte-photo {
+  filter: grayscale(0.3);
+}
+
+.reporte-data-encerrado {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.reporte-feedback-msg {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin-top: 4px;
+  line-height: 1.3;
+}
+
+.reporte-feedback-msg i {
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  margin-right: 4px;
+}
+
+.reporte-feedback-stars {
+  color: #FFC107;
+  font-size: 0.8rem;
+  margin-top: 2px;
+  letter-spacing: 1px;
+}
+
+.status-encontrado,
+.status-encontrado_vivo {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.status-encerrado_falecido {
+  background: #F5F5F5;
+  color: #616161;
+}
+
+.status-encerrado_desistencia {
+  background: #FFF3E0;
+  color: #E65100;
 }

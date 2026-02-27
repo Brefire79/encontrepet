@@ -747,10 +747,21 @@
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
         <h2>Meus Reportes</h2>
       </div>
+      <!-- Abas: Ativos / Histórico -->
+      <div class="reportes-tabs">
+        <button class="reportes-tab active" data-tab="ativos"><i class="fas fa-bullhorn"></i> Ativos</button>
+        <button class="reportes-tab" data-tab="historico"><i class="fas fa-archive"></i> Histórico</button>
+      </div>
       <div id="meus-reportes-list" class="reportes-list">
         <div class="empty-state">
           <i class="fas fa-clipboard-list"></i>
           <p>Você ainda não fez nenhum reporte.</p>
+        </div>
+      </div>
+      <div id="meus-reportes-historico" class="reportes-list hidden">
+        <div class="empty-state">
+          <i class="fas fa-archive"></i>
+          <p>Nenhum reporte encerrado ainda.</p>
         </div>
       </div>
     </section>
@@ -1190,59 +1201,96 @@
 
   <!-- ===== PHOTO SOURCE MODAL ===== -->
 
-  <!-- ===== MODAL PET ENCONTRADO (FEEDBACK) ===== -->
+  <!-- ===== MODAL CONCLUIR REPORTE (FEEDBACK) ===== -->
   <div id="found-feedback-modal" class="modal hidden">
     <div class="modal-overlay" id="found-modal-overlay"></div>
     <div class="found-feedback-sheet">
-      <div class="found-feedback-header">
-        <div class="found-celebration">🎉</div>
-        <h3>Pet Encontrado!</h3>
-        <p>Conte-nos como foi esse reencontro</p>
-      </div>
-      <div class="found-feedback-body">
-        <div class="form-group">
-          <label><i class="fas fa-question-circle"></i> Como o pet foi encontrado?</label>
-          <select id="found-como" class="form-input">
-            <option value="">Selecione...</option>
-            <option value="app_alerta">Alguém viu o alerta no app</option>
-            <option value="app_avistamento">Através de um avistamento no app</option>
-            <option value="redes_sociais">Redes sociais</option>
-            <option value="cartaz">Cartaz na rua</option>
-            <option value="voltou_sozinho">Voltou sozinho</option>
-            <option value="outro">Outro</option>
-          </select>
+      <!-- ETAPA 1: Escolher desfecho -->
+      <div id="feedback-step-1" class="feedback-step">
+        <div class="found-feedback-header">
+          <h3>Encerrar Reporte</h3>
+          <p>Qual foi o desfecho?</p>
         </div>
-        <div class="form-group">
-          <label><i class="fas fa-mobile-alt"></i> O app ajudou a encontrar?</label>
-          <div class="radio-group">
-            <label class="radio-option">
-              <input type="radio" name="found-app-ajudou" value="sim"> 
-              <span class="radio-label">Sim, ajudou!</span>
-            </label>
-            <label class="radio-option">
-              <input type="radio" name="found-app-ajudou" value="nao">
-              <span class="radio-label">Não desta vez</span>
-            </label>
+        <div class="desfecho-options">
+          <button class="desfecho-btn desfecho-feliz" data-desfecho="encontrado_vivo">
+            <div class="desfecho-icon">🎉</div>
+            <div class="desfecho-text">
+              <strong>Encontrado Vivo!</strong>
+              <span>Pet foi reencontrado com vida</span>
+            </div>
+          </button>
+          <button class="desfecho-btn desfecho-triste" data-desfecho="encontrado_morto">
+            <div class="desfecho-icon">🕊️</div>
+            <div class="desfecho-text">
+              <strong>Infelizmente Faleceu</strong>
+              <span>Pet foi encontrado sem vida</span>
+            </div>
+          </button>
+          <button class="desfecho-btn desfecho-desistir" data-desfecho="desistencia">
+            <div class="desfecho-icon">😔</div>
+            <div class="desfecho-text">
+              <strong>Encerrar Busca</strong>
+              <span>Desistir de procurar por agora</span>
+            </div>
+          </button>
+        </div>
+        <button id="btn-cancel-desfecho" class="btn-text" style="margin-top:12px">Cancelar</button>
+      </div>
+
+      <!-- ETAPA 2: Feedback detalhado -->
+      <div id="feedback-step-2" class="feedback-step hidden">
+        <div class="found-feedback-header">
+          <div class="found-celebration" id="feedback-emoji">🎉</div>
+          <h3 id="feedback-titulo">Pet Encontrado!</h3>
+          <p id="feedback-subtitulo">Conte-nos como foi</p>
+        </div>
+        <div class="found-feedback-body">
+          <div class="form-group" id="fg-como">
+            <label><i class="fas fa-question-circle"></i> Como aconteceu?</label>
+            <select id="found-como" class="form-input">
+              <option value="">Selecione...</option>
+              <option value="app_alerta">Alguém viu o alerta no app</option>
+              <option value="app_avistamento">Através de um avistamento no app</option>
+              <option value="redes_sociais">Redes sociais</option>
+              <option value="cartaz">Cartaz na rua</option>
+              <option value="voltou_sozinho">Voltou sozinho</option>
+              <option value="encontrado_rua">Encontrado na rua</option>
+              <option value="abrigo">Estava em um abrigo</option>
+              <option value="outro">Outro</option>
+            </select>
+          </div>
+          <div class="form-group" id="fg-app-ajudou">
+            <label><i class="fas fa-mobile-alt"></i> O app ajudou?</label>
+            <div class="radio-group">
+              <label class="radio-option">
+                <input type="radio" name="found-app-ajudou" value="sim"> 
+                <span class="radio-label">Sim, ajudou!</span>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="found-app-ajudou" value="nao">
+                <span class="radio-label">Não desta vez</span>
+              </label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label><i class="fas fa-star"></i> Nota para o app (1-5)</label>
+            <div class="star-rating" id="found-nota">
+              <span class="star" data-nota="1">★</span>
+              <span class="star" data-nota="2">★</span>
+              <span class="star" data-nota="3">★</span>
+              <span class="star" data-nota="4">★</span>
+              <span class="star" data-nota="5">★</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label><i class="fas fa-comment"></i> Mensagem (opcional)</label>
+            <textarea id="found-mensagem" class="form-input" rows="3" placeholder="Conte o que aconteceu..."></textarea>
           </div>
         </div>
-        <div class="form-group">
-          <label><i class="fas fa-star"></i> Nota para o app (1-5)</label>
-          <div class="star-rating" id="found-nota">
-            <span class="star" data-nota="1">★</span>
-            <span class="star" data-nota="2">★</span>
-            <span class="star" data-nota="3">★</span>
-            <span class="star" data-nota="4">★</span>
-            <span class="star" data-nota="5">★</span>
-          </div>
+        <div class="found-feedback-actions">
+          <button id="btn-send-feedback" class="btn-primary"><i class="fas fa-paper-plane"></i> Enviar Feedback e Encerrar</button>
+          <button id="btn-skip-feedback" class="btn-text">Pular e encerrar sem feedback</button>
         </div>
-        <div class="form-group">
-          <label><i class="fas fa-comment"></i> Mensagem (opcional)</label>
-          <textarea id="found-mensagem" class="form-input" rows="3" placeholder="Conte sua história... Ex: 'Encontramos graças a um vizinho que viu o alerta!'"></textarea>
-        </div>
-      </div>
-      <div class="found-feedback-actions">
-        <button id="btn-send-feedback" class="btn-primary"><i class="fas fa-paper-plane"></i> Enviar e Marcar Encontrado</button>
-        <button id="btn-skip-feedback" class="btn-text">Pular e apenas marcar como encontrado</button>
       </div>
     </div>
   </div>

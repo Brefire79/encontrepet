@@ -601,7 +601,7 @@ const App = (() => {
         'outro': '💬 Outro'
       }[como] || '';
       const msg = Security.sanitize(pet.feedback_mensagem || '');
-      const data = pet.data_encontrado ? new Date(pet.data_encontrado).toLocaleDateString('pt-BR') : '';
+      const data = (pet.data_encerrado || pet.data_encontrado) ? new Date(pet.data_encerrado || pet.data_encontrado).toLocaleDateString('pt-BR') : '';
       const estrelas = pet.feedback_nota ? '★'.repeat(pet.feedback_nota) + '☆'.repeat(5 - pet.feedback_nota) : '';
       return `<div class="success-story-card">
         <div class="success-story-photo">
@@ -1295,42 +1295,118 @@ const App = (() => {
   // ====== MEUS REPORTES ======
 
   async function loadMyReports() {
-    const container = document.getElementById('meus-reportes-list');
-    if (!container) return;
-    container.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Carregando...</p></div>';
+    const containerAtivos = document.getElementById('meus-reportes-list');
+    const containerHistorico = document.getElementById('meus-reportes-historico');
+    if (!containerAtivos) return;
+
+    // Setup abas
+    setupReportesTabs();
+
+    containerAtivos.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Carregando...</p></div>';
+    if (containerHistorico) containerHistorico.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Carregando...</p></div>';
+
     try {
       const reports = await DB.loadMyReports();
-      if (reports.length === 0) {
-        container.innerHTML = `<div class="empty-state"><i class="fas fa-clipboard-list"></i><p>Nenhum reporte ainda.</p>
-          <button class="btn-primary" style="max-width:250px;margin:16px auto" onclick="App.navigateTo('reportar-rapido')"><i class="fas fa-plus"></i> Criar Reporte</button></div>`;
-        return;
-      }
-      container.innerHTML = reports.map(r => {
-        const isPet = r._reportType === 'pet_perdido';
-        const name = r.nome_pet || (isPet ? 'Pet perdido' : 'Avistamento');
-        return `<div class="reporte-item" data-id="${r.id}" data-type="${r._reportType}">
-          ${r.foto_comprimida ? `<img class="reporte-photo" src="${fixCorruptedDataUrl(r.foto_comprimida)}" alt="">` :
-            `<div class="reporte-photo" style="display:flex;align-items:center;justify-content:center;"><i class="fas fa-${isPet ? 'paw' : 'eye'}" style="font-size:1.8rem;color:var(--text-muted)"></i></div>`}
-          <div class="reporte-info">
-            <div style="font-weight:700">${Security.sanitize(name)}</div>
-            <span class="reporte-status status-${r.status || 'ativo'}">${r.status || 'ativo'}</span>
-            ${isPet && r.status === 'ativo' ? `<div class="reporte-actions">
-              ${!r.cadastro_completo ? `<button class="btn-small btn-complete" data-complete="${r.id}">Completar</button>` : ''}
-              <button class="btn-small btn-found" data-found="${r.id}">Encontrado!</button>
-            </div>` : ''}
-          </div></div>`;
-      }).join('');
+      const statusAtivos = ['ativo', 'pendente'];
+      const ativos = reports.filter(r => statusAtivos.includes(r.status) || !r.status);
+      const encerrados = reports.filter(r => r.status && !statusAtivos.includes(r.status));
 
-      container.querySelectorAll('[data-complete]').forEach(btn => {
-        btn.addEventListener('click', (e) => { e.stopPropagation(); state.currentPetId = btn.dataset.complete; navigateTo('cadastro-completo'); });
+      // === ATIVOS ===
+      if (ativos.length === 0) {
+        containerAtivos.innerHTML = `<div class="empty-state"><i class="fas fa-clipboard-list"></i><p>Nenhum reporte ativo.</p>
+          <button class="btn-primary" style="max-width:250px;margin:16px auto" onclick="App.navigateTo('reportar-rapido')"><i class="fas fa-plus"></i> Criar Reporte</button></div>`;
+      } else {
+        containerAtivos.innerHTML = ativos.map(r => renderReporteItem(r, true)).join('');
+        bindReporteActions(containerAtivos);
+      }
+
+      // === HISTÓRICO ===
+      if (containerHistorico) {
+        if (encerrados.length === 0) {
+          containerHistorico.innerHTML = `<div class="empty-state"><i class="fas fa-archive"></i><p>Nenhum reporte encerrado ainda.</p>
+            <p class="text-muted">Reportes encerrados com feedback aparecerão aqui.</p></div>`;
+        } else {
+          containerHistorico.innerHTML = encerrados.map(r => renderReporteItem(r, false)).join('');
+        }
+      }
+
+      // Atualizar badge no tab
+      const tabHistorico = document.querySelector('.reportes-tab[data-tab="historico"]');
+      if (tabHistorico && encerrados.length > 0) {
+        tabHistorico.innerHTML = `<i class="fas fa-archive"></i> Histórico <span class="tab-badge">${encerrados.length}</span>`;
+      }
+
+    } catch { containerAtivos.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Erro ao carregar.</p></div>'; }
+  }
+
+  function renderReporteItem(r, isActive) {
+    const isPet = r._reportType === 'pet_perdido';
+    const name = r.nome_pet || (isPet ? 'Pet perdido' : 'Avistamento');
+    const desfechoLabels = {
+      'encontrado': '🎉 Encontrado vivo',
+      'encontrado_vivo': '🎉 Encontrado vivo',
+      'encerrado_falecido': '🕊️ Faleceu',
+      'encerrado_desistencia': '😔 Busca encerrada'
+    };
+    const desfechoLabel = desfechoLabels[r.desfecho] || desfechoLabels[r.status] || r.status || '';
+    const dataEncerrado = r.data_encerrado ? new Date(r.data_encerrado).toLocaleDateString('pt-BR') : '';
+
+    return `<div class="reporte-item ${!isActive ? 'reporte-encerrado' : ''}" data-id="${r.id}" data-type="${r._reportType}">
+      ${r.foto_comprimida ? `<img class="reporte-photo" src="${fixCorruptedDataUrl(r.foto_comprimida)}" alt="">` :
+        `<div class="reporte-photo" style="display:flex;align-items:center;justify-content:center;"><i class="fas fa-${isPet ? 'paw' : 'eye'}" style="font-size:1.8rem;color:var(--text-muted)"></i></div>`}
+      <div class="reporte-info">
+        <div style="font-weight:700">${Security.sanitize(name)}</div>
+        ${isActive ? `
+          <span class="reporte-status status-ativo">ativo</span>
+          ${isPet ? `<div class="reporte-actions">
+            ${!r.cadastro_completo ? `<button class="btn-small btn-complete" data-complete="${r.id}">Completar</button>` : ''}
+            <button class="btn-small btn-found" data-found="${r.id}"><i class="fas fa-flag-checkered"></i> Encerrar</button>
+          </div>` : ''}
+        ` : `
+          <span class="reporte-status status-${r.status || 'encerrado'}">${desfechoLabel}</span>
+          ${dataEncerrado ? `<small class="reporte-data-encerrado">${dataEncerrado}</small>` : ''}
+          ${r.feedback_mensagem ? `<div class="reporte-feedback-msg"><i class="fas fa-quote-left"></i> ${Security.sanitize(r.feedback_mensagem)}</div>` : ''}
+          ${r.feedback_nota ? `<div class="reporte-feedback-stars">${'★'.repeat(r.feedback_nota)}${'☆'.repeat(5 - r.feedback_nota)}</div>` : ''}
+        `}
+      </div>
+    </div>`;
+  }
+
+  function bindReporteActions(container) {
+    container.querySelectorAll('[data-complete]').forEach(btn => {
+      btn.addEventListener('click', (e) => { e.stopPropagation(); state.currentPetId = btn.dataset.complete; navigateTo('cadastro-completo'); });
+    });
+    container.querySelectorAll('[data-found]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        openFoundFeedbackModal(btn.dataset.found);
       });
-      container.querySelectorAll('[data-found]').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          openFoundFeedbackModal(btn.dataset.found);
-        });
-      });
-    } catch { container.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Erro ao carregar.</p></div>'; }
+    });
+  }
+
+  function setupReportesTabs() {
+    const tabs = document.querySelectorAll('.reportes-tab');
+    if (!tabs.length) return;
+    tabs.forEach(tab => {
+      tab.removeEventListener('click', handleTabClick);
+      tab.addEventListener('click', handleTabClick);
+    });
+  }
+
+  function handleTabClick(e) {
+    const tab = e.currentTarget;
+    const tabName = tab.dataset.tab;
+    document.querySelectorAll('.reportes-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const listAtivos = document.getElementById('meus-reportes-list');
+    const listHistorico = document.getElementById('meus-reportes-historico');
+    if (tabName === 'ativos') {
+      listAtivos?.classList.remove('hidden');
+      listHistorico?.classList.add('hidden');
+    } else {
+      listAtivos?.classList.add('hidden');
+      listHistorico?.classList.remove('hidden');
+    }
   }
 
   // ====== NOTIFICAÇÕES ======
@@ -1499,21 +1575,26 @@ const App = (() => {
     activePhotoTarget = null;
   }
 
-  // ====== MODAL PET ENCONTRADO (FEEDBACK) ======
+  // ====== MODAL CONCLUIR REPORTE (FEEDBACK EM 2 ETAPAS) ======
 
   let foundPetId = null;
   let foundNota = 0;
+  let foundDesfecho = '';
 
   function openFoundFeedbackModal(petId) {
     foundPetId = petId;
     foundNota = 0;
+    foundDesfecho = '';
     const modal = document.getElementById('found-feedback-modal');
     if (!modal) return;
-    // Reset form
+    // Reset
     document.getElementById('found-como').value = '';
     document.querySelectorAll('input[name="found-app-ajudou"]').forEach(r => r.checked = false);
     document.getElementById('found-mensagem').value = '';
     document.querySelectorAll('#found-nota .star').forEach(s => s.classList.remove('active'));
+    // Mostrar etapa 1
+    document.getElementById('feedback-step-1')?.classList.remove('hidden');
+    document.getElementById('feedback-step-2')?.classList.add('hidden');
     modal.classList.remove('hidden');
   }
 
@@ -1522,9 +1603,60 @@ const App = (() => {
     if (modal) modal.classList.add('hidden');
     foundPetId = null;
     foundNota = 0;
+    foundDesfecho = '';
+  }
+
+  function goToFeedbackStep2(desfecho) {
+    foundDesfecho = desfecho;
+    const step1 = document.getElementById('feedback-step-1');
+    const step2 = document.getElementById('feedback-step-2');
+    if (!step1 || !step2) return;
+
+    // Configurar visual da etapa 2 baseado no desfecho
+    const emoji = document.getElementById('feedback-emoji');
+    const titulo = document.getElementById('feedback-titulo');
+    const subtitulo = document.getElementById('feedback-subtitulo');
+
+    if (desfecho === 'encontrado_vivo') {
+      emoji.textContent = '🎉';
+      titulo.textContent = 'Que ótima notícia!';
+      subtitulo.textContent = 'Conte como foi esse reencontro';
+    } else if (desfecho === 'encontrado_morto') {
+      emoji.textContent = '🕊️';
+      titulo.textContent = 'Sentimos muito...';
+      subtitulo.textContent = 'Se quiser, deixe um registro em memória';
+    } else {
+      emoji.textContent = '😔';
+      titulo.textContent = 'Busca Encerrada';
+      subtitulo.textContent = 'Não desista, temos esperança!';
+    }
+
+    // Para "desistência", esconder campos que não fazem sentido
+    const fgComo = document.getElementById('fg-como');
+    const fgApp = document.getElementById('fg-app-ajudou');
+    if (desfecho === 'desistencia') {
+      if (fgComo) fgComo.style.display = 'none';
+      if (fgApp) fgApp.style.display = 'none';
+    } else {
+      if (fgComo) fgComo.style.display = '';
+      if (fgApp) fgApp.style.display = '';
+    }
+
+    step1.classList.add('hidden');
+    step2.classList.remove('hidden');
   }
 
   function initFoundFeedbackModal() {
+    // Botões de desfecho (etapa 1)
+    document.querySelectorAll('.desfecho-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        goToFeedbackStep2(btn.dataset.desfecho);
+      });
+    });
+
+    // Cancelar etapa 1
+    document.getElementById('btn-cancel-desfecho')?.addEventListener('click', closeFoundFeedbackModal);
+
     // Estrelas
     document.querySelectorAll('#found-nota .star').forEach(star => {
       star.addEventListener('click', () => {
@@ -1546,16 +1678,21 @@ const App = (() => {
       try {
         showLoading('Salvando...');
         await DB.marcarEncontrado(foundPetId, {
+          desfecho: foundDesfecho,
           como,
           appAjudou,
           mensagem,
           nota: foundNota
         });
-        // Incrementar contador no perfil
-        await incrementarContadorPerfil('pets_encontrados');
+        incrementarContadorPerfil('pets_encontrados');
         hideLoading();
         closeFoundFeedbackModal();
-        showToast('Pet encontrado! 🎉 Obrigado pelo feedback!', 'success');
+        const toastMsg = foundDesfecho === 'encontrado_vivo'
+          ? 'Pet encontrado! 🎉 Obrigado pelo feedback!'
+          : foundDesfecho === 'encontrado_morto'
+            ? 'Registro salvo. Sentimos muito. 🕊️'
+            : 'Busca encerrada. Obrigado pelo feedback.';
+        showToast(toastMsg, foundDesfecho === 'encontrado_vivo' ? 'success' : 'info');
         loadMyReports();
       } catch (err) {
         hideLoading();
@@ -1568,10 +1705,10 @@ const App = (() => {
       if (!foundPetId) return;
       try {
         showLoading('Salvando...');
-        await DB.marcarEncontrado(foundPetId);
+        await DB.marcarEncontrado(foundPetId, { desfecho: foundDesfecho });
         hideLoading();
         closeFoundFeedbackModal();
-        showToast('Pet encontrado! 🎉', 'success');
+        showToast('Reporte encerrado.', 'info');
         loadMyReports();
       } catch (err) {
         hideLoading();
