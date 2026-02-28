@@ -37,7 +37,7 @@ const App = (() => {
     setupReportForm();
     setupSightingForm();
     setupCompleteForm();
-    setupSOSModal();
+
     setupProfilePage();
     setupPrivacyPage();
     setupPasswordToggles();
@@ -539,20 +539,7 @@ const App = (() => {
     menu.addEventListener('touchend', () => { tracking = false; }, { passive: true });
   })();
 
-  function setupSOSModal() {
-    const modal = document.getElementById('sos-modal');
-    if (!modal) return;
-    
-    document.getElementById('nav-sos')?.addEventListener('click', () => modal.classList.remove('hidden'));
-    modal.querySelector('.modal-overlay')?.addEventListener('click', () => modal.classList.add('hidden'));
-    modal.querySelector('.modal-close')?.addEventListener('click', () => modal.classList.add('hidden'));
-    modal.querySelectorAll('.sos-option').forEach(opt => {
-      opt.addEventListener('click', () => {
-        modal.classList.add('hidden');
-        navigateTo(opt.dataset.action === 'perdi' ? 'reportar-rapido' : 'avistamento');
-      });
-    });
-  }
+
 
   // ====== HOME DATA ======
 
@@ -1455,24 +1442,76 @@ const App = (() => {
     if (!canvas) return;
     try {
       const result = await DB.listarPetsAtivos();
+      const avistResult = await DB.listarAvistamentos();
       const pets = (result.data || []).filter(p => p.status === 'ativo' && (p.latitude_publica || p.latitude));
-      
-      if (pets.length === 0) {
+      const avistamentos = (avistResult.data || []).filter(a => a.latitude || a.longitude);
+      const total = pets.length + avistamentos.length;
+
+      if (total === 0) {
         canvas.innerHTML = '<div style="text-align:center;padding:40px"><i class="fas fa-map-marked-alt" style="font-size:3rem;color:var(--text-muted);display:block;margin-bottom:12px"></i><p>Nenhum alerta com localização.</p></div>';
         return;
       }
 
       const settings = Auth.getUserSettings();
-      canvas.innerHTML = `<div style="padding:16px"><h4><i class="fas fa-exclamation-circle" style="color:var(--danger)"></i> ${pets.length} Pet(s) na Região</h4>` +
-        pets.map(p => {
+      let html = '<div class="mapa-lista">';
+
+      if (pets.length > 0) {
+        html += `<div class="mapa-section-header"><i class="fas fa-exclamation-circle" style="color:var(--danger)"></i> ${pets.length} Pet(s) Perdido(s)</div>`;
+        html += pets.map(p => {
           const pub = Security.sanitizeForPublic(p, settings) || p;
-          return `<div class="alert-card" style="margin:10px 0;cursor:pointer" onclick="App.showPetDetails('${p.id}')">
-            <div class="alert-card-top"><div class="alert-info">
-              <div class="alert-name">${Security.sanitize(pub.nome_pet || 'Pet')}</div>
-              <div class="alert-location"><i class="fas fa-map-marker-alt"></i> ${Security.sanitize(pub.endereco_publico || pub.endereco || 'Região')}</div>
-            </div></div></div>`;
-        }).join('') + '</div>';
-    } catch {
+          const photo = fixCorruptedDataUrl(pub.foto_comprimida);
+          const name = Security.sanitize(pub.nome_pet || 'Pet');
+          const loc = Security.sanitize(pub.endereco_publico || pub.endereco || 'Região');
+          const desc = Security.sanitize(pub.descricao || '');
+          const time = getTimeAgo(pub.created_at);
+          const labels = { cao: 'Cão', gato: 'Gato', outro: 'Outro' };
+          return `<div class="mapa-card" data-id="${p.id}">
+            <div class="mapa-card-main">
+              <div class="mapa-card-thumb">
+                ${photo ? `<img src="${photo}" alt="${name}">` : `<i class="fas fa-paw"></i>`}
+                <span class="mapa-card-type perdido"></span>
+              </div>
+              <div class="mapa-card-info">
+                <div class="mapa-card-name">${name}</div>
+                <div class="mapa-card-loc"><i class="fas fa-map-marker-alt"></i> ${loc}</div>
+                ${desc ? `<div class="mapa-card-desc">${desc.substring(0, 80)}${desc.length > 80 ? '...' : ''}</div>` : ''}
+                <div class="mapa-card-meta">
+                  <span>${labels[pub.tipo_animal] || 'Pet'}</span>
+                  <span><i class="far fa-clock"></i> ${time}</span>
+                </div>
+              </div>
+            </div>
+            <button class="mapa-card-expand" onclick="App.showPetDetails('${p.id}')"><i class="fas fa-expand-alt"></i> Ver detalhes</button>
+          </div>`;
+        }).join('');
+      }
+
+      if (avistamentos.length > 0) {
+        html += `<div class="mapa-section-header" style="margin-top:16px"><i class="fas fa-eye" style="color:var(--success)"></i> ${avistamentos.length} Avistamento(s)</div>`;
+        html += avistamentos.map(a => {
+          const photo = fixCorruptedDataUrl(a.foto_comprimida);
+          const desc = Security.sanitize(a.descricao || 'Avistamento registrado');
+          const time = getTimeAgo(a.created_at || a.data_avistamento);
+          return `<div class="mapa-card mapa-card-avistamento">
+            <div class="mapa-card-main">
+              <div class="mapa-card-thumb">
+                ${photo ? `<img src="${photo}" alt="Avistamento">` : `<i class="fas fa-eye"></i>`}
+                <span class="mapa-card-type avistado"></span>
+              </div>
+              <div class="mapa-card-info">
+                <div class="mapa-card-name">Avistamento</div>
+                <div class="mapa-card-desc">${desc.substring(0, 100)}${desc.length > 100 ? '...' : ''}</div>
+                <div class="mapa-card-meta"><span><i class="far fa-clock"></i> ${time}</span></div>
+              </div>
+            </div>
+          </div>`;
+        }).join('');
+      }
+
+      html += '</div>';
+      canvas.innerHTML = html;
+    } catch (err) {
+      console.error('[App] Map error:', err);
       canvas.innerHTML = '<div style="text-align:center;padding:40px"><p>Erro ao carregar mapa.</p></div>';
     }
   }

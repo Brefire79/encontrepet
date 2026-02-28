@@ -2055,24 +2055,6 @@ a { color: var(--primary); text-decoration: none; }
   color: var(--primary);
 }
 
-.nav-center {
-  position: relative;
-  margin-top: -20px;
-}
-
-.nav-center-btn {
-  width: 56px;
-  height: 56px;
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 1.5rem;
-  box-shadow: 0 4px 15px rgba(255, 107, 53, 0.4);
-}
-
 /* ===== MODAL ===== */
 .modal {
   position: fixed;
@@ -2104,62 +2086,144 @@ a { color: var(--primary); text-decoration: none; }
   to { transform: translateY(0); }
 }
 
-.sos-modal-content h3 {
-  font-size: 1.2rem;
-  font-weight: 800;
-  text-align: center;
-  margin-bottom: 4px;
-  color: var(--danger);
-}
 
-.sos-modal-content p {
-  text-align: center;
-  color: var(--text-light);
-  margin-bottom: 20px;
-}
-
-.sos-options {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.sos-option {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 20px;
-  background: var(--bg);
-  border-radius: var(--radius);
-  border: 2px solid transparent;
-  transition: all 0.2s;
-  text-align: center;
-}
-
-.sos-option:active {
-  border-color: var(--primary);
-  background: #FFF0E6;
-}
-
-.sos-option i {
-  font-size: 1.8rem;
-  color: var(--primary);
-}
-
-.sos-option span {
-  font-weight: 700;
-  font-size: 1rem;
-}
-
-.sos-option small {
-  font-size: 0.8rem;
-  color: var(--text-light);
-}
 
 .modal-close {
   color: var(--text-muted);
+}
+
+/* ===== MAPA CARDS ===== */
+.mapa-lista {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mapa-section-header {
+  font-size: 0.95rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.mapa-card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+
+.mapa-card:active {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+}
+
+.mapa-card-main {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  align-items: flex-start;
+}
+
+.mapa-card-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.mapa-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mapa-card-thumb > i {
+  font-size: 1.6rem;
+  color: var(--text-muted);
+}
+
+.mapa-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mapa-card-name {
+  font-weight: 800;
+  font-size: 1rem;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mapa-card-loc {
+  font-size: 0.8rem;
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.mapa-card-loc i {
+  color: var(--danger);
+  font-size: 0.7rem;
+}
+
+.mapa-card-desc {
+  font-size: 0.8rem;
+  color: var(--text-light);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.mapa-card-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.mapa-card-meta i {
+  margin-right: 3px;
+}
+
+.mapa-card-expand {
+  width: 100%;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.15s;
+}
+
+.mapa-card-expand:hover {
+  background: rgba(255,107,53,0.06);
+}
+
+.mapa-card-avistamento {
+  border-left: 3px solid var(--success);
 }
 
 /* ===== TOAST ===== */
@@ -3752,6 +3816,8 @@ a { color: var(--primary); text-decoration: none; }
   .desfecho-btn:hover { background: var(--bg-main); }
   .reportes-tabs { background: var(--bg-card); }
   .reporte-encerrado { opacity: 0.85; }
+  .mapa-card { background: var(--bg-card); border-color: var(--border); }
+  .mapa-card-expand:hover { background: rgba(255,107,53,0.1); }
 }
 
 /* ===== ABAS REPORTES (Ativos / Histórico) ===== */
