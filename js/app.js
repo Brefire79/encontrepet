@@ -56,7 +56,34 @@ const App = (() => {
     // 7. IA em background
     loadAIModel();
 
+    // 8. Deep links (share URLs)
+    handleDeepLink();
+    window.addEventListener('hashchange', handleDeepLink);
+
     console.log('🐾 Encontre Pet v1.0.0 inicializado!');
+  }
+
+  // ====== DEEP LINK ======
+
+  function handleDeepLink() {
+    const hash = window.location.hash || '';
+    if (hash.startsWith('#detalhes')) {
+      const params = new URLSearchParams(hash.split('?')[1] || '');
+      const id = params.get('id');
+      if (id) {
+        // Esperar auth estar pronta antes de abrir detalhes
+        const tryOpen = () => {
+          if (Auth.isLoggedIn()) {
+            showPetDetails(id);
+          } else {
+            // Se ainda não logou, esperar um pouco
+            setTimeout(tryOpen, 500);
+          }
+        };
+        // Pequeno delay para garantir que auth/db inicializaram
+        setTimeout(tryOpen, 300);
+      }
+    }
   }
 
   // ====== LANGUAGE SELECTOR ======
@@ -77,7 +104,7 @@ const App = (() => {
       if (user) updateUserUI(user);
       if (state.currentPage === 'home') loadHomeData();
       if (state.currentPage === 'mapa') loadMap();
-      if (state.currentPage === 'notificacoes') loadNotificacoes();
+      if (state.currentPage === 'notificacoes') loadNotifications();
     });
   }
 
@@ -425,10 +452,11 @@ const App = (() => {
           showUpdateBanner();
         }
 
-        // Verificar atualizações a cada 60 segundos
-        setInterval(() => {
-          reg.update().catch(() => {});
-        }, 60000);
+        // Verificar atualizações a cada 15 minutos + ao voltar do background
+        setInterval(() => { reg.update().catch(() => {}); }, 900000);
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
 
       }).catch(err => console.error('[App] SW Error:', err));
 
@@ -446,20 +474,18 @@ const App = (() => {
     // Botão principal
     const btnUpdate = document.getElementById('btn-update');
     if (btnUpdate) {
-      btnUpdate.addEventListener('click', () => {
+      btnUpdate.onclick = () => {
         btnUpdate.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Atualizando...';
         btnUpdate.disabled = true;
         navigator.serviceWorker.ready.then(reg => {
           if (reg.waiting) {
             reg.waiting.postMessage({ type: 'SKIP_WAITING' });
           } else {
-            // Forçar reload se não tem waiting worker
             window.location.reload(true);
           }
         });
-        // Fallback: se não recarregar em 3s, forçar
         setTimeout(() => window.location.reload(true), 3000);
-      });
+      };
     }
 
     // Clicar no overlay NÃO fecha (forçar atualização)
@@ -842,7 +868,8 @@ const App = (() => {
       }
     } catch (err) {
       // Se a compressão falhar, manter a preview com a foto bruta
-      state.photoData = { dataUrl: instantUrl, originalSize: file.size, compressedSize: file.size };
+      // Guardar referência do objectURL para revogar depois
+      state.photoData = { dataUrl: instantUrl, _objectUrl: instantUrl, originalSize: file.size, compressedSize: file.size };
       showToast(I18n.t('toast.photo_no_compress'), 'warning');
     }
   }
@@ -877,11 +904,13 @@ const App = (() => {
 
   function clearPhoto(type) {
     if (type === 'perdido') {
+      if (state.photoData?._objectUrl) URL.revokeObjectURL(state.photoData._objectUrl);
       state.photoData = null;
       document.getElementById('foto-perdido').value = '';
       document.getElementById('upload-preview-perdido')?.classList.add('hidden');
       document.getElementById('upload-placeholder-perdido')?.classList.remove('hidden');
     } else {
+      if (state.avistamentoPhotoData?._objectUrl) URL.revokeObjectURL(state.avistamentoPhotoData._objectUrl);
       state.avistamentoPhotoData = null;
       document.getElementById('foto-avistamento').value = '';
       document.getElementById('upload-preview-avistamento')?.classList.add('hidden');
@@ -920,7 +949,8 @@ const App = (() => {
 
   function validateReportForm() {
     const hasPhoto = state.photoData !== null;
-    const hasPhone = (document.getElementById('telefone-rapido')?.value.trim().length || 0) >= 8;
+    const rawPhone = document.getElementById('telefone-rapido')?.value || '';
+    const hasPhone = rawPhone.replace(/\D/g, '').length >= 10;
     const btn = document.getElementById('btn-disparar-alerta');
     if (btn) {
       btn.disabled = !(hasPhoto && hasPhone);
@@ -990,7 +1020,7 @@ const App = (() => {
   }
 
   async function handleSalvarCompleto() {
-    const reports = DB.getMyReports().filter(r => r.type === 'pet_perdido');
+    const reports = DB.getMyReports().filter(r => (r.type || r._reportType) === 'pet_perdido');
     const lastReport = reports[reports.length - 1];
     if (!lastReport) { navigateTo('home'); return; }
 
@@ -1093,7 +1123,8 @@ const App = (() => {
       runAIMatching(result);
     } catch (err) {
       // Se a compressão falhar, manter a preview com a foto bruta
-      state.avistamentoPhotoData = { dataUrl: instantUrl, originalSize: file.size, compressedSize: file.size };
+      // Guardar referência do objectURL para revogar depois
+      state.avistamentoPhotoData = { dataUrl: instantUrl, _objectUrl: instantUrl, originalSize: file.size, compressedSize: file.size };
       showToast(I18n.t('toast.photo_no_compress'), 'warning');
     }
   }
@@ -1353,7 +1384,8 @@ const App = (() => {
   }
 
   function renderReporteItem(r, isActive) {
-    const isPet = r._reportType === 'pet_perdido';
+    const reportType = r.type || r._reportType;
+    const isPet = reportType === 'pet_perdido';
     const name = r.nome_pet || (isPet ? 'Pet perdido' : 'Avistamento');
     const desfechoLabels = {
       'encontrado': '🎉 Encontrado vivo',
@@ -1430,7 +1462,7 @@ const App = (() => {
     container.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Carregando...</p></div>';
     try {
       const result = await DB.listarNotificacoes();
-      const myIds = DB.getMyReports().filter(r => r.type === 'pet_perdido').map(r => r.id);
+      const myIds = DB.getMyReports().filter(r => (r.type || r._reportType) === 'pet_perdido').map(r => r.id);
       const notifs = (result.data || []).filter(n => myIds.includes(n.pet_perdido_id));
       
       const badge = document.getElementById('notif-badge');
