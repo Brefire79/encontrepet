@@ -71,13 +71,21 @@ const App = (() => {
       const params = new URLSearchParams(hash.split('?')[1] || '');
       const id = params.get('id');
       if (id) {
-        // Esperar auth estar pronta antes de abrir detalhes
+        // Esperar auth estar pronta antes de abrir detalhes (max 10s)
+        let attempts = 0;
+        const maxAttempts = 20;
         const tryOpen = () => {
           if (Auth.isLoggedIn()) {
             showPetDetails(id);
-          } else {
-            // Se ainda não logou, esperar um pouco
+          } else if (++attempts < maxAttempts) {
             setTimeout(tryOpen, 500);
+          } else {
+            // Timeout: auth não completou, navegar quando logar
+            console.warn('[DeepLink] Auth timeout — aguardando login para abrir pet', id);
+            const onceAuth = (evt) => {
+              if (evt === 'login') { showPetDetails(id); Auth.offAuthChange?.(onceAuth); }
+            };
+            Auth.onAuthChange?.(onceAuth);
           }
         };
         // Pequeno delay para garantir que auth/db inicializaram
@@ -199,7 +207,7 @@ const App = (() => {
       const pass2 = document.getElementById('register-password2').value;
       hideAuthError('register');
 
-      if (pass !== pass2) { showAuthError('register', 'As senhas não conferem.'); return; }
+      if (pass !== pass2) { showAuthError('register', I18n.t('toast.passwords_mismatch')); return; }
 
       const btn = document.getElementById('btn-register');
       setButtonLoading(btn, true);
@@ -686,7 +694,7 @@ const App = (() => {
       }
 
       if (pets.length === 0) {
-        container.innerHTML = '<div class="empty-state"><i class="fas fa-paw"></i><p>Nenhum alerta na sua região.</p><p class="text-muted">Isso é uma boa notícia! 🐾</p></div>';
+        container.innerHTML = `<div class="empty-state"><i class="fas fa-paw"></i><p>${I18n.t('home.feed.empty')}</p><p class="text-muted">${I18n.t('home.feed.empty.good')}</p></div>`;
         return;
       }
 
@@ -696,7 +704,7 @@ const App = (() => {
         card.addEventListener('click', () => showPetDetails(card.dataset.id));
       });
     } catch (err) {
-      container.innerHTML = '<div class="empty-state"><i class="fas fa-wifi"></i><p>Erro ao carregar alertas.</p></div>';
+      container.innerHTML = `<div class="empty-state"><i class="fas fa-wifi"></i><p>${I18n.t('home.feed.error')}</p></div>`;
     }
   }
 
@@ -925,7 +933,7 @@ const App = (() => {
     const btn = document.getElementById('btn-get-location');
     const info = document.getElementById('location-info');
     btn?.classList.add('loading');
-    if (btn) btn.querySelector('span').textContent = 'Obtendo localização...';
+    if (btn) btn.querySelector('span').textContent = I18n.t('report.location.getting');
 
     try {
       const pos = await GeoUtils.getCurrentPosition();
@@ -936,13 +944,13 @@ const App = (() => {
       info?.classList.remove('hidden');
       document.getElementById('location-text').textContent = address;
       document.getElementById('endereco-manual').value = address;
-      if (btn) btn.querySelector('span').textContent = 'Localização obtida ✓';
+      if (btn) btn.querySelector('span').textContent = I18n.t('report.location.got');
       btn?.classList.remove('loading');
       showToast(I18n.t('toast.location_captured'), 'success');
       validateReportForm();
     } catch (err) {
       btn?.classList.remove('loading');
-      if (btn) btn.querySelector('span').textContent = 'Usar minha localização atual';
+      if (btn) btn.querySelector('span').textContent = I18n.t('report.location.btn');
       showToast(err.message, 'error');
     }
   }
@@ -958,13 +966,13 @@ const App = (() => {
       const span = btn.querySelector('span');
       if (span) {
         if (!hasPhoto && !hasPhone) {
-          span.textContent = 'Adicione foto e telefone';
+          span.textContent = I18n.t('report.validate.photo_phone');
         } else if (!hasPhoto) {
-          span.textContent = 'Adicione uma foto do pet';
+          span.textContent = I18n.t('report.validate.photo');
         } else if (!hasPhone) {
-          span.textContent = 'Informe o telefone de contato';
+          span.textContent = I18n.t('report.validate.phone');
         } else {
-          span.textContent = 'DISPARAR ALERTA AGORA';
+          span.textContent = I18n.t('report.submit');
         }
       }
     }
@@ -1002,6 +1010,8 @@ const App = (() => {
       showToast(I18n.t('toast.alert_radius', {radius: GeoUtils.getSearchRadius(tipo)}), 'success');
       incrementarContadorPerfil('pets_reportados');
       navigateTo('cadastro-completo');
+      // Revogar objectURL antes de limpar (evita leak)
+      if (state.photoData?._objectUrl) URL.revokeObjectURL(state.photoData._objectUrl);
       state.photoData = null;
       document.getElementById('foto-perdido').value = '';
       document.getElementById('upload-preview-perdido')?.classList.add('hidden');
@@ -1140,7 +1150,7 @@ const App = (() => {
 
       if (pets.length === 0) {
         aiResult.classList.remove('hidden');
-        aiMatches.innerHTML = '<div class="ai-no-match"><i class="fas fa-search"></i><p>Nenhum pet reportado para comparar.</p></div>';
+        aiMatches.innerHTML = `<div class="ai-no-match"><i class="fas fa-search"></i><p>${I18n.t('sighting.ai.no_pets')}</p></div>`;
         return;
       }
 
@@ -1167,7 +1177,7 @@ const App = (() => {
       if (matches.length > 0) {
         aiMatches.innerHTML = matches.slice(0, 5).map(match => {
           const pet = match.pet;
-          const name = pet.nome_pet || 'Pet sem nome';
+          const name = pet.nome_pet || I18n.t('sighting.ai.pet_unnamed');
           const emoji = match.totalScore >= 92 ? '🎉' : match.totalScore >= 75 ? '👀' : '🤔';
           return `
             <div class="ai-match-item" data-pet-id="${pet.id}">
@@ -1179,7 +1189,7 @@ const App = (() => {
               </div>
               <div class="ai-match-score">
                 <span class="match-percentage">${match.totalScore}%</span>
-                <span class="match-label">${match.totalScore >= 92 ? 'Match!' : 'Possível'}</span>
+                <span class="match-label">${match.totalScore >= 92 ? I18n.t('sighting.ai.match_label') : I18n.t('sighting.ai.possible_label')}</span>
               </div>
             </div>`;
         }).join('');
@@ -1195,18 +1205,18 @@ const App = (() => {
           }
         }
       } else {
-        aiMatches.innerHTML = '<div class="ai-no-match"><i class="fas fa-search"></i><p>Nenhum match. Envie o avistamento mesmo assim!</p></div>';
+        aiMatches.innerHTML = `<div class="ai-no-match"><i class="fas fa-search"></i><p>${I18n.t('sighting.ai.no_match')}</p></div>`;
       }
     } catch (err) {
       console.error('[App] Matching error:', err);
-      if (aiResult) { aiResult.classList.remove('hidden'); aiMatches.innerHTML = '<div class="ai-no-match"><i class="fas fa-exclamation-triangle"></i><p>Erro na comparação. Envie mesmo assim.</p></div>'; }
+      if (aiResult) { aiResult.classList.remove('hidden'); aiMatches.innerHTML = `<div class="ai-no-match"><i class="fas fa-exclamation-triangle"></i><p>${I18n.t('sighting.ai.error')}</p></div>`; }
     }
   }
 
   async function handleGetLocSighting() {
     const btn = document.getElementById('btn-get-location-avistamento');
     btn?.classList.add('loading');
-    if (btn) btn.querySelector('span').textContent = 'Obtendo...';
+    if (btn) btn.querySelector('span').textContent = I18n.t('sighting.location.getting');
     try {
       const pos = await GeoUtils.getCurrentPosition();
       document.getElementById('lat-avistamento').value = pos.lat;
@@ -1214,11 +1224,11 @@ const App = (() => {
       const address = await GeoUtils.reverseGeocode(pos.lat, pos.lng);
       document.getElementById('location-info-avistamento')?.classList.remove('hidden');
       document.getElementById('location-text-avistamento').textContent = address;
-      if (btn) btn.querySelector('span').textContent = 'Localização obtida ✓';
+      if (btn) btn.querySelector('span').textContent = I18n.t('sighting.location.got');
       btn?.classList.remove('loading');
     } catch (err) {
       btn?.classList.remove('loading');
-      if (btn) btn.querySelector('span').textContent = 'Usar minha localização';
+      if (btn) btn.querySelector('span').textContent = I18n.t('sighting.location.btn');
       showToast(err.message, 'error');
     }
   }
@@ -1346,8 +1356,8 @@ const App = (() => {
     // Setup abas
     setupReportesTabs();
 
-    containerAtivos.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Carregando...</p></div>';
-    if (containerHistorico) containerHistorico.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Carregando...</p></div>';
+    containerAtivos.innerHTML = `<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>${I18n.t('myreports.loading')}</p></div>`;
+    if (containerHistorico) containerHistorico.innerHTML = `<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>${I18n.t('myreports.loading')}</p></div>`;
 
     try {
       const reports = await DB.loadMyReports();
@@ -1357,8 +1367,8 @@ const App = (() => {
 
       // === ATIVOS ===
       if (ativos.length === 0) {
-        containerAtivos.innerHTML = `<div class="empty-state"><i class="fas fa-clipboard-list"></i><p>Nenhum reporte ativo.</p>
-          <button class="btn-primary" style="max-width:250px;margin:16px auto" onclick="App.navigateTo('reportar-rapido')"><i class="fas fa-plus"></i> Criar Reporte</button></div>`;
+        containerAtivos.innerHTML = `<div class="empty-state"><i class="fas fa-clipboard-list"></i><p>${I18n.t('myreports.no_active')}</p>
+          <button class="btn-primary" style="max-width:250px;margin:16px auto" onclick="App.navigateTo('reportar-rapido')"><i class="fas fa-plus"></i> ${I18n.t('myreports.btn.create')}</button></div>`;
       } else {
         containerAtivos.innerHTML = ativos.map(r => renderReporteItem(r, true)).join('');
         bindReporteActions(containerAtivos);
@@ -1367,8 +1377,8 @@ const App = (() => {
       // === HISTÓRICO ===
       if (containerHistorico) {
         if (encerrados.length === 0) {
-          containerHistorico.innerHTML = `<div class="empty-state"><i class="fas fa-archive"></i><p>Nenhum reporte encerrado ainda.</p>
-            <p class="text-muted">Reportes encerrados com feedback aparecerão aqui.</p></div>`;
+          containerHistorico.innerHTML = `<div class="empty-state"><i class="fas fa-archive"></i><p>${I18n.t('myreports.history.empty')}</p>
+            <p class="text-muted">${I18n.t('myreports.history.empty.hint')}</p></div>`;
         } else {
           containerHistorico.innerHTML = encerrados.map(r => renderReporteItem(r, false)).join('');
         }
@@ -1377,24 +1387,25 @@ const App = (() => {
       // Atualizar badge no tab
       const tabHistorico = document.querySelector('.reportes-tab[data-tab="historico"]');
       if (tabHistorico && encerrados.length > 0) {
-        tabHistorico.innerHTML = `<i class="fas fa-archive"></i> Histórico <span class="tab-badge">${encerrados.length}</span>`;
+        tabHistorico.innerHTML = `<i class="fas fa-archive"></i> ${I18n.t('myreports.tab.history')} <span class="tab-badge">${encerrados.length}</span>`;
       }
 
-    } catch { containerAtivos.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Erro ao carregar.</p></div>'; }
+    } catch { containerAtivos.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${I18n.t('myreports.load_error')}</p></div>`; }
   }
 
   function renderReporteItem(r, isActive) {
     const reportType = r.type || r._reportType;
     const isPet = reportType === 'pet_perdido';
-    const name = r.nome_pet || (isPet ? 'Pet perdido' : 'Avistamento');
+    const name = r.nome_pet || (isPet ? I18n.t('myreports.pet_lost') : I18n.t('myreports.sighting'));
     const desfechoLabels = {
-      'encontrado': '🎉 Encontrado vivo',
-      'encontrado_vivo': '🎉 Encontrado vivo',
-      'encerrado_falecido': '🕊️ Faleceu',
-      'encerrado_desistencia': '😔 Busca encerrada'
+      'encontrado': I18n.t('myreports.outcome.found'),
+      'encontrado_vivo': I18n.t('myreports.outcome.found'),
+      'encerrado_falecido': I18n.t('myreports.outcome.deceased'),
+      'encerrado_desistencia': I18n.t('myreports.outcome.giveup')
     };
     const desfechoLabel = desfechoLabels[r.desfecho] || desfechoLabels[r.status] || r.status || '';
-    const dataEncerrado = r.data_encerrado ? new Date(r.data_encerrado).toLocaleDateString('pt-BR') : '';
+    const localeLang = { pt: 'pt-BR', en: 'en-US', es: 'es-ES' }[I18n.getLang?.()] || 'pt-BR';
+    const dataEncerrado = r.data_encerrado ? new Date(r.data_encerrado).toLocaleDateString(localeLang) : '';
 
     return `<div class="reporte-item ${!isActive ? 'reporte-encerrado' : ''}" data-id="${r.id}" data-type="${r._reportType}">
       ${r.foto_comprimida ? `<img class="reporte-photo" src="${fixCorruptedDataUrl(r.foto_comprimida)}" alt="">` :
@@ -1402,10 +1413,10 @@ const App = (() => {
       <div class="reporte-info">
         <div style="font-weight:700">${Security.sanitize(name)}</div>
         ${isActive ? `
-          <span class="reporte-status status-ativo">ativo</span>
+          <span class="reporte-status status-ativo">${I18n.t('myreports.status.active')}</span>
           ${isPet ? `<div class="reporte-actions">
-            ${!r.cadastro_completo ? `<button class="btn-small btn-complete" data-complete="${r.id}">Completar</button>` : ''}
-            <button class="btn-small btn-found" data-found="${r.id}"><i class="fas fa-flag-checkered"></i> Encerrar</button>
+            ${!r.cadastro_completo ? `<button class="btn-small btn-complete" data-complete="${r.id}">${I18n.t('myreports.btn.complete')}</button>` : ''}
+            <button class="btn-small btn-found" data-found="${r.id}"><i class="fas fa-flag-checkered"></i> ${I18n.t('myreports.btn.close')}</button>
           </div>` : ''}
         ` : `
           <span class="reporte-status status-${r.status || 'encerrado'}">${desfechoLabel}</span>
@@ -1716,16 +1727,16 @@ const App = (() => {
 
     if (desfecho === 'encontrado_vivo') {
       emoji.textContent = '🎉';
-      titulo.textContent = 'Que ótima notícia!';
-      subtitulo.textContent = 'Conte como foi esse reencontro';
+      titulo.textContent = I18n.t('feedback.step2.found.title');
+      subtitulo.textContent = I18n.t('feedback.step2.found.subtitle');
     } else if (desfecho === 'encontrado_morto') {
       emoji.textContent = '🕊️';
-      titulo.textContent = 'Sentimos muito...';
-      subtitulo.textContent = 'Se quiser, deixe um registro em memória';
+      titulo.textContent = I18n.t('feedback.step2.deceased.title');
+      subtitulo.textContent = I18n.t('feedback.step2.deceased.subtitle');
     } else {
       emoji.textContent = '😔';
-      titulo.textContent = 'Busca Encerrada';
-      subtitulo.textContent = 'Não desista, temos esperança!';
+      titulo.textContent = I18n.t('feedback.step2.giveup.title');
+      subtitulo.textContent = I18n.t('feedback.step2.giveup.subtitle');
     }
 
     // Para "desistência", esconder campos que não fazem sentido

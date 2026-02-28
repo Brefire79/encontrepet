@@ -96,6 +96,8 @@ window.I18nLocales.pt = {
   'home.feed.see_all': 'Ver todos',
   'home.feed.empty': 'Nenhum alerta na sua região ainda.',
   'home.feed.empty.hint': 'Ative a localização para ver alertas próximos.',
+  'home.feed.empty.good': 'Isso é uma boa notícia! 🐾',
+  'home.feed.error': 'Erro ao carregar alertas.',
 
   // — Reportar rápido —
   'report.title': 'Reporte Rápido',
@@ -112,6 +114,8 @@ window.I18nLocales.pt = {
   'report.which_animal': 'Qual animal?',
   'report.location.label': 'Local onde foi perdido *',
   'report.location.btn': 'Usar minha localização atual',
+  'report.location.getting': 'Obtendo localização...',
+  'report.location.got': 'Localização obtida ✓',
   'report.location.captured': 'Localização capturada',
   'report.location.manual': 'Ou digite o endereço/bairro',
   'report.color': 'Cor predominante',
@@ -136,6 +140,9 @@ window.I18nLocales.pt = {
   'report.phone': 'Telefone para contato *',
   'report.phone.placeholder': '(00) 00000-0000',
   'report.submit': 'DISPARAR ALERTA AGORA',
+  'report.validate.photo_phone': 'Adicione foto e telefone',
+  'report.validate.photo': 'Adicione uma foto do pet',
+  'report.validate.phone': 'Informe o telefone de contato',
   'report.note': 'O alerta será enviado para pessoas em um raio de até <strong id="raio-info">{radius} km</strong>. Você poderá completar o cadastro depois.',
 
   // — Cadastro completo —
@@ -167,6 +174,9 @@ window.I18nLocales.pt = {
   'sighting.ai.title': 'Análise da IA',
   'sighting.animal_type': 'Tipo de Animal',
   'sighting.location': 'Local do avistamento',
+  'sighting.location.btn': 'Usar minha localização',
+  'sighting.location.getting': 'Obtendo...',
+  'sighting.location.got': 'Localização obtida ✓',
   'sighting.color': 'Cor',
   'sighting.color.select': 'Selecione',
   'sighting.size': 'Porte',
@@ -175,6 +185,9 @@ window.I18nLocales.pt = {
   'sighting.observation.placeholder': 'Estado do animal, se tinha coleira, local exato...',
   'sighting.contact': 'Seu contato (opcional)',
   'sighting.submit': 'Enviar Avistamento',
+  'sighting.ai.no_pets': 'Nenhum pet reportado para comparar.',
+  'sighting.ai.no_match': 'Nenhum match. Envie o avistamento mesmo assim!',
+  'sighting.ai.error': 'Erro na comparação. Envie mesmo assim.',
 
   // — Detalhes —
   'details.title': 'Detalhes do Pet',
@@ -185,6 +198,22 @@ window.I18nLocales.pt = {
   'myreports.tab.history': 'Histórico',
   'myreports.empty': 'Você ainda não fez nenhum reporte.',
   'myreports.history.empty': 'Nenhum reporte encerrado ainda.',
+  'myreports.history.empty.hint': 'Reportes encerrados com feedback aparecerão aqui.',
+  'myreports.no_active': 'Nenhum reporte ativo.',
+  'myreports.btn.create': 'Criar Reporte',
+  'myreports.btn.complete': 'Completar',
+  'myreports.btn.close': 'Encerrar',
+  'myreports.status.active': 'ativo',
+  'myreports.loading': 'Carregando...',
+  'myreports.load_error': 'Erro ao carregar.',
+  'myreports.pet_lost': 'Pet perdido',
+  'myreports.sighting': 'Avistamento',
+  'myreports.outcome.found': '🎉 Encontrado vivo',
+  'myreports.outcome.deceased': '🕊️ Faleceu',
+  'myreports.outcome.giveup': '😔 Busca encerrada',
+  'sighting.ai.pet_unnamed': 'Pet sem nome',
+  'sighting.ai.match_label': 'Match!',
+  'sighting.ai.possible_label': 'Possível',
 
   // — Notificações —
   'notif.title': 'Notificações',
@@ -343,6 +372,12 @@ window.I18nLocales.pt = {
   'feedback.message.placeholder': 'Conte o que aconteceu...',
   'feedback.send': 'Enviar Feedback e Encerrar',
   'feedback.skip': 'Pular e encerrar sem feedback',
+  'feedback.step2.found.title': 'Que ótima notícia!',
+  'feedback.step2.found.subtitle': 'Conte como foi esse reencontro',
+  'feedback.step2.deceased.title': 'Sentimos muito...',
+  'feedback.step2.deceased.subtitle': 'Se quiser, deixe um registro em memória',
+  'feedback.step2.giveup.title': 'Busca Encerrada',
+  'feedback.step2.giveup.subtitle': 'Não desista, temos esperança!',
 
   // — Toasts / msgs dinâmicas —
   'toast.alert_sent': 'Alerta disparado com sucesso!',
