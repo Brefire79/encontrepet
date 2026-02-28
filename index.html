@@ -37,68 +37,68 @@
     <div class="auth-container">
       <div class="auth-logo">
         <i class="fas fa-paw"></i>
-        <h1>Encontre Pet</h1>
-        <p>Ajudando a reunir famílias 🐾</p>
+        <h1 data-i18n="app.name">Encontre Pet</h1>
+        <p data-i18n="app.tagline">Ajudando a reunir famílias 🐾</p>
       </div>
 
       <!-- Login Form -->
       <div id="auth-login" class="auth-form">
-        <h2>Entrar</h2>
+        <h2 data-i18n="auth.login.title">Entrar</h2>
         <div class="form-group">
-          <label><i class="fas fa-envelope"></i> E-mail</label>
-          <input type="email" id="login-email" class="form-input" placeholder="seu@email.com" autocomplete="email">
+          <label><i class="fas fa-envelope"></i> <span data-i18n="auth.email">E-mail</span></label>
+          <input type="email" id="login-email" class="form-input" placeholder="seu@email.com" data-i18n-placeholder="auth.email.placeholder" autocomplete="email">
         </div>
         <div class="form-group">
-          <label><i class="fas fa-lock"></i> Senha</label>
+          <label><i class="fas fa-lock"></i> <span data-i18n="auth.password">Senha</span></label>
           <div class="input-password">
-            <input type="password" id="login-password" class="form-input" placeholder="Sua senha" autocomplete="current-password">
+            <input type="password" id="login-password" class="form-input" placeholder="Sua senha" data-i18n-placeholder="auth.password.placeholder" autocomplete="current-password">
             <button type="button" class="btn-toggle-pass" data-target="login-password"><i class="fas fa-eye"></i></button>
           </div>
         </div>
         <div id="login-error" class="auth-error hidden"></div>
         <button id="btn-login" class="btn-primary btn-large">
-          <i class="fas fa-sign-in-alt"></i> <span>Entrar</span>
+          <i class="fas fa-sign-in-alt"></i> <span data-i18n="auth.login.btn">Entrar</span>
         </button>
-        <div class="auth-divider"><span>ou</span></div>
+        <div class="auth-divider"><span data-i18n="auth.or">ou</span></div>
         <button id="btn-anonymous" class="btn-ghost">
-          <i class="fas fa-user-secret"></i> <span>Continuar sem conta</span>
+          <i class="fas fa-user-secret"></i> <span data-i18n="auth.anonymous">Continuar sem conta</span>
         </button>
-        <p class="auth-switch">Não tem conta? <a href="#" id="link-to-register">Cadastre-se grátis</a></p>
+        <p class="auth-switch"><span data-i18n="auth.no_account">Não tem conta?</span> <a href="#" id="link-to-register" data-i18n="auth.register_link">Cadastre-se grátis</a></p>
       </div>
 
       <!-- Register Form -->
       <div id="auth-register" class="auth-form hidden">
-        <h2>Criar Conta Gratuita</h2>
+        <h2 data-i18n="auth.register.title">Criar Conta Gratuita</h2>
         <div class="form-group">
-          <label><i class="fas fa-user"></i> Nome</label>
-          <input type="text" id="register-name" class="form-input" placeholder="Seu nome" autocomplete="name">
+          <label><i class="fas fa-user"></i> <span data-i18n="auth.name">Nome</span></label>
+          <input type="text" id="register-name" class="form-input" placeholder="Seu nome" data-i18n-placeholder="auth.name.placeholder" autocomplete="name">
         </div>
         <div class="form-group">
-          <label><i class="fas fa-envelope"></i> E-mail</label>
-          <input type="email" id="register-email" class="form-input" placeholder="seu@email.com" autocomplete="email">
+          <label><i class="fas fa-envelope"></i> <span data-i18n="auth.email">E-mail</span></label>
+          <input type="email" id="register-email" class="form-input" placeholder="seu@email.com" data-i18n-placeholder="auth.email.placeholder" autocomplete="email">
         </div>
         <div class="form-group">
-          <label><i class="fas fa-lock"></i> Senha</label>
+          <label><i class="fas fa-lock"></i> <span data-i18n="auth.password">Senha</span></label>
           <div class="input-password">
-            <input type="password" id="register-password" class="form-input" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+            <input type="password" id="register-password" class="form-input" placeholder="Mínimo 6 caracteres" data-i18n-placeholder="auth.password.min" autocomplete="new-password">
             <button type="button" class="btn-toggle-pass" data-target="register-password"><i class="fas fa-eye"></i></button>
           </div>
           <div id="password-strength" class="password-strength"></div>
         </div>
         <div class="form-group">
-          <label><i class="fas fa-lock"></i> Confirmar Senha</label>
-          <input type="password" id="register-password2" class="form-input" placeholder="Repita a senha" autocomplete="new-password">
+          <label><i class="fas fa-lock"></i> <span data-i18n="auth.password.confirm">Confirmar Senha</span></label>
+          <input type="password" id="register-password2" class="form-input" placeholder="Repita a senha" data-i18n-placeholder="auth.password.confirm.placeholder" autocomplete="new-password">
         </div>
         <div id="register-error" class="auth-error hidden"></div>
         <button id="btn-register" class="btn-primary btn-large">
-          <i class="fas fa-user-plus"></i> <span>Criar Conta Gratuita</span>
+          <i class="fas fa-user-plus"></i> <span data-i18n="auth.register.btn">Criar Conta Gratuita</span>
         </button>
-        <p class="auth-switch">Já tem conta? <a href="#" id="link-to-login">Faça login</a></p>
+        <p class="auth-switch"><span data-i18n="auth.has_account">Já tem conta?</span> <a href="#" id="link-to-login" data-i18n="auth.login_link">Faça login</a></p>
       </div>
 
       <div class="auth-footer">
-        <p><i class="fas fa-shield-alt"></i> Seus dados estão protegidos</p>
-        <p>Localização nunca é exibida com precisão</p>
+        <p><i class="fas fa-shield-alt"></i> <span data-i18n="auth.footer.protected">Seus dados estão protegidos</span></p>
+        <p data-i18n="auth.footer.location">Localização nunca é exibida com precisão</p>
       </div>
     </div>
   </div>
@@ -109,8 +109,8 @@
       <div class="splash-icon">
         <i class="fas fa-paw"></i>
       </div>
-      <h1>Encontre Pet</h1>
-      <p>Ajudando a reunir famílias</p>
+      <h1 data-i18n="app.name">Encontre Pet</h1>
+      <p data-i18n="splash.tagline">Ajudando a reunir famílias</p>
       <div class="splash-loader">
         <div class="loader-bar"></div>
       </div>
@@ -126,12 +126,12 @@
           <i class="fas fa-arrow-up"></i>
         </div>
       </div>
-      <h2>Nova versão disponível! 🎉</h2>
-      <p>Melhorias e correções foram aplicadas.<br>Atualize agora para a melhor experiência.</p>
+      <h2 data-i18n="update.title">Nova versão disponível! 🎉</h2>
+      <p data-i18n-html="update.desc">Melhorias e correções foram aplicadas.<br>Atualize agora para a melhor experiência.</p>
       <button id="btn-update" class="btn-update-main">
-        <i class="fas fa-sync-alt"></i> Atualizar Agora
+        <i class="fas fa-sync-alt"></i> <span data-i18n="update.btn">Atualizar Agora</span>
       </button>
-      <span class="update-hint">Leva apenas 1 segundo</span>
+      <span class="update-hint" data-i18n="update.hint">Leva apenas 1 segundo</span>
     </div>
   </div>
 
@@ -140,15 +140,15 @@
     <div class="header-left">
       <div class="logo">
         <i class="fas fa-paw"></i>
-        <span>Encontre Pet</span>
+        <span data-i18n="app.name">Encontre Pet</span>
       </div>
     </div>
     <div class="header-right">
-      <button id="btn-notificacoes" class="header-btn" aria-label="Notificações">
+      <button id="btn-notificacoes" class="header-btn" aria-label="Notificações" data-i18n-aria="header.notifications">
         <i class="fas fa-bell"></i>
         <span id="notif-badge" class="badge hidden">0</span>
       </button>
-      <button id="btn-menu" class="header-btn" aria-label="Menu">
+      <button id="btn-menu" class="header-btn" aria-label="Menu" data-i18n-aria="header.menu">
         <i class="fas fa-bars"></i>
       </button>
     </div>
@@ -165,22 +165,30 @@
       <p class="menu-subtitle" id="menu-user-email">100% Gratuito</p>
     </div>
     <ul class="menu-list">
-      <li data-page="home"><i class="fas fa-home"></i> Início</li>
-      <li data-page="meus-reportes"><i class="fas fa-list"></i> Meus Reportes</li>
-      <li data-page="notificacoes"><i class="fas fa-bell"></i> Notificações</li>
-      <li data-page="mapa"><i class="fas fa-map-marked-alt"></i> Mapa de Alertas</li>
+      <li data-page="home"><i class="fas fa-home"></i> <span data-i18n="menu.home">Início</span></li>
+      <li data-page="meus-reportes"><i class="fas fa-list"></i> <span data-i18n="menu.reports">Meus Reportes</span></li>
+      <li data-page="notificacoes"><i class="fas fa-bell"></i> <span data-i18n="menu.notifications">Notificações</span></li>
+      <li data-page="mapa"><i class="fas fa-map-marked-alt"></i> <span data-i18n="menu.map">Mapa de Alertas</span></li>
       <li class="menu-divider"></li>
-      <li data-page="perfil"><i class="fas fa-user-cog"></i> Meu Perfil</li>
-      <li data-page="privacidade"><i class="fas fa-shield-alt"></i> Privacidade</li>
-      <li data-page="como-funciona"><i class="fas fa-info-circle"></i> Como Funciona</li>
-      <li data-page="patrocinadores"><i class="fas fa-handshake"></i> Patrocinadores</li>
-      <li data-page="sobre"><i class="fas fa-heart"></i> Sobre o App</li>
+      <li data-page="perfil"><i class="fas fa-user-cog"></i> <span data-i18n="menu.profile">Meu Perfil</span></li>
+      <li data-page="privacidade"><i class="fas fa-shield-alt"></i> <span data-i18n="menu.privacy">Privacidade</span></li>
+      <li data-page="como-funciona"><i class="fas fa-info-circle"></i> <span data-i18n="menu.how">Como Funciona</span></li>
+      <li data-page="patrocinadores"><i class="fas fa-handshake"></i> <span data-i18n="menu.sponsors">Patrocinadores</span></li>
+      <li data-page="sobre"><i class="fas fa-heart"></i> <span data-i18n="menu.about">Sobre o App</span></li>
       <li class="menu-divider"></li>
-      <li id="menu-logout"><i class="fas fa-sign-out-alt"></i> Sair</li>
+      <li id="menu-logout"><i class="fas fa-sign-out-alt"></i> <span data-i18n="menu.logout">Sair</span></li>
     </ul>
+    <div class="lang-selector">
+      <small data-i18n="lang.title">Idioma</small>
+      <div class="lang-buttons">
+        <button class="lang-btn" data-lang="pt" title="Português">🇧🇷</button>
+        <button class="lang-btn" data-lang="en" title="English">🇺🇸</button>
+        <button class="lang-btn" data-lang="es" title="Español">🇪🇸</button>
+      </div>
+    </div>
     <div class="menu-footer">
-      <p>Versão 1.0.0</p>
-      <p><i class="fas fa-paw"></i> Feito com amor pelos pets</p>
+      <p data-i18n="app.version">Versão 1.0.0</p>
+      <p><i class="fas fa-paw"></i> <span data-i18n="app.footer">Feito com amor pelos pets</span></p>
     </div>
   </nav>
 
@@ -195,24 +203,24 @@
           <div class="hero-overlay"></div>
         </div>
         <div class="hero-content">
-          <h2>Perdeu seu pet?</h2>
-          <p>Alerte milhares de pessoas próximas em segundos!</p>
+          <h2 data-i18n="home.hero.title">Perdeu seu pet?</h2>
+          <p data-i18n="home.hero.desc">Alerte milhares de pessoas próximas em segundos!</p>
           <div class="hero-stats">
             <div class="stat-item">
               <span id="stat-pets" class="stat-number">0</span>
-              <span class="stat-label">Pets Reportados</span>
+              <span class="stat-label" data-i18n="home.stat.pets">Pets Reportados</span>
             </div>
             <div class="stat-item">
               <span id="stat-encontrados" class="stat-number">0</span>
-              <span class="stat-label">Encontrados</span>
+              <span class="stat-label" data-i18n="home.stat.found">Encontrados</span>
             </div>
             <div class="stat-item">
               <span id="stat-avistamentos" class="stat-number">0</span>
-              <span class="stat-label">Avistamentos</span>
+              <span class="stat-label" data-i18n="home.stat.sightings">Avistamentos</span>
             </div>
             <div class="stat-item">
               <span id="stat-usuarios" class="stat-number">0</span>
-              <span class="stat-label">Usuários</span>
+              <span class="stat-label" data-i18n="home.stat.users">Usuários</span>
             </div>
           </div>
         </div>
@@ -225,8 +233,8 @@
             <i class="fas fa-search"></i>
           </div>
           <div class="action-text">
-            <h3>Perdi meu Pet</h3>
-            <p>Reporte rápido com foto e localização</p>
+            <h3 data-i18n="home.action.lost.title">Perdi meu Pet</h3>
+            <p data-i18n="home.action.lost.desc">Reporte rápido com foto e localização</p>
           </div>
           <i class="fas fa-chevron-right"></i>
         </button>
@@ -236,8 +244,8 @@
             <i class="fas fa-camera"></i>
           </div>
           <div class="action-text">
-            <h3>Vi um Pet Perdido</h3>
-            <p>Tire uma foto e ajude a encontrar o dono</p>
+            <h3 data-i18n="home.action.found.title">Vi um Pet Perdido</h3>
+            <p data-i18n="home.action.found.desc">Tire uma foto e ajude a encontrar o dono</p>
           </div>
           <i class="fas fa-chevron-right"></i>
         </button>
@@ -250,8 +258,8 @@
             <i class="fas fa-dog"></i>
           </div>
           <div class="info-text">
-            <h4>Cães</h4>
-            <p>Alerta em raio de <strong>5 km</strong></p>
+            <h4 data-i18n="home.info.dogs">Cães</h4>
+            <p data-i18n-html="home.info.dogs.desc">Alerta em raio de <strong>5 km</strong></p>
           </div>
         </div>
         <div class="info-card">
@@ -259,8 +267,8 @@
             <i class="fas fa-cat"></i>
           </div>
           <div class="info-text">
-            <h4>Gatos</h4>
-            <p>Alerta em raio de <strong>2 km</strong></p>
+            <h4 data-i18n="home.info.cats">Gatos</h4>
+            <p data-i18n-html="home.info.cats.desc">Alerta em raio de <strong>2 km</strong></p>
           </div>
         </div>
         <div class="info-card">
@@ -268,43 +276,43 @@
             <i class="fas fa-dove"></i>
           </div>
           <div class="info-text">
-            <h4>Outros</h4>
-            <p>Alerta em raio de <strong>3 km</strong></p>
+            <h4 data-i18n="home.info.others">Outros</h4>
+            <p data-i18n-html="home.info.others.desc">Alerta em raio de <strong>3 km</strong></p>
           </div>
         </div>
       </div>
 
       <!-- Painel de Efetividade dos Alertas -->
       <div class="section-header">
-        <h3><i class="fas fa-chart-line"></i> Efetividade dos Alertas</h3>
+        <h3><i class="fas fa-chart-line"></i> <span data-i18n="home.effectiveness.title">Efetividade dos Alertas</span></h3>
       </div>
       <div id="painel-efetividade" class="painel-efetividade">
         <div class="efetividade-card">
           <div class="efetividade-icon sucesso"><i class="fas fa-check-circle"></i></div>
           <div class="efetividade-info">
             <span id="ef-taxa" class="efetividade-valor">0%</span>
-            <small>Taxa de Reencontro</small>
+            <small data-i18n="home.ef.rate">Taxa de Reencontro</small>
           </div>
         </div>
         <div class="efetividade-card">
           <div class="efetividade-icon app"><i class="fas fa-mobile-alt"></i></div>
           <div class="efetividade-info">
             <span id="ef-app-ajudou" class="efetividade-valor">0</span>
-            <small>Encontrados via App</small>
+            <small data-i18n="home.ef.app">Encontrados via App</small>
           </div>
         </div>
         <div class="efetividade-card">
           <div class="efetividade-icon usuarios"><i class="fas fa-users"></i></div>
           <div class="efetividade-info">
             <span id="ef-usuarios" class="efetividade-valor">0</span>
-            <small>Pessoas Cadastradas</small>
+            <small data-i18n="home.ef.users">Pessoas Cadastradas</small>
           </div>
         </div>
       </div>
 
       <!-- Histórias de Sucesso -->
       <div class="section-header">
-        <h3><i class="fas fa-heart"></i> Reencontros Felizes</h3>
+        <h3><i class="fas fa-heart"></i> <span data-i18n="home.stories.title">Reencontros Felizes</span></h3>
       </div>
       <div id="historias-sucesso" class="historias-sucesso">
         <div class="empty-state">
@@ -316,8 +324,8 @@
 
       <!-- Feed de Alertas Recentes -->
       <div class="section-header">
-        <h3><i class="fas fa-bullhorn"></i> Alertas Recentes na Região</h3>
-        <button id="btn-ver-todos" class="btn-link">Ver todos</button>
+        <h3><i class="fas fa-bullhorn"></i> <span data-i18n="home.feed.title">Alertas Recentes na Região</span></h3>
+        <button id="btn-ver-todos" class="btn-link" data-i18n="home.feed.see_all">Ver todos</button>
       </div>
       <div id="feed-alertas" class="feed-alertas">
         <div class="empty-state">
@@ -332,7 +340,7 @@
     <section id="page-reportar-rapido" class="page">
       <div class="page-header">
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
-        <h2>Reporte Rápido</h2>
+        <h2 data-i18n="report.title">Reporte Rápido</h2>
         <div class="step-indicator">
           <span class="step active">1</span>
           <span class="step-line"></span>
@@ -343,7 +351,7 @@
       <div class="form-container">
         <div class="urgency-banner">
           <i class="fas fa-bolt"></i>
-          <span>Preencha o mínimo e dispare o alerta! Complete depois.</span>
+          <span data-i18n="report.urgency">Preencha o mínimo e dispare o alerta! Complete depois.</span>
         </div>
 
         <!-- Foto Upload -->
@@ -352,8 +360,8 @@
           <input type="file" id="foto-perdido-camera" accept="image/*" capture="environment" hidden>
           <div class="upload-placeholder" id="upload-placeholder-perdido">
             <i class="fas fa-camera"></i>
-            <p>Toque para tirar ou escolher foto</p>
-            <span class="text-muted">A foto será comprimida automaticamente</span>
+            <p data-i18n="report.photo.tap">Toque para tirar ou escolher foto</p>
+            <span class="text-muted" data-i18n="report.photo.auto">A foto será comprimida automaticamente</span>
           </div>
           <div class="upload-preview hidden" id="upload-preview-perdido">
             <img id="img-preview-perdido" alt="Preview">
@@ -378,30 +386,30 @@
 
         <!-- Tipo de Animal -->
         <div class="form-group">
-          <label>Tipo de Animal *</label>
+          <label data-i18n="report.animal_type">Tipo de Animal *</label>
           <div class="radio-cards">
             <label class="radio-card">
               <input type="radio" name="tipo-animal" value="cao" checked>
               <div class="radio-card-content">
                 <i class="fas fa-dog"></i>
-                <span>Cão</span>
-                <small>Raio: 5km</small>
+                <span data-i18n="report.dog">Cão</span>
+                <small data-i18n="report.dog.radius">Raio: 5km</small>
               </div>
             </label>
             <label class="radio-card">
               <input type="radio" name="tipo-animal" value="gato">
               <div class="radio-card-content">
                 <i class="fas fa-cat"></i>
-                <span>Gato</span>
-                <small>Raio: 2km</small>
+                <span data-i18n="report.cat">Gato</span>
+                <small data-i18n="report.cat.radius">Raio: 2km</small>
               </div>
             </label>
             <label class="radio-card">
               <input type="radio" name="tipo-animal" value="outro">
               <div class="radio-card-content">
                 <i class="fas fa-dove"></i>
-                <span>Outro</span>
-                <small>Raio: 3km</small>
+                <span data-i18n="report.other">Outro</span>
+                <small data-i18n="report.other.radius">Raio: 3km</small>
               </div>
             </label>
           </div>
@@ -425,23 +433,23 @@
 
         <!-- Localização -->
         <div class="form-group">
-          <label><i class="fas fa-map-marker-alt"></i> Local onde foi perdido *</label>
+          <label><i class="fas fa-map-marker-alt"></i> <span data-i18n="report.location.label">Local onde foi perdido *</span></label>
           <button id="btn-get-location" class="btn-location">
             <i class="fas fa-crosshairs"></i>
-            <span>Usar minha localização atual</span>
+            <span data-i18n="report.location.btn">Usar minha localização atual</span>
           </button>
           <div id="location-info" class="location-info hidden">
             <i class="fas fa-check-circle"></i>
             <span id="location-text">Localização capturada</span>
           </div>
-          <input type="text" id="endereco-manual" placeholder="Ou digite o endereço/bairro" class="form-input">
+          <input type="text" id="endereco-manual" placeholder="Ou digite o endereço/bairro" data-i18n-placeholder="report.location.manual" class="form-input">
           <input type="hidden" id="lat-perdido">
           <input type="hidden" id="lng-perdido">
         </div>
 
         <!-- Características Rápidas -->
         <div class="form-group">
-          <label>Cor predominante</label>
+          <label data-i18n="report.color">Cor predominante</label>
           <div class="color-chips">
             <label class="color-chip"><input type="radio" name="cor-pet" value="preto"><span style="background:#333">Preto</span></label>
             <label class="color-chip"><input type="radio" name="cor-pet" value="branco"><span style="background:#f0f0f0;color:#333;border-color:#ddd">Branco</span></label>
@@ -457,42 +465,42 @@
         </div>
 
         <div class="form-group">
-          <label>Porte</label>
+          <label data-i18n="report.size">Porte</label>
           <div class="radio-pills">
-            <label class="radio-pill"><input type="radio" name="porte-pet" value="pequeno"><span>Pequeno</span></label>
-            <label class="radio-pill"><input type="radio" name="porte-pet" value="medio"><span>Médio</span></label>
-            <label class="radio-pill"><input type="radio" name="porte-pet" value="grande"><span>Grande</span></label>
+            <label class="radio-pill"><input type="radio" name="porte-pet" value="pequeno"><span data-i18n="report.size.small">Pequeno</span></label>
+            <label class="radio-pill"><input type="radio" name="porte-pet" value="medio"><span data-i18n="report.size.medium">Médio</span></label>
+            <label class="radio-pill"><input type="radio" name="porte-pet" value="grande"><span data-i18n="report.size.large">Grande</span></label>
           </div>
         </div>
 
         <!-- Observação Rápida -->
         <div class="form-group">
-          <label>Observação rápida</label>
-          <textarea id="obs-rapida" class="form-textarea" placeholder="Ex: Usando coleira azul, manca da pata esquerda, muito dócil..." rows="3"></textarea>
+          <label data-i18n="report.observation">Observação rápida</label>
+          <textarea id="obs-rapida" class="form-textarea" placeholder="Ex: Usando coleira azul, manca da pata esquerda, muito dócil..." data-i18n-placeholder="report.observation.placeholder" rows="3"></textarea>
         </div>
 
         <!-- Recompensa -->
         <div class="form-group recompensa-group">
           <label class="switch-label">
-            <span>Ofereço recompensa</span>
+            <span data-i18n="report.reward">Ofereço recompensa</span>
             <label class="switch">
               <input type="checkbox" id="check-recompensa">
               <span class="switch-slider"></span>
             </label>
           </label>
-          <input type="text" id="valor-recompensa" class="form-input hidden" placeholder="Valor ou descrição da recompensa">
+          <input type="text" id="valor-recompensa" class="form-input hidden" placeholder="Valor ou descrição da recompensa" data-i18n-placeholder="report.reward.placeholder">
         </div>
 
         <!-- Contato Rápido -->
         <div class="form-group">
-          <label><i class="fas fa-phone"></i> Telefone para contato *</label>
-          <input type="tel" id="telefone-rapido" class="form-input" placeholder="(00) 00000-0000">
+          <label><i class="fas fa-phone"></i> <span data-i18n="report.phone">Telefone para contato *</span></label>
+          <input type="tel" id="telefone-rapido" class="form-input" placeholder="(00) 00000-0000" data-i18n-placeholder="report.phone.placeholder">
         </div>
 
         <!-- Botão Disparar Alerta -->
         <button id="btn-disparar-alerta" class="btn-primary btn-large btn-pulse" disabled>
           <i class="fas fa-bolt"></i>
-          <span>DISPARAR ALERTA AGORA</span>
+          <span data-i18n="report.submit">DISPARAR ALERTA AGORA</span>
         </button>
 
         <p class="form-note">
@@ -507,7 +515,7 @@
     <section id="page-cadastro-completo" class="page">
       <div class="page-header">
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
-        <h2>Completar Cadastro</h2>
+        <h2 data-i18n="complete.title">Completar Cadastro</h2>
         <div class="step-indicator">
           <span class="step completed"><i class="fas fa-check"></i></span>
           <span class="step-line completed"></span>
@@ -518,54 +526,54 @@
       <div class="form-container">
         <div class="success-banner">
           <i class="fas fa-check-circle"></i>
-          <span>Alerta disparado! Complete os dados para melhorar a busca.</span>
+          <span data-i18n="complete.success">Alerta disparado! Complete os dados para melhorar a busca.</span>
         </div>
 
         <div class="form-group">
-          <label>Nome do Pet</label>
-          <input type="text" id="nome-pet-completo" class="form-input" placeholder="Nome do seu pet">
+          <label data-i18n="complete.pet_name">Nome do Pet</label>
+          <input type="text" id="nome-pet-completo" class="form-input" placeholder="Nome do seu pet" data-i18n-placeholder="complete.pet_name.placeholder">
         </div>
 
         <div class="form-group">
-          <label>Raça</label>
-          <input type="text" id="raca-completo" class="form-input" placeholder="Raça ou SRD (vira-lata)">
+          <label data-i18n="complete.breed">Raça</label>
+          <input type="text" id="raca-completo" class="form-input" placeholder="Raça ou SRD (vira-lata)" data-i18n-placeholder="complete.breed.placeholder">
         </div>
 
         <div class="form-group">
-          <label>Sexo</label>
+          <label data-i18n="complete.sex">Sexo</label>
           <div class="radio-pills">
-            <label class="radio-pill"><input type="radio" name="sexo-pet" value="macho"><span>Macho</span></label>
-            <label class="radio-pill"><input type="radio" name="sexo-pet" value="femea"><span>Fêmea</span></label>
-            <label class="radio-pill"><input type="radio" name="sexo-pet" value="indefinido"><span>Não sei</span></label>
+            <label class="radio-pill"><input type="radio" name="sexo-pet" value="macho"><span data-i18n="complete.sex.male">Macho</span></label>
+            <label class="radio-pill"><input type="radio" name="sexo-pet" value="femea"><span data-i18n="complete.sex.female">Fêmea</span></label>
+            <label class="radio-pill"><input type="radio" name="sexo-pet" value="indefinido"><span data-i18n="complete.sex.unknown">Não sei</span></label>
           </div>
         </div>
 
         <div class="form-group">
-          <label>Data em que foi perdido</label>
+          <label data-i18n="complete.date">Data em que foi perdido</label>
           <input type="date" id="data-perda" class="form-input">
         </div>
 
         <div class="form-group">
-          <label>Descrição detalhada</label>
-          <textarea id="descricao-completa" class="form-textarea" placeholder="Características marcantes, comportamento, se tem microchip, coleira, etc." rows="4"></textarea>
+          <label data-i18n="complete.description">Descrição detalhada</label>
+          <textarea id="descricao-completa" class="form-textarea" placeholder="Características marcantes, comportamento, se tem microchip, coleira, etc." data-i18n-placeholder="complete.description.placeholder" rows="4"></textarea>
         </div>
 
         <div class="form-group">
-          <label>Seu nome</label>
-          <input type="text" id="nome-tutor" class="form-input" placeholder="Seu nome completo">
+          <label data-i18n="complete.your_name">Seu nome</label>
+          <input type="text" id="nome-tutor" class="form-input" placeholder="Seu nome completo" data-i18n-placeholder="complete.your_name.placeholder">
         </div>
 
         <div class="form-group">
-          <label>E-mail</label>
-          <input type="email" id="email-tutor" class="form-input" placeholder="seu@email.com">
+          <label data-i18n="complete.your_email">E-mail</label>
+          <input type="email" id="email-tutor" class="form-input" placeholder="seu@email.com" data-i18n-placeholder="complete.your_email.placeholder">
         </div>
 
         <button id="btn-salvar-completo" class="btn-primary btn-large">
           <i class="fas fa-save"></i>
-          <span>Salvar Cadastro Completo</span>
+          <span data-i18n="complete.save">Salvar Cadastro Completo</span>
         </button>
 
-        <button id="btn-pular-cadastro" class="btn-text">
+        <button id="btn-pular-cadastro" class="btn-text" data-i18n="complete.skip">
           Pular por agora →
         </button>
       </div>
@@ -575,13 +583,13 @@
     <section id="page-avistamento" class="page">
       <div class="page-header">
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
-        <h2>Vi um Pet Perdido</h2>
+        <h2 data-i18n="sighting.title">Vi um Pet Perdido</h2>
       </div>
 
       <div class="form-container">
         <div class="info-banner">
           <i class="fas fa-magic"></i>
-          <span>Tire uma foto! Nossa IA vai comparar com pets reportados e avisar o dono automaticamente.</span>
+          <span data-i18n="sighting.ai_info">Tire uma foto! Nossa IA vai comparar com pets reportados e avisar o dono automaticamente.</span>
         </div>
 
         <!-- Foto Upload -->
@@ -590,8 +598,8 @@
           <input type="file" id="foto-avistamento-camera" accept="image/*" capture="environment" hidden>
           <div class="upload-placeholder" id="upload-placeholder-avistamento">
             <i class="fas fa-camera"></i>
-            <p>Tire uma foto do animal</p>
-            <span class="text-muted">A IA analisará automaticamente</span>
+            <p data-i18n="sighting.photo.tap">Tire uma foto do animal</p>
+            <span class="text-muted" data-i18n="sighting.photo.auto">A IA analisará automaticamente</span>
           </div>
           <div class="upload-preview hidden" id="upload-preview-avistamento">
             <img id="img-preview-avistamento" alt="Preview">
@@ -618,7 +626,7 @@
         <div id="ai-analysis-result" class="ai-result hidden">
           <div class="ai-header">
             <i class="fas fa-robot"></i>
-            <span>Análise da IA</span>
+            <span data-i18n="sighting.ai.title">Análise da IA</span>
           </div>
           <div id="ai-matches" class="ai-matches">
             <!-- Matches will be inserted here -->
@@ -714,18 +722,18 @@
         </div>
 
         <div class="form-group">
-          <label>Observações</label>
-          <textarea id="obs-avistamento" class="form-textarea" placeholder="Estado do animal, se tinha coleira, local exato..." rows="3"></textarea>
+          <label data-i18n="sighting.observation">Observações</label>
+          <textarea id="obs-avistamento" class="form-textarea" placeholder="Estado do animal, se tinha coleira, local exato..." data-i18n-placeholder="sighting.observation.placeholder" rows="3"></textarea>
         </div>
 
         <div class="form-group">
-          <label>Seu contato (opcional)</label>
-          <input type="tel" id="contato-avistamento" class="form-input" placeholder="(00) 00000-0000">
+          <label data-i18n="sighting.contact">Seu contato (opcional)</label>
+          <input type="tel" id="contato-avistamento" class="form-input" placeholder="(00) 00000-0000" data-i18n-placeholder="report.phone.placeholder">
         </div>
 
         <button id="btn-reportar-avistamento" class="btn-secondary btn-large" disabled>
           <i class="fas fa-paper-plane"></i>
-          <span>Enviar Avistamento</span>
+          <span data-i18n="sighting.submit">Enviar Avistamento</span>
         </button>
       </div>
     </section>
@@ -734,7 +742,7 @@
     <section id="page-detalhes" class="page">
       <div class="page-header">
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
-        <h2>Detalhes do Pet</h2>
+        <h2 data-i18n="details.title">Detalhes do Pet</h2>
       </div>
       <div id="detalhes-content" class="detalhes-container">
         <!-- Populated dynamically -->
@@ -745,12 +753,12 @@
     <section id="page-meus-reportes" class="page">
       <div class="page-header">
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
-        <h2>Meus Reportes</h2>
+        <h2 data-i18n="myreports.title">Meus Reportes</h2>
       </div>
       <!-- Abas: Ativos / Histórico -->
       <div class="reportes-tabs">
-        <button class="reportes-tab active" data-tab="ativos"><i class="fas fa-bullhorn"></i> Ativos</button>
-        <button class="reportes-tab" data-tab="historico"><i class="fas fa-archive"></i> Histórico</button>
+        <button class="reportes-tab active" data-tab="ativos"><i class="fas fa-bullhorn"></i> <span data-i18n="myreports.tab.active">Ativos</span></button>
+        <button class="reportes-tab" data-tab="historico"><i class="fas fa-archive"></i> <span data-i18n="myreports.tab.history">Histórico</span></button>
       </div>
       <div id="meus-reportes-list" class="reportes-list">
         <div class="empty-state">
@@ -770,7 +778,7 @@
     <section id="page-notificacoes" class="page">
       <div class="page-header">
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
-        <h2>Notificações</h2>
+        <h2 data-i18n="notif.title">Notificações</h2>
       </div>
       <div id="notificacoes-list" class="notificacoes-list">
         <div class="empty-state">
@@ -784,14 +792,14 @@
     <section id="page-mapa" class="page">
       <div class="page-header">
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
-        <h2>Mapa de Alertas</h2>
+        <h2 data-i18n="map.title">Mapa de Alertas</h2>
       </div>
       <div id="map-container" class="map-container">
         <div id="map-canvas" class="map-canvas"></div>
         <div class="map-legend">
-          <div class="legend-item"><span class="legend-dot red"></span> Perdido</div>
-          <div class="legend-item"><span class="legend-dot green"></span> Avistado</div>
-          <div class="legend-item"><span class="legend-dot blue"></span> Você</div>
+          <div class="legend-item"><span class="legend-dot red"></span> <span data-i18n="map.legend.lost">Perdido</span></div>
+          <div class="legend-item"><span class="legend-dot green"></span> <span data-i18n="map.legend.sighted">Avistado</span></div>
+          <div class="legend-item"><span class="legend-dot blue"></span> <span data-i18n="map.legend.you">Você</span></div>
         </div>
       </div>
     </section>
@@ -800,39 +808,39 @@
     <section id="page-como-funciona" class="page">
       <div class="page-header">
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
-        <h2>Como Funciona</h2>
+        <h2 data-i18n="how.title">Como Funciona</h2>
       </div>
       <div class="content-page">
         <div class="how-it-works">
           <div class="step-card">
             <div class="step-number">1</div>
             <div class="step-icon"><i class="fas fa-camera"></i></div>
-            <h3>Tire uma Foto</h3>
-            <p>Suba uma foto do seu pet. A imagem será comprimida automaticamente para não usar espaço.</p>
+            <h3 data-i18n="how.step1.title">Tire uma Foto</h3>
+            <p data-i18n="how.step1.desc">Suba uma foto do seu pet. A imagem será comprimida automaticamente para não usar espaço.</p>
           </div>
           <div class="step-card">
             <div class="step-number">2</div>
             <div class="step-icon"><i class="fas fa-map-marker-alt"></i></div>
-            <h3>Localização</h3>
-            <p>Informe onde o pet foi perdido. O app usa GPS para precisão.</p>
+            <h3 data-i18n="how.step2.title">Localização</h3>
+            <p data-i18n="how.step2.desc">Informe onde o pet foi perdido. O app usa GPS para precisão.</p>
           </div>
           <div class="step-card">
             <div class="step-number">3</div>
             <div class="step-icon"><i class="fas fa-bolt"></i></div>
-            <h3>Alerta Instantâneo</h3>
-            <p>O alerta é disparado para pessoas próximas: <strong>5km para cães</strong>, <strong>2km para gatos</strong>.</p>
+            <h3 data-i18n="how.step3.title">Alerta Instantâneo</h3>
+            <p data-i18n-html="how.step3.desc">O alerta é disparado para pessoas próximas: <strong>5km para cães</strong>, <strong>2km para gatos</strong>.</p>
           </div>
           <div class="step-card">
             <div class="step-number">4</div>
             <div class="step-icon"><i class="fas fa-robot"></i></div>
-            <h3>IA Compara Fotos</h3>
-            <p>Quando alguém avista um pet, a IA compara as fotos. Com <strong>92%+ de similaridade</strong>, o dono é notificado automaticamente!</p>
+            <h3 data-i18n="how.step4.title">IA Compara Fotos</h3>
+            <p data-i18n-html="how.step4.desc">Quando alguém avista um pet, a IA compara as fotos. Com <strong>92%+ de similaridade</strong>, o dono é notificado automaticamente!</p>
           </div>
           <div class="step-card">
             <div class="step-number">5</div>
             <div class="step-icon"><i class="fas fa-heart"></i></div>
-            <h3>Reencontro!</h3>
-            <p>O dono entra em contato e busca seu melhor amigo. Tudo gratuito!</p>
+            <h3 data-i18n="how.step5.title">Reencontro!</h3>
+            <p data-i18n="how.step5.desc">O dono entra em contato e busca seu melhor amigo. Tudo gratuito!</p>
           </div>
         </div>
       </div>
@@ -842,7 +850,7 @@
     <section id="page-perfil" class="page">
       <div class="page-header">
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
-        <h2>Meu Perfil</h2>
+        <h2 data-i18n="profile.title">Meu Perfil</h2>
       </div>
       <div class="content-page">
         <div class="profile-card">
@@ -850,26 +858,26 @@
             <i class="fas fa-user-circle"></i>
           </div>
           <div id="profile-info" class="profile-info">
-            <h3 id="profile-name">Carregando...</h3>
+            <h3 id="profile-name" data-i18n="profile.loading">Carregando...</h3>
             <p id="profile-email" class="text-muted"></p>
             <span id="account-type-badge" class="account-badge"></span>
           </div>
         </div>
         <div class="form-container">
           <div class="form-group">
-            <label><i class="fas fa-user"></i> Nome</label>
-            <input type="text" id="profile-edit-name" class="form-input" placeholder="Seu nome">
+            <label><i class="fas fa-user"></i> <span data-i18n="profile.name">Nome</span></label>
+            <input type="text" id="profile-edit-name" class="form-input" placeholder="Seu nome" data-i18n-placeholder="profile.name.placeholder">
           </div>
           <div class="form-group">
-            <label><i class="fas fa-phone"></i> Telefone</label>
-            <input type="tel" id="profile-edit-phone" class="form-input" placeholder="(00) 00000-0000">
+            <label><i class="fas fa-phone"></i> <span data-i18n="profile.phone">Telefone</span></label>
+            <input type="tel" id="profile-edit-phone" class="form-input" placeholder="(00) 00000-0000" data-i18n-placeholder="profile.phone.placeholder">
           </div>
           <div class="form-group">
-            <label><i class="fas fa-city"></i> Cidade</label>
-            <input type="text" id="profile-edit-city" class="form-input" placeholder="Sua cidade">
+            <label><i class="fas fa-city"></i> <span data-i18n="profile.city">Cidade</span></label>
+            <input type="text" id="profile-edit-city" class="form-input" placeholder="Sua cidade" data-i18n-placeholder="profile.city.placeholder">
           </div>
           <button id="btn-save-profile" class="btn-primary">
-            <i class="fas fa-save"></i> <span>Salvar Alterações</span>
+            <i class="fas fa-save"></i> <span data-i18n="profile.save">Salvar Alterações</span>
           </button>
         </div>
 
@@ -889,13 +897,13 @@
             <input type="password" id="new-password2" class="form-input" placeholder="Repita a nova senha">
           </div>
           <button id="btn-change-password" class="btn-secondary">
-            <i class="fas fa-lock"></i> <span>Alterar Senha</span>
+            <i class="fas fa-lock"></i> <span data-i18n="profile.change_pass.btn">Alterar Senha</span>
           </button>
         </div>
 
         <div class="profile-stats">
-          <div class="stat-box"><span id="profile-stat-reports">0</span><small>Reportes</small></div>
-          <div class="stat-box"><span id="profile-stat-sightings">0</span><small>Avistamentos</small></div>
+          <div class="stat-box"><span id="profile-stat-reports">0</span><small data-i18n="profile.stat.reports">Reportes</small></div>
+          <div class="stat-box"><span id="profile-stat-sightings">0</span><small data-i18n="profile.stat.sightings">Avistamentos</small></div>
         </div>
       </div>
     </section>
@@ -904,7 +912,7 @@
     <section id="page-privacidade" class="page">
       <div class="page-header">
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
-        <h2>Privacidade e Segurança</h2>
+        <h2 data-i18n="privacy.title">Privacidade e Segurança</h2>
       </div>
       <div class="content-page">
         <div class="privacy-section">
@@ -985,7 +993,7 @@
     <section id="page-patrocinadores" class="page">
       <div class="page-header">
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
-        <h2>Patrocinadores</h2>
+        <h2 data-i18n="sponsors.title">Patrocinadores</h2>
       </div>
       <div class="content-page">
 
@@ -1110,16 +1118,16 @@
     <section id="page-sobre" class="page">
       <div class="page-header">
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
-        <h2>Sobre</h2>
+        <h2 data-i18n="about.title">Sobre</h2>
       </div>
       <div class="content-page">
         <div class="about-section">
           <div class="about-logo">
             <i class="fas fa-paw"></i>
           </div>
-          <h3>Encontre Pet</h3>
-          <p class="about-version">Versão 1.0.0</p>
-          <p class="about-desc">
+          <h3 data-i18n="app.name">Encontre Pet</h3>
+          <p class="about-version" data-i18n="app.version">Versão 1.0.0</p>
+          <p class="about-desc" data-i18n-html="about.desc">
             O <strong>Encontre Pet</strong> é um app 100% gratuito criado com o objetivo de ajudar 
             pessoas a encontrarem seus pets perdidos ou abandonados. Utilizamos tecnologia de 
             geolocalização e inteligência artificial para conectar quem perdeu com quem encontrou.
@@ -1155,19 +1163,19 @@
   <nav class="bottom-nav">
     <button class="nav-item active" data-page="home">
       <i class="fas fa-home"></i>
-      <span>Início</span>
+      <span data-i18n="nav.home">Início</span>
     </button>
     <button class="nav-item" data-page="reportar-rapido" id="nav-reportar">
       <i class="fas fa-search-location"></i>
-      <span>Perdi Pet</span>
+      <span data-i18n="nav.lost">Perdi Pet</span>
     </button>
     <button class="nav-item" data-page="avistamento" id="nav-avistamento">
       <i class="fas fa-camera"></i>
-      <span>Vi um Pet</span>
+      <span data-i18n="nav.sighting">Vi um Pet</span>
     </button>
     <button class="nav-item" data-page="mapa">
       <i class="fas fa-map-marked-alt"></i>
-      <span>Mapa</span>
+      <span data-i18n="nav.map">Mapa</span>
     </button>
   </nav>
 
@@ -1181,33 +1189,33 @@
       <!-- ETAPA 1: Escolher desfecho -->
       <div id="feedback-step-1" class="feedback-step">
         <div class="found-feedback-header">
-          <h3>Encerrar Reporte</h3>
-          <p>Qual foi o desfecho?</p>
+          <h3 data-i18n="feedback.title">Encerrar Reporte</h3>
+          <p data-i18n="feedback.question">Qual foi o desfecho?</p>
         </div>
         <div class="desfecho-options">
           <button class="desfecho-btn desfecho-feliz" data-desfecho="encontrado_vivo">
             <div class="desfecho-icon">🎉</div>
             <div class="desfecho-text">
-              <strong>Encontrado Vivo!</strong>
-              <span>Pet foi reencontrado com vida</span>
+              <strong data-i18n="feedback.alive">Encontrado Vivo!</strong>
+              <span data-i18n="feedback.alive.desc">Pet foi reencontrado com vida</span>
             </div>
           </button>
           <button class="desfecho-btn desfecho-triste" data-desfecho="encontrado_morto">
             <div class="desfecho-icon">🕊️</div>
             <div class="desfecho-text">
-              <strong>Infelizmente Faleceu</strong>
-              <span>Pet foi encontrado sem vida</span>
+              <strong data-i18n="feedback.deceased">Infelizmente Faleceu</strong>
+              <span data-i18n="feedback.deceased.desc">Pet foi encontrado sem vida</span>
             </div>
           </button>
           <button class="desfecho-btn desfecho-desistir" data-desfecho="desistencia">
             <div class="desfecho-icon">😔</div>
             <div class="desfecho-text">
-              <strong>Encerrar Busca</strong>
-              <span>Desistir de procurar por agora</span>
+              <strong data-i18n="feedback.giveup">Encerrar Busca</strong>
+              <span data-i18n="feedback.giveup.desc">Desistir de procurar por agora</span>
             </div>
           </button>
         </div>
-        <button id="btn-cancel-desfecho" class="btn-text" style="margin-top:12px">Cancelar</button>
+        <button id="btn-cancel-desfecho" class="btn-text" data-i18n="feedback.cancel" style="margin-top:12px">Cancelar</button>
       </div>
 
       <!-- ETAPA 2: Feedback detalhado -->
@@ -1261,8 +1269,8 @@
           </div>
         </div>
         <div class="found-feedback-actions">
-          <button id="btn-send-feedback" class="btn-primary"><i class="fas fa-paper-plane"></i> Enviar Feedback e Encerrar</button>
-          <button id="btn-skip-feedback" class="btn-text">Pular e encerrar sem feedback</button>
+          <button id="btn-send-feedback" class="btn-primary"><i class="fas fa-paper-plane"></i> <span data-i18n="feedback.send">Enviar Feedback e Encerrar</span></button>
+          <button id="btn-skip-feedback" class="btn-text" data-i18n="feedback.skip">Pular e encerrar sem feedback</button>
         </div>
       </div>
     </div>
@@ -1272,7 +1280,7 @@
     <div class="modal-overlay" id="photo-modal-overlay"></div>
     <div class="photo-source-sheet">
       <div class="photo-source-header">
-        <h3><i class="fas fa-image"></i> Adicionar Foto</h3>
+        <h3><i class="fas fa-image"></i> <span data-i18n="photo.title">Adicionar Foto</span></h3>
         <button id="photo-modal-close" class="btn-close-modal"><i class="fas fa-times"></i></button>
       </div>
       <div class="photo-source-options">
@@ -1281,8 +1289,8 @@
             <i class="fas fa-camera"></i>
           </div>
           <div class="photo-source-text">
-            <strong>Câmera</strong>
-            <span>Tirar foto agora</span>
+            <strong data-i18n="photo.camera">Câmera</strong>
+            <span data-i18n="photo.camera.desc">Tirar foto agora</span>
           </div>
         </button>
         <button id="photo-opt-gallery" class="photo-source-btn">
@@ -1290,12 +1298,12 @@
             <i class="fas fa-images"></i>
           </div>
           <div class="photo-source-text">
-            <strong>Galeria</strong>
-            <span>Escolher foto existente</span>
+            <strong data-i18n="photo.gallery">Galeria</strong>
+            <span data-i18n="photo.gallery.desc">Escolher foto existente</span>
           </div>
         </button>
       </div>
-      <button id="photo-opt-cancel" class="btn-cancel-photo">Cancelar</button>
+      <button id="photo-opt-cancel" class="btn-cancel-photo" data-i18n="photo.cancel">Cancelar</button>
     </div>
   </div>
 
@@ -1306,11 +1314,12 @@
   <div id="loading-overlay" class="loading-overlay hidden">
     <div class="loading-spinner">
       <i class="fas fa-paw fa-spin"></i>
-      <p id="loading-text">Processando...</p>
+      <p id="loading-text" data-i18n="app.loading">Processando...</p>
     </div>
   </div>
 
-  <!-- Scripts - Ordem importa! Firebase Config deve ser o primeiro -->
+  <!-- Scripts - Ordem importa! i18n antes de tudo, Firebase Config segundo -->
+  <script src="js/i18n.js"></script>
   <script src="js/firebase-config.js"></script>
   <script src="js/security.js"></script>
   <script src="js/auth.js"></script>

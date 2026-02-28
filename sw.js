@@ -8,6 +8,7 @@ const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/css/style.css',
+  '/js/i18n.js',
   '/js/firebase-config.js',
   '/js/security.js',
   '/js/auth.js',

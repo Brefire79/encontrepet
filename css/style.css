@@ -3975,3 +3975,44 @@ a { color: var(--primary); text-decoration: none; }
   background: #FFF3E0;
   color: #E65100;
 }
+
+/* ====== LANGUAGE SELECTOR ====== */
+.lang-selector {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+.lang-selector .lang-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.lang-buttons {
+  display: flex;
+  gap: 8px;
+}
+.lang-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg-card);
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+.lang-btn:hover {
+  border-color: var(--primary);
+  transform: scale(1.1);
+}
+.lang-btn.active {
+  border-color: var(--primary);
+  background: var(--primary-bg, rgba(99, 102, 241, 0.1));
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}

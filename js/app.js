@@ -19,6 +19,10 @@ const App = (() => {
   // ====== INICIALIZAÇÃO ======
 
   function init() {
+    // 0. Internacionalização
+    I18n.init();
+    setupLangSelector();
+
     // 1. Database
     DB.init();
 
@@ -53,6 +57,28 @@ const App = (() => {
     loadAIModel();
 
     console.log('🐾 Encontre Pet v1.0.0 inicializado!');
+  }
+
+  // ====== LANGUAGE SELECTOR ======
+
+  function setupLangSelector() {
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+      // Mark active
+      if (btn.dataset.lang === I18n.getLang()) btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        I18n.setLang(btn.dataset.lang);
+      });
+    });
+    // Re-render dynamic content on lang change
+    window.addEventListener('langchange', () => {
+      const user = Auth.getCurrentUser?.();
+      if (user) updateUserUI(user);
+      if (state.currentPage === 'home') loadHomeData();
+      if (state.currentPage === 'mapa') loadMap();
+      if (state.currentPage === 'notificacoes') loadNotificacoes();
+    });
   }
 
   // ====== AI MODEL ======
@@ -96,7 +122,7 @@ const App = (() => {
     const menuName = document.getElementById('menu-user-name');
     const menuEmail = document.getElementById('menu-user-email');
     if (menuName) menuName.textContent = name;
-    if (menuEmail) menuEmail.textContent = email ? Security.maskEmail(email) : '100% Gratuito';
+    if (menuEmail) menuEmail.textContent = email ? Security.maskEmail(email) : I18n.t('app.free');
 
     const avatar = document.getElementById('menu-avatar');
     if (avatar && userData.photoURL) {
@@ -154,7 +180,7 @@ const App = (() => {
       try {
         Security.checkRateLimit('register', 3, 300000);
         await Auth.registerWithEmail(email, pass, name);
-        showToast('Conta criada com sucesso! 🎉', 'success');
+        showToast(I18n.t('toast.account_created'), 'success');
       } catch (err) {
         showAuthError('register', err.message);
       } finally {
@@ -168,7 +194,7 @@ const App = (() => {
       setButtonLoading(btn, true);
       try {
         await Auth.loginAnonymous();
-        showToast('Bem-vindo! Você pode criar uma conta depois.', 'info');
+        showToast(I18n.t('toast.welcome_anonymous'), 'info');
       } catch (err) {
         showAuthError('login', err.message);
       } finally {
@@ -268,7 +294,7 @@ const App = (() => {
           cidade: document.getElementById('profile-edit-city').value.trim()
         });
         hideLoading();
-        showToast('Perfil atualizado! ✅', 'success');
+        showToast(I18n.t('toast.profile_saved'), 'success');
       } catch (err) {
         hideLoading();
         showToast(err.message, 'error');
@@ -281,13 +307,13 @@ const App = (() => {
       const newPass = document.getElementById('new-password')?.value;
       const newPass2 = document.getElementById('new-password2')?.value;
 
-      if (newPass !== newPass2) { showToast('As senhas não conferem.', 'error'); return; }
+      if (newPass !== newPass2) { showToast(I18n.t('toast.passwords_mismatch'), 'error'); return; }
 
       try {
         showLoading('Alterando senha...');
         await Auth.changePassword(current, newPass);
         hideLoading();
-        showToast('Senha alterada com sucesso! 🔒', 'success');
+        showToast(I18n.t('toast.password_changed'), 'success');
         document.getElementById('current-password').value = '';
         document.getElementById('new-password').value = '';
         document.getElementById('new-password2').value = '';
@@ -358,7 +384,7 @@ const App = (() => {
           notificacoes: document.getElementById('privacy-notifications').checked
         });
         hideLoading();
-        showToast('Configurações de privacidade salvas! 🔒', 'success');
+        showToast(I18n.t('toast.privacy_saved'), 'success');
       } catch (err) {
         hideLoading();
         showToast(err.message, 'error');
@@ -467,7 +493,7 @@ const App = (() => {
     });
 
     document.getElementById('btn-perdi-pet')?.addEventListener('click', () => {
-      if (!Auth.isLoggedIn()) { showToast('Faça login para reportar.', 'warning'); return; }
+      if (!Auth.isLoggedIn()) { showToast(I18n.t('toast.login_required'), 'warning'); return; }
       navigateTo('reportar-rapido');
     });
     document.getElementById('btn-vi-pet')?.addEventListener('click', () => navigateTo('avistamento'));
@@ -690,14 +716,14 @@ const App = (() => {
   }
 
   function renderAlertCard(pet) {
-    const labels = { cao: 'Cão', gato: 'Gato', outro: 'Outro' };
+    const labels = { cao: I18n.t('animal.dog'), gato: I18n.t('animal.cat'), outro: I18n.t('animal.other') };
     const badges = { cao: 'badge-cao', gato: 'badge-gato', outro: 'badge-outro' };
     const icons = { cao: 'fa-dog', gato: 'fa-cat', outro: 'fa-dove' };
     
     const dist = pet.distance ? GeoUtils.formatDistance(pet.distance) : '';
     const time = getTimeAgo(pet.created_at);
-    const name = pet.nome_pet || `${labels[pet.tipo_animal] || 'Pet'} perdido`;
-    const loc = pet.endereco_publico || pet.endereco || 'Região não informada';
+    const name = pet.nome_pet || `${labels[pet.tipo_animal] || 'Pet'} ${I18n.t('card.pet_lost').split(' ').pop()}`;
+    const loc = pet.endereco_publico || pet.endereco || I18n.t('card.region_unknown');
     const photo = fixCorruptedDataUrl(pet.foto_comprimida);
     const isApprox = pet.localizacao_aproximada;
 
@@ -707,15 +733,15 @@ const App = (() => {
           ${photo ? `<img class="alert-photo" src="${photo}" alt="${Security.sanitize(name)}" loading="lazy">` :
            `<div class="alert-photo alert-photo-placeholder"><i class="fas ${icons[pet.tipo_animal] || 'fa-paw'}"></i></div>`}
           <span class="alert-type-badge ${badges[pet.tipo_animal] || 'badge-outro'}">
-            <i class="fas ${icons[pet.tipo_animal] || 'fa-paw'}"></i> ${labels[pet.tipo_animal] || 'Outro'}
+            <i class="fas ${icons[pet.tipo_animal] || 'fa-paw'}"></i> ${labels[pet.tipo_animal] || I18n.t('animal.other')}
           </span>
-          ${pet.tem_recompensa ? '<span class="alert-reward-badge"><i class="fas fa-gift"></i></span>' : ''}
+          ${pet.tem_recompensa ? `<span class="alert-reward-badge"><i class="fas fa-gift"></i></span>` : ''}
         </div>
         <div class="alert-card-info">
           <div class="alert-name">${Security.sanitize(name)}</div>
           <div class="alert-location">
             <i class="fas fa-map-marker-alt"></i> ${Security.sanitize(loc)}
-            ${isApprox ? '<span class="location-approx-badge"><i class="fas fa-shield-alt"></i> Aprox.</span>' : ''}
+            ${isApprox ? `<span class="location-approx-badge"><i class="fas fa-shield-alt"></i> ${I18n.t('card.approx')}</span>` : ''}
           </div>
           <div class="alert-card-footer">
             <span class="alert-time"><i class="far fa-clock"></i> ${time}</span>
@@ -817,7 +843,7 @@ const App = (() => {
     } catch (err) {
       // Se a compressão falhar, manter a preview com a foto bruta
       state.photoData = { dataUrl: instantUrl, originalSize: file.size, compressedSize: file.size };
-      showToast('Foto adicionada (sem compressão).', 'warning');
+      showToast(I18n.t('toast.photo_no_compress'), 'warning');
     }
   }
 
@@ -841,7 +867,7 @@ const App = (() => {
         const radio = document.querySelector(`input[name="${radioName}"][value="${analysis.animalType}"]`);
         if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change')); }
         if (analysis.breedGuess) {
-          showToast(`🤖 IA detectou: ${analysis.breedGuess} (${analysis.confidence}%)`, 'info');
+          showToast(I18n.t('toast.ai_detected', {breed: analysis.breedGuess, confidence: analysis.confidence}), 'info');
         }
       }
     } catch {
@@ -883,7 +909,7 @@ const App = (() => {
       document.getElementById('endereco-manual').value = address;
       if (btn) btn.querySelector('span').textContent = 'Localização obtida ✓';
       btn?.classList.remove('loading');
-      showToast('Localização capturada! 🔒 Será exibida de forma aproximada.', 'success');
+      showToast(I18n.t('toast.location_captured'), 'success');
       validateReportForm();
     } catch (err) {
       btn?.classList.remove('loading');
@@ -943,7 +969,7 @@ const App = (() => {
       });
 
       hideLoading();
-      showToast(`🚨 Alerta disparado em raio de ${GeoUtils.getSearchRadius(tipo)}km!`, 'success');
+      showToast(I18n.t('toast.alert_radius', {radius: GeoUtils.getSearchRadius(tipo)}), 'success');
       incrementarContadorPerfil('pets_reportados');
       navigateTo('cadastro-completo');
       state.photoData = null;
@@ -952,7 +978,7 @@ const App = (() => {
       document.getElementById('upload-placeholder-perdido')?.classList.remove('hidden');
     } catch (err) {
       hideLoading();
-      showToast(err.message || 'Erro ao enviar alerta.', 'error');
+      showToast(err.message || I18n.t('toast.alert_error'), 'error');
     } finally { state.isLoading = false; }
   }
 
@@ -981,11 +1007,11 @@ const App = (() => {
         contato_email: document.getElementById('email-tutor')?.value.trim()
       });
       hideLoading();
-      showToast('Cadastro completado! 🎉', 'success');
+      showToast(I18n.t('toast.complete_done'), 'success');
       navigateTo('home');
     } catch (err) {
       hideLoading();
-      showToast('Erro ao salvar.', 'error');
+      showToast(I18n.t('toast.save_error'), 'error');
     }
   }
 
@@ -1068,7 +1094,7 @@ const App = (() => {
     } catch (err) {
       // Se a compressão falhar, manter a preview com a foto bruta
       state.avistamentoPhotoData = { dataUrl: instantUrl, originalSize: file.size, compressedSize: file.size };
-      showToast('Foto adicionada (sem compressão).', 'warning');
+      showToast(I18n.t('toast.photo_no_compress'), 'warning');
     }
   }
 
@@ -1132,7 +1158,7 @@ const App = (() => {
         });
 
         if (matches.some(m => m.totalScore >= 92)) {
-          showToast('🎉 Match forte encontrado! O dono será notificado!', 'match');
+          showToast(I18n.t('toast.match_found'), 'match');
           for (const m of matches.filter(x => x.totalScore >= 92)) {
             try { await DB.criarNotificacao(AIMatch.generateMatchNotification(m, sightingData)); } catch (e) {}
           }
@@ -1190,13 +1216,13 @@ const App = (() => {
         porte: document.getElementById('porte-avistamento')?.value || ''
       });
       hideLoading();
-      showToast('Avistamento enviado! Obrigado! 🐾', 'success');
+      showToast(I18n.t('toast.sighting_thanks'), 'success');
       incrementarContadorPerfil('avistamentos_count');
       clearPhoto('avistamento');
       navigateTo('home');
     } catch (err) {
       hideLoading();
-      showToast(err.message || 'Erro ao enviar.', 'error');
+      showToast(err.message || I18n.t('toast.send_error'), 'error');
     } finally { state.isLoading = false; }
   }
 
@@ -1260,7 +1286,7 @@ const App = (() => {
       navigateTo('detalhes');
     } catch (err) {
       hideLoading();
-      showToast('Erro ao carregar detalhes.', 'error');
+      showToast(I18n.t('toast.details_error'), 'error');
     }
   }
 
@@ -1275,7 +1301,7 @@ const App = (() => {
   function sharePet(id, name) {
     const data = { title: `🐾 ${name}`, text: `Ajude a encontrar ${name}!`, url: window.location.origin + `/index.html#detalhes?id=${id}` };
     if (navigator.share) { navigator.share(data).catch(() => {}); } else {
-      navigator.clipboard?.writeText(data.url).then(() => showToast('Link copiado!', 'success'));
+      navigator.clipboard?.writeText(data.url).then(() => showToast(I18n.t('toast.link_copied'), 'success'));
     }
   }
 
@@ -1412,7 +1438,7 @@ const App = (() => {
       if (badge) { badge.textContent = unread; badge.classList.toggle('hidden', unread === 0); }
 
       if (notifs.length === 0) {
-        container.innerHTML = '<div class="empty-state"><i class="fas fa-bell-slash"></i><p>Nenhuma notificação.</p></div>';
+        container.innerHTML = `<div class="empty-state"><i class="fas fa-bell-slash"></i><p>${I18n.t('notif.empty')}</p></div>`;
         return;
       }
 
@@ -1422,9 +1448,9 @@ const App = (() => {
             <i class="fas ${n.tipo === 'match_ia' ? 'fa-robot' : 'fa-bell'}"></i>
           </div>
           <div class="notif-text">
-            <div class="notif-title">${n.tipo === 'match_ia' ? 'Possível Match!' : 'Notificação'}</div>
+            <div class="notif-title">${n.tipo === 'match_ia' ? I18n.t('notif.match_title') : I18n.t('notif.notification')}</div>
             <div class="notif-desc">${Security.sanitize(n.mensagem || '')}</div>
-            ${n.similaridade ? `<div style="color:var(--success);font-weight:700;font-size:0.85rem">${n.similaridade}% similaridade</div>` : ''}
+            ${n.similaridade ? `<div style="color:var(--success);font-weight:700;font-size:0.85rem">${I18n.t('notif.similarity', {pct: n.similaridade})}</div>` : ''}
             <div class="notif-time">${getTimeAgo(n.created_at)}</div>
           </div>
         </div>`).join('');
@@ -1432,7 +1458,7 @@ const App = (() => {
       container.querySelectorAll('.notif-item').forEach(item => {
         item.addEventListener('click', async () => { try { await DB.marcarNotificacaoLida(item.dataset.nid); item.classList.remove('unread'); } catch {} });
       });
-    } catch { container.innerHTML = '<div class="empty-state"><p>Erro ao carregar.</p></div>'; }
+    } catch { container.innerHTML = `<div class="empty-state"><p>${I18n.t('notif.load_error')}</p></div>`; }
   }
 
   // ====== MAPA ======
@@ -1448,7 +1474,7 @@ const App = (() => {
       const total = pets.length + avistamentos.length;
 
       if (total === 0) {
-        canvas.innerHTML = '<div style="text-align:center;padding:40px"><i class="fas fa-map-marked-alt" style="font-size:3rem;color:var(--text-muted);display:block;margin-bottom:12px"></i><p>Nenhum alerta com localização.</p></div>';
+        canvas.innerHTML = `<div style="text-align:center;padding:40px"><i class="fas fa-map-marked-alt" style="font-size:3rem;color:var(--text-muted);display:block;margin-bottom:12px"></i><p>${I18n.t('map.empty')}</p></div>`;
         return;
       }
 
@@ -1456,15 +1482,15 @@ const App = (() => {
       let html = '<div class="mapa-lista">';
 
       if (pets.length > 0) {
-        html += `<div class="mapa-section-header"><i class="fas fa-exclamation-circle" style="color:var(--danger)"></i> ${pets.length} Pet(s) Perdido(s)</div>`;
+        html += `<div class="mapa-section-header"><i class="fas fa-exclamation-circle" style="color:var(--danger)"></i> ${I18n.t('map.pets_count', {count: pets.length})}</div>`;
         html += pets.map(p => {
           const pub = Security.sanitizeForPublic(p, settings) || p;
           const photo = fixCorruptedDataUrl(pub.foto_comprimida);
           const name = Security.sanitize(pub.nome_pet || 'Pet');
-          const loc = Security.sanitize(pub.endereco_publico || pub.endereco || 'Região');
+          const loc = Security.sanitize(pub.endereco_publico || pub.endereco || I18n.t('map.region'));
           const desc = Security.sanitize(pub.descricao || '');
           const time = getTimeAgo(pub.created_at);
-          const labels = { cao: 'Cão', gato: 'Gato', outro: 'Outro' };
+          const labels = { cao: I18n.t('animal.dog'), gato: I18n.t('animal.cat'), outro: I18n.t('animal.other') };
           return `<div class="mapa-card" data-id="${p.id}">
             <div class="mapa-card-main">
               <div class="mapa-card-thumb">
@@ -1481,25 +1507,25 @@ const App = (() => {
                 </div>
               </div>
             </div>
-            <button class="mapa-card-expand" onclick="App.showPetDetails('${p.id}')"><i class="fas fa-expand-alt"></i> Ver detalhes</button>
+            <button class="mapa-card-expand" onclick="App.showPetDetails('${p.id}')"><i class="fas fa-expand-alt"></i> ${I18n.t('map.details')}</button>
           </div>`;
         }).join('');
       }
 
       if (avistamentos.length > 0) {
-        html += `<div class="mapa-section-header" style="margin-top:16px"><i class="fas fa-eye" style="color:var(--success)"></i> ${avistamentos.length} Avistamento(s)</div>`;
+        html += `<div class="mapa-section-header" style="margin-top:16px"><i class="fas fa-eye" style="color:var(--success)"></i> ${I18n.t('map.sightings_count', {count: avistamentos.length})}</div>`;
         html += avistamentos.map(a => {
           const photo = fixCorruptedDataUrl(a.foto_comprimida);
-          const desc = Security.sanitize(a.descricao || 'Avistamento registrado');
+          const desc = Security.sanitize(a.descricao || I18n.t('map.sighting_desc'));
           const time = getTimeAgo(a.created_at || a.data_avistamento);
           return `<div class="mapa-card mapa-card-avistamento">
             <div class="mapa-card-main">
               <div class="mapa-card-thumb">
-                ${photo ? `<img src="${photo}" alt="Avistamento">` : `<i class="fas fa-eye"></i>`}
+                ${photo ? `<img src="${photo}" alt="${I18n.t('map.sighting')}">` : `<i class="fas fa-eye"></i>`}
                 <span class="mapa-card-type avistado"></span>
               </div>
               <div class="mapa-card-info">
-                <div class="mapa-card-name">Avistamento</div>
+                <div class="mapa-card-name">${I18n.t('map.sighting')}</div>
                 <div class="mapa-card-desc">${desc.substring(0, 100)}${desc.length > 100 ? '...' : ''}</div>
                 <div class="mapa-card-meta"><span><i class="far fa-clock"></i> ${time}</span></div>
               </div>
@@ -1512,7 +1538,7 @@ const App = (() => {
       canvas.innerHTML = html;
     } catch (err) {
       console.error('[App] Map error:', err);
-      canvas.innerHTML = '<div style="text-align:center;padding:40px"><p>Erro ao carregar mapa.</p></div>';
+      canvas.innerHTML = `<div style="text-align:center;padding:40px"><p>${I18n.t('map.error')}</p></div>`;
     }
   }
 
@@ -1727,15 +1753,15 @@ const App = (() => {
         hideLoading();
         closeFoundFeedbackModal();
         const toastMsg = foundDesfecho === 'encontrado_vivo'
-          ? 'Pet encontrado! 🎉 Obrigado pelo feedback!'
+          ? I18n.t('toast.found_alive')
           : foundDesfecho === 'encontrado_morto'
-            ? 'Registro salvo. Sentimos muito. 🕊️'
-            : 'Busca encerrada. Obrigado pelo feedback.';
+            ? I18n.t('toast.found_dead')
+            : I18n.t('toast.search_closed');
         showToast(toastMsg, foundDesfecho === 'encontrado_vivo' ? 'success' : 'info');
         loadMyReports();
       } catch (err) {
         hideLoading();
-        showToast('Erro ao salvar. Tente novamente.', 'error');
+        showToast(I18n.t('toast.feedback_error'), 'error');
       }
     });
 
@@ -1747,11 +1773,11 @@ const App = (() => {
         await DB.marcarEncontrado(foundPetId, { desfecho: foundDesfecho });
         hideLoading();
         closeFoundFeedbackModal();
-        showToast('Reporte encerrado.', 'info');
+        showToast(I18n.t('toast.report_closed'), 'info');
         loadMyReports();
       } catch (err) {
         hideLoading();
-        showToast('Erro ao salvar.', 'error');
+        showToast(I18n.t('toast.save_error'), 'error');
       }
     });
 
@@ -1799,13 +1825,14 @@ const App = (() => {
     const now = Date.now();
     const time = typeof ts === 'number' ? ts : (ts?.toMillis ? ts.toMillis() : new Date(ts).getTime());
     const min = Math.floor((now - time) / 60000);
-    if (min < 1) return 'Agora';
-    if (min < 60) return `${min}min`;
+    if (min < 1) return I18n.t('time.now');
+    if (min < 60) return I18n.t('time.minutes', {n: min});
     const hrs = Math.floor(min / 60);
-    if (hrs < 24) return `${hrs}h`;
+    if (hrs < 24) return I18n.t('time.hours', {n: hrs});
     const days = Math.floor(hrs / 24);
-    if (days < 7) return `${days}d`;
-    return new Date(time).toLocaleDateString('pt-BR');
+    if (days < 7) return I18n.t('time.days', {n: days});
+    const locale = I18n.getLang() === 'en' ? 'en-US' : I18n.getLang() === 'es' ? 'es-ES' : 'pt-BR';
+    return new Date(time).toLocaleDateString(locale);
   }
 
   // Init
