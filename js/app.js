@@ -1431,8 +1431,10 @@ const App = (() => {
 
       // Atualizar badge no tab
       const tabHistorico = document.querySelector('.reportes-tab[data-tab="historico"]');
-      if (tabHistorico && encerrados.length > 0) {
-        tabHistorico.innerHTML = `<i class="fas fa-archive"></i> ${I18n.t('myreports.tab.history')} <span class="tab-badge">${encerrados.length}</span>`;
+      if (tabHistorico) {
+        tabHistorico.innerHTML = encerrados.length > 0
+          ? `<i class="fas fa-archive"></i> ${I18n.t('myreports.tab.history')} <span class="tab-badge">${encerrados.length}</span>`
+          : `<i class="fas fa-archive"></i> ${I18n.t('myreports.tab.history')}`;
       }
 
     } catch { containerAtivos.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${I18n.t('myreports.load_error')}</p></div>`; }
@@ -1492,7 +1494,12 @@ const App = (() => {
           btn.disabled = true;
           btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
           await DB.reabrirReporte(btn.dataset.reopen);
+          DB.clearCache(DB.TABLES.PETS);
           showToast(I18n.t('toast.search_reopened'), 'success');
+          // Voltar para aba Ativos e scroll ao topo
+          const tabAtivos = document.querySelector('.reportes-tab[data-tab="ativos"]');
+          if (tabAtivos) tabAtivos.click();
+          window.scrollTo({ top: 0 });
           loadMyReports();
         } catch (err) {
           console.error('[App] Reopen error:', err);
