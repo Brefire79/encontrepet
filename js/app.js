@@ -568,16 +568,35 @@ const App = (() => {
   }
 
   function toggleSideMenu() {
-    document.getElementById('side-menu')?.classList.toggle('open');
+    const menu = document.getElementById('side-menu');
     const overlay = document.getElementById('side-menu-overlay');
-    overlay?.classList.toggle('hidden');
-    overlay?.classList.toggle('show');
+    if (!menu) return;
+    const isOpen = menu.classList.contains('open');
+    if (isOpen) {
+      closeSideMenu();
+    } else {
+      menu.classList.add('open');
+      if (overlay) {
+        overlay.classList.remove('hidden');
+        // Forçar reflow para que a transição CSS funcione
+        void overlay.offsetWidth;
+        overlay.classList.add('show');
+      }
+    }
   }
 
   function closeSideMenu() {
-    document.getElementById('side-menu')?.classList.remove('open');
+    const menu = document.getElementById('side-menu');
     const overlay = document.getElementById('side-menu-overlay');
-    if (overlay) { overlay.classList.remove('show'); setTimeout(() => overlay.classList.add('hidden'), 300); }
+    menu?.classList.remove('open');
+    if (overlay) {
+      overlay.classList.remove('show');
+      // Após transição, esconder definitivamente
+      const handler = () => { overlay.classList.add('hidden'); overlay.removeEventListener('transitionend', handler); };
+      overlay.addEventListener('transitionend', handler);
+      // Fallback se transitionend não disparar
+      setTimeout(() => overlay.classList.add('hidden'), 350);
+    }
   }
 
   // Swipe para fechar o menu lateral (arrastar para a direita)

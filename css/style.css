@@ -347,11 +347,13 @@ a { color: var(--primary); text-decoration: none; }
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s;
+  visibility: hidden;
 }
 
 .overlay.show {
   opacity: 1;
   pointer-events: auto;
+  visibility: visible;
 }
 
 .side-menu {
@@ -494,8 +496,7 @@ a { color: var(--primary); text-decoration: none; }
 .main-content {
   min-height: calc(100vh - var(--header-height) - var(--bottom-nav-height));
   min-height: calc(100dvh - var(--header-height) - var(--bottom-nav-height));
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  position: relative;
 }
 
 /* ===== PAGES ===== */
@@ -2074,6 +2075,7 @@ a { color: var(--primary); text-decoration: none; }
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  pointer-events: auto;
 }
 
 .modal-overlay {
