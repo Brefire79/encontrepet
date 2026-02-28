@@ -196,6 +196,32 @@ const GeoUtils = (() => {
   }
 
   /**
+   * Geocodificação direta — endereço → coordenadas (Nominatim/OSM)
+   * Retorna { lat, lng, display_name } ou null se não encontrar
+   */
+  async function forwardGeocode(address) {
+    try {
+      const q = encodeURIComponent(address);
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=1&addressdetails=1`,
+        { headers: { 'Accept-Language': 'pt-BR' } }
+      );
+      if (!response.ok) return null;
+      const results = await response.json();
+      if (results.length === 0) return null;
+      const r = results[0];
+      return {
+        lat: parseFloat(r.lat),
+        lng: parseFloat(r.lon),
+        display_name: r.display_name
+      };
+    } catch (err) {
+      console.warn('Forward geocode falhou:', err);
+      return null;
+    }
+  }
+
+  /**
    * Verifica se dois pets estão na mesma região (para matching)
    */
   function arePetsInSameRegion(pet1, pet2) {
@@ -219,6 +245,7 @@ const GeoUtils = (() => {
     findUsersInAlertRadius,
     formatDistance,
     reverseGeocode,
+    forwardGeocode,
     getMapUrl,
     arePetsInSameRegion,
     RAIO_BUSCA

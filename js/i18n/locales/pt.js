@@ -394,6 +394,8 @@ window.I18nLocales.pt = {
   'toast.welcome_anonymous': 'Bem-vindo! Você pode criar uma conta depois.',
   'toast.passwords_mismatch': 'As senhas não conferem.',
   'toast.location_captured': 'Localização capturada! 🔒 Será exibida de forma aproximada.',
+  'toast.location_imprecise': '⚠️ Localização imprecisa (PC). Corrija o endereço abaixo se necessário.',
+  'toast.address_found': '✅ Endereço encontrado! Coordenadas atualizadas.',
   'toast.alert_radius': '🚨 Alerta disparado em raio de {radius}km!',
   'toast.alert_error': 'Erro ao enviar alerta.',
   'toast.complete_done': 'Cadastro completado! 🎉',

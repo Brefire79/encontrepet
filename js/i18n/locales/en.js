@@ -394,6 +394,8 @@ window.I18nLocales.en = {
   'toast.welcome_anonymous': 'Welcome! You can create an account later.',
   'toast.passwords_mismatch': 'Passwords do not match.',
   'toast.location_captured': 'Location captured! 🔒 It will be shown approximately.',
+  'toast.location_imprecise': '⚠️ Location may be inaccurate (desktop). Edit the address below if needed.',
+  'toast.address_found': '✅ Address found! Coordinates updated.',
   'toast.alert_radius': '🚨 Alert sent within a {radius}km radius!',
   'toast.alert_error': 'Error sending alert.',
   'toast.complete_done': 'Details completed! 🎉',

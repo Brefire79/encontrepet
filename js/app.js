@@ -825,6 +825,44 @@ const App = (() => {
 
     document.getElementById('telefone-rapido')?.addEventListener('input', validateReportForm);
     document.getElementById('btn-disparar-alerta')?.addEventListener('click', handleDispararAlerta);
+
+    // Geocodificação do endereço manual (com debounce)
+    let geoTimer = null;
+    const enderecoInput = document.getElementById('endereco-manual');
+    enderecoInput?.addEventListener('input', () => {
+      clearTimeout(geoTimer);
+      const val = enderecoInput.value.trim();
+      if (val.length < 5) return;
+      geoTimer = setTimeout(async () => {
+        const result = await GeoUtils.forwardGeocode(val);
+        if (result) {
+          document.getElementById('lat-perdido').value = result.lat;
+          document.getElementById('lng-perdido').value = result.lng;
+          state.userLocation = { lat: result.lat, lng: result.lng, accuracy: 50 };
+          const info = document.getElementById('location-info');
+          info?.classList.remove('hidden');
+          document.getElementById('location-text').textContent = result.display_name;
+          showToast(I18n.t('toast.address_found'), 'success');
+        }
+      }, 1200);
+    });
+    // Geocodificar também ao sair do campo (blur)
+    enderecoInput?.addEventListener('blur', async () => {
+      clearTimeout(geoTimer);
+      const val = enderecoInput.value.trim();
+      // Só geocodificar se o campo foi editado e não há coordenadas ou se o endereço mudou
+      if (val.length >= 5 && !document.getElementById('lat-perdido').value) {
+        const result = await GeoUtils.forwardGeocode(val);
+        if (result) {
+          document.getElementById('lat-perdido').value = result.lat;
+          document.getElementById('lng-perdido').value = result.lng;
+          state.userLocation = { lat: result.lat, lng: result.lng, accuracy: 50 };
+          const info = document.getElementById('location-info');
+          info?.classList.remove('hidden');
+          document.getElementById('location-text').textContent = result.display_name;
+        }
+      }
+    });
   }
 
   async function handlePhotoUpload(e) {
@@ -946,7 +984,13 @@ const App = (() => {
       document.getElementById('endereco-manual').value = address;
       if (btn) btn.querySelector('span').textContent = I18n.t('report.location.got');
       btn?.classList.remove('loading');
-      showToast(I18n.t('toast.location_captured'), 'success');
+
+      // Avisar se precisão for baixa (desktop via IP geralmente > 1km)
+      if (pos.accuracy && pos.accuracy > 1000) {
+        showToast(I18n.t('toast.location_imprecise'), 'warning');
+      } else {
+        showToast(I18n.t('toast.location_captured'), 'success');
+      }
       validateReportForm();
     } catch (err) {
       btn?.classList.remove('loading');

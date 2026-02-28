@@ -366,6 +366,8 @@ window.I18nLocales.es = {
   'toast.welcome_anonymous': '¡Bienvenido! Puedes crear una cuenta después.',
   'toast.passwords_mismatch': 'Las contraseñas no coinciden.',
   'toast.location_captured': '¡Ubicación capturada! 🔒 Se mostrará de forma aproximada.',
+  'toast.location_imprecise': '⚠️ Ubicación imprecisa (PC). Corrija la dirección abajo si es necesario.',
+  'toast.address_found': '✅ ¡Dirección encontrada! Coordenadas actualizadas.',
   'toast.alert_radius': '🚨 ¡Alerta enviada en un radio de {radius}km!',
   'toast.alert_error': 'Error al enviar la alerta.',
   'toast.complete_done': '¡Registro completado! 🎉',
