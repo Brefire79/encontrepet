@@ -1601,22 +1601,44 @@ const App = (() => {
 
       if (avistamentos.length > 0) {
         html += `<div class="mapa-section-header" style="margin-top:16px"><i class="fas fa-eye" style="color:var(--success)"></i> ${I18n.t('map.sightings_count', {count: avistamentos.length})}</div>`;
-        html += avistamentos.map(a => {
+        html += avistamentos.map((a, idx) => {
           const photo = fixCorruptedDataUrl(a.foto_comprimida);
           const desc = Security.sanitize(a.descricao || I18n.t('map.sighting_desc'));
+          const fullDesc = Security.sanitize(a.descricao || '');
           const time = getTimeAgo(a.created_at || a.data_avistamento);
-          return `<div class="mapa-card mapa-card-avistamento">
-            <div class="mapa-card-main">
+          const loc = Security.sanitize(a.endereco || '');
+          const labels = { cao: I18n.t('animal.dog'), gato: I18n.t('animal.cat'), outro: I18n.t('animal.other') };
+          const tipoLabel = labels[a.tipo_animal] || '';
+          const cor = Security.sanitize(a.cor || '');
+          const porte = Security.sanitize(a.porte || '');
+          const traits = [tipoLabel, cor, porte].filter(Boolean).join(' • ');
+          return `<div class="mapa-card mapa-card-avistamento" id="sighting-card-${idx}">
+            <div class="mapa-card-main" onclick="document.getElementById('sighting-card-${idx}').classList.toggle('expanded')">
               <div class="mapa-card-thumb">
                 ${photo ? `<img src="${photo}" alt="${I18n.t('map.sighting')}">` : `<i class="fas fa-eye"></i>`}
                 <span class="mapa-card-type avistado"></span>
               </div>
               <div class="mapa-card-info">
-                <div class="mapa-card-name">${I18n.t('map.sighting')}</div>
-                <div class="mapa-card-desc">${desc.substring(0, 100)}${desc.length > 100 ? '...' : ''}</div>
-                <div class="mapa-card-meta"><span><i class="far fa-clock"></i> ${time}</span></div>
+                <div class="mapa-card-name">${I18n.t('map.sighting')} #${idx + 1}</div>
+                ${loc ? `<div class="mapa-card-loc"><i class="fas fa-map-marker-alt"></i> ${loc}</div>` : ''}
+                <div class="mapa-card-desc">${desc.substring(0, 80)}${desc.length > 80 ? '...' : ''}</div>
+                <div class="mapa-card-meta">
+                  ${traits ? `<span>${traits}</span>` : ''}
+                  <span><i class="far fa-clock"></i> ${time}</span>
+                </div>
               </div>
             </div>
+            <div class="mapa-card-detail">
+              ${photo ? `<img src="${photo}" alt="" style="width:100%;max-height:250px;object-fit:contain;border-radius:8px;margin-bottom:8px">` : ''}
+              ${fullDesc ? `<div class="mapa-card-detail-row"><i class="fas fa-align-left"></i> ${fullDesc}</div>` : ''}
+              ${loc ? `<div class="mapa-card-detail-row"><i class="fas fa-map-marker-alt"></i> ${loc}</div>` : ''}
+              ${traits ? `<div class="mapa-card-detail-row"><i class="fas fa-paw"></i> ${traits}</div>` : ''}
+              <div class="mapa-card-detail-row"><i class="far fa-clock"></i> ${time}</div>
+            </div>
+            <button class="mapa-card-toggle" onclick="document.getElementById('sighting-card-${idx}').classList.toggle('expanded')">
+              <i class="fas fa-chevron-down"></i>
+              <span class="toggle-text">${I18n.t('map.details')}</span>
+            </button>
           </div>`;
         }).join('');
       }

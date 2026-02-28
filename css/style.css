@@ -1858,28 +1858,20 @@ a { color: var(--primary); text-decoration: none; }
 
 /* ===== MAP ===== */
 .map-container {
-  height: calc(100vh - var(--header-height) - var(--bottom-nav-height) - 60px);
-  height: calc(100dvh - var(--header-height) - var(--bottom-nav-height) - 60px);
   position: relative;
 }
 
 .map-canvas {
   width: 100%;
-  height: 100%;
   background: var(--bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1rem;
-  color: var(--text-light);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .map-legend {
-  position: absolute;
-  bottom: 16px;
-  left: 16px;
   background: #fff;
   padding: 10px 14px;
+  margin: 0 12px 8px;
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow);
   display: flex;
@@ -2095,6 +2087,7 @@ a { color: var(--primary); text-decoration: none; }
 /* ===== MAPA CARDS ===== */
 .mapa-lista {
   padding: 12px;
+  padding-bottom: calc(20px + var(--bottom-nav-height));
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -2224,6 +2217,72 @@ a { color: var(--primary); text-decoration: none; }
 
 .mapa-card-avistamento {
   border-left: 3px solid var(--success);
+  cursor: pointer;
+}
+
+.mapa-card-avistamento:hover {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+}
+
+/* Collapsible sighting details */
+.mapa-card-detail {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 0.82rem;
+  color: var(--text-light);
+  line-height: 1.5;
+  display: none;
+}
+
+.mapa-card-avistamento.expanded .mapa-card-detail {
+  display: block;
+}
+
+.mapa-card-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.mapa-card-detail-row i {
+  width: 14px;
+  text-align: center;
+  color: var(--primary);
+  font-size: 0.75rem;
+}
+
+.mapa-card-toggle {
+  width: 100%;
+  padding: 6px;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--success);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: background 0.15s;
+}
+
+.mapa-card-toggle:hover {
+  background: rgba(81,207,102,0.06);
+}
+
+.mapa-card-avistamento.expanded .mapa-card-toggle .toggle-text::after {
+  content: '';
+}
+
+.mapa-card-toggle i {
+  transition: transform 0.2s;
+}
+
+.mapa-card-avistamento.expanded .mapa-card-toggle i {
+  transform: rotate(180deg);
 }
 
 /* ===== TOAST ===== */
