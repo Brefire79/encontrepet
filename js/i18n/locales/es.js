@@ -211,6 +211,8 @@ window.I18nLocales.es = {
   'myreports.outcome.found': '🎉 Encontrado vivo',
   'myreports.outcome.deceased': '🕊️ Falleció',
   'myreports.outcome.giveup': '😔 Búsqueda cerrada',
+  'myreports.btn.reopen': 'Reabrir búsqueda',
+  'myreports.reopen.confirm': '¿Deseas reabrir la búsqueda de esta mascota?',
   'sighting.ai.pet_unnamed': 'Mascota sin nombre',
   'sighting.ai.match_label': '¡Match!',
   'sighting.ai.possible_label': 'Posible',
@@ -385,6 +387,8 @@ window.I18nLocales.es = {
   'toast.found_alive': '¡Mascota reencontrada! 🎉 ¡Gracias por el feedback!',
   'toast.found_dead': 'Registro guardado. Lo sentimos mucho. 🕊️',
   'toast.search_closed': 'Búsqueda cerrada. Gracias por el feedback.',
+  'toast.search_reopened': '¡Búsqueda reabierta! 🔄',
+  'toast.reopen_error': 'Error al reabrir. Inténtalo de nuevo.',
 
   // — Cards / UI —
   'card.pet_lost': 'Mascota perdida',

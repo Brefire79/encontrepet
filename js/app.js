@@ -1425,6 +1425,7 @@ const App = (() => {
             <p class="text-muted">${I18n.t('myreports.history.empty.hint')}</p></div>`;
         } else {
           containerHistorico.innerHTML = encerrados.map(r => renderReporteItem(r, false)).join('');
+          bindReporteActions(containerHistorico);
         }
       }
 
@@ -1467,6 +1468,7 @@ const App = (() => {
           ${dataEncerrado ? `<small class="reporte-data-encerrado">${dataEncerrado}</small>` : ''}
           ${r.feedback_mensagem ? `<div class="reporte-feedback-msg"><i class="fas fa-quote-left"></i> ${Security.sanitize(r.feedback_mensagem)}</div>` : ''}
           ${r.feedback_nota ? `<div class="reporte-feedback-stars">${'★'.repeat(r.feedback_nota)}${'☆'.repeat(5 - r.feedback_nota)}</div>` : ''}
+          ${r.desfecho === 'desistencia' && isPet ? `<div class="reporte-actions"><button class="btn-small btn-reopen" data-reopen="${r.id}"><i class="fas fa-redo"></i> ${I18n.t('myreports.btn.reopen')}</button></div>` : ''}
         `}
       </div>
     </div>`;
@@ -1480,6 +1482,24 @@ const App = (() => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         openFoundFeedbackModal(btn.dataset.found);
+      });
+    });
+    container.querySelectorAll('[data-reopen]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm(I18n.t('myreports.reopen.confirm'))) return;
+        try {
+          btn.disabled = true;
+          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+          await DB.reabrirReporte(btn.dataset.reopen);
+          showToast(I18n.t('toast.search_reopened'), 'success');
+          loadMyReports();
+        } catch (err) {
+          console.error('[App] Reopen error:', err);
+          showToast(I18n.t('toast.reopen_error'), 'error');
+          btn.disabled = false;
+          btn.innerHTML = `<i class="fas fa-redo"></i> ${I18n.t('myreports.btn.reopen')}`;
+        }
       });
     });
   }

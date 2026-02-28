@@ -413,6 +413,25 @@ const DB = (() => {
   }
 
   /**
+   * Reabre um reporte encerrado por desistência.
+   * Só funciona se o desfecho for 'desistencia'.
+   * @param {string} petId
+   */
+  async function reabrirReporte(petId) {
+    const pet = await get(TABLES.PETS, petId);
+    if (!pet || pet.desfecho !== 'desistencia') {
+      throw new Error('Somente reportes encerrados por desistência podem ser reabertos.');
+    }
+    const updateData = {
+      status: 'ativo',
+      desfecho: null,
+      data_encerrado: null,
+      reaberto_em: new Date().toISOString()
+    };
+    return await update(TABLES.PETS, petId, updateData);
+  }
+
+  /**
    * Lista pets ativos — usa where('status') SEM orderBy no Firestore
    * para evitar necessidade de índice composto.
    * Ordenação feita em JS pelo fsList().
@@ -628,6 +647,7 @@ const DB = (() => {
     reportarPetPerdido,
     completarCadastro,
     marcarEncontrado,
+    reabrirReporte,
     listarPetsAtivos,
     listarPetsPorProximidade,
     reportarAvistamento,

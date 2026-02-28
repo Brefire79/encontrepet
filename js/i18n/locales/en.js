@@ -211,6 +211,8 @@ window.I18nLocales.en = {
   'myreports.outcome.found': '🎉 Found alive',
   'myreports.outcome.deceased': '🕊️ Passed away',
   'myreports.outcome.giveup': '😔 Search ended',
+  'myreports.btn.reopen': 'Reopen search',
+  'myreports.reopen.confirm': 'Do you want to reopen the search for this pet?',
   'sighting.ai.pet_unnamed': 'Unnamed pet',
   'sighting.ai.match_label': 'Match!',
   'sighting.ai.possible_label': 'Possible',
@@ -413,6 +415,8 @@ window.I18nLocales.en = {
   'toast.found_alive': 'Pet reunited! 🎉 Thanks for the feedback!',
   'toast.found_dead': 'Saved. We’re so sorry. 🕊️',
   'toast.search_closed': 'Search closed. Thanks for the feedback.',
+  'toast.search_reopened': 'Search reopened! 🔄',
+  'toast.reopen_error': 'Error reopening. Try again.',
 
   // — Cards / UI —
   'card.pet_lost': 'Lost pet',

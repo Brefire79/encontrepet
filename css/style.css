@@ -1797,6 +1797,21 @@ a { color: var(--primary); text-decoration: none; }
   color: #fff;
 }
 
+.btn-reopen {
+  background: #FF9800;
+  color: #fff;
+  transition: opacity 0.15s;
+}
+
+.btn-reopen:hover {
+  opacity: 0.85;
+}
+
+.btn-reopen:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 /* ===== NOTIFICAÇÕES LIST ===== */
 .notificacoes-list {
   padding: 16px;
