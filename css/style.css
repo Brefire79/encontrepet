@@ -2329,10 +2329,17 @@ a { color: var(--primary); text-decoration: none; }
 }
 
 @media (min-width: 768px) {
+  /* Garante scroll vertical no viewport mesmo com body estreito */
+  html {
+    overflow-y: scroll;
+  }
+
   body {
     max-width: 480px;
     margin: 0 auto;
     box-shadow: 0 0 40px rgba(0,0,0,0.1);
+    overflow-x: visible; /* Remove hidden no desktop — o max-width já contém */
+    overflow-y: visible; /* Deixa o html/viewport controlar o scroll */
   }
   
   .app-header {
