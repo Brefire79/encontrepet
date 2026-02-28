@@ -49,17 +49,26 @@ const FirebaseConfig = (() => {
       // Inicializar Firestore
       db = firebase.firestore();
 
-      // Habilitar persistência offline (API compatível com v10+)
+      // Habilitar persistência offline (API moderna)
       try {
-        db.settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED, merge: true });
+        db.settings({
+          cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED,
+          cache: firebase.firestore.persistentLocalCache
+            ? firebase.firestore.persistentLocalCache({ tabManager: firebase.firestore.persistentMultipleTabManager() })
+            : undefined,
+          merge: true
+        });
       } catch (e) { /* settings já aplicados */ }
-      db.enablePersistence({ synchronizeTabs: true }).catch(err => {
-        if (err.code === 'failed-precondition') {
-          console.warn('[Firebase] Persistência offline: múltiplas abas');
-        } else if (err.code === 'unimplemented') {
-          console.warn('[Firebase] Navegador não suporta persistência offline');
-        }
-      });
+      // Fallback para SDKs compat que ainda precisam de enablePersistence
+      if (!firebase.firestore.persistentLocalCache) {
+        db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+          if (err.code === 'failed-precondition') {
+            console.warn('[Firebase] Persistência offline: múltiplas abas');
+          } else if (err.code === 'unimplemented') {
+            console.warn('[Firebase] Navegador não suporta persistência offline');
+          }
+        });
+      }
 
       initialized = true;
       isAvailable = true;
