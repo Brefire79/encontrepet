@@ -64,7 +64,7 @@ window.I18nLocales.pt = {
   'home.stat.pets': 'Pets Reportados',
   'home.stat.found': 'Encontrados',
   'home.stat.sightings': 'Avistamentos',
-  'home.stat.users': 'Usuários',
+  'home.stat.reached': 'Pessoas Alcançadas',
 
   // — Quick actions —
   'home.action.lost.title': 'Perdi meu Pet',
@@ -84,7 +84,7 @@ window.I18nLocales.pt = {
   'home.effectiveness.title': 'Efetividade dos Alertas',
   'home.ef.rate': 'Taxa de Reencontro',
   'home.ef.app': 'Encontrados via App',
-  'home.ef.users': 'Pessoas Cadastradas',
+  'home.ef.reached': 'Pessoas na Região',
 
   // — Success stories —
   'home.stories.title': 'Reencontros Felizes',
@@ -399,6 +399,7 @@ window.I18nLocales.pt = {
   'toast.location_imprecise': '⚠️ Localização imprecisa (PC). Corrija o endereço abaixo se necessário.',
   'toast.address_found': '✅ Endereço encontrado! Coordenadas atualizadas.',
   'toast.alert_radius': '🚨 Alerta disparado em raio de {radius}km!',
+  'toast.alert_reached': '🚨 Alerta enviado para {count} pessoas em um raio de {radius}km!',
   'toast.alert_error': 'Erro ao enviar alerta.',
   'toast.complete_done': 'Cadastro completado! 🎉',
   'toast.save_error': 'Erro ao salvar.',

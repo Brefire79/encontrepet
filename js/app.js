@@ -628,21 +628,46 @@ const App = (() => {
       animateCounter('stat-pets', stats.totalPets);
       animateCounter('stat-encontrados', stats.encontrados);
       animateCounter('stat-avistamentos', stats.avistamentos);
-      animateCounter('stat-usuarios', stats.usuarios);
 
       // Painel de efetividade
       const elTaxa = document.getElementById('ef-taxa');
       if (elTaxa) elTaxa.textContent = stats.taxaSucesso + '%';
       const elApp = document.getElementById('ef-app-ajudou');
       if (elApp) elApp.textContent = stats.appAjudou;
-      const elUsuarios = document.getElementById('ef-usuarios');
-      if (elUsuarios) elUsuarios.textContent = stats.usuarios;
+
+      // Pessoas alcançadas (regional) — assíncrono, não bloqueia o resto
+      loadReachedCount();
 
       // Histórias de sucesso
       renderSuccessStories(stats.historiasSucesso || []);
 
       await loadAlertsFeed();
     } catch (err) { console.error('[App] Home error:', err); }
+  }
+
+  /**
+   * Calcula e exibe o número de pessoas alcançáveis na região do usuário.
+   * Roda em paralelo para não travar o carregamento da Home.
+   */
+  async function loadReachedCount() {
+    const elStat = document.getElementById('stat-alcancadas');
+    const elPanel = document.getElementById('ef-alcancadas');
+    try {
+      const pos = await GeoUtils.getCurrentPosition().catch(() => GeoUtils.getLastLocation());
+      if (!pos || !pos.lat) {
+        if (elStat) elStat.textContent = '—';
+        if (elPanel) elPanel.textContent = '—';
+        return;
+      }
+      const DEFAULT_RADIUS = 5; // km
+      const reached = await DB.countUsersInRadius(pos.lat, pos.lng, DEFAULT_RADIUS);
+      if (elStat) animateCounter('stat-alcancadas', reached);
+      if (elPanel) elPanel.textContent = reached;
+    } catch (err) {
+      console.warn('[App] Reached count error:', err);
+      if (elStat) elStat.textContent = '—';
+      if (elPanel) elPanel.textContent = '—';
+    }
   }
 
   function renderSuccessStories(stories) {
@@ -1070,7 +1095,18 @@ const App = (() => {
       });
 
       hideLoading();
-      showToast(I18n.t('toast.alert_radius', {radius: GeoUtils.getSearchRadius(tipo)}), 'success');
+
+      // Calcular pessoas alcançadas no raio do alerta
+      const alertLat = parseFloat(document.getElementById('lat-perdido')?.value) || 0;
+      const alertLng = parseFloat(document.getElementById('lng-perdido')?.value) || 0;
+      const alertRadius = GeoUtils.getSearchRadius(tipo);
+      const reached = await DB.countUsersInRadius(alertLat, alertLng, alertRadius).catch(() => 0);
+
+      if (reached > 0) {
+        showToast(I18n.t('toast.alert_reached', {count: reached, radius: alertRadius}), 'success');
+      } else {
+        showToast(I18n.t('toast.alert_radius', {radius: alertRadius}), 'success');
+      }
       incrementarContadorPerfil('pets_reportados');
       navigateTo('cadastro-completo');
       // Revogar objectURL antes de limpar (evita leak)

@@ -64,7 +64,7 @@ window.I18nLocales.en = {
   'home.stat.pets': 'Reported Pets',
   'home.stat.found': 'Reunited',
   'home.stat.sightings': 'Sightings',
-  'home.stat.users': 'Users',
+  'home.stat.reached': 'People Reached',
 
   // — Quick actions —
   'home.action.lost.title': 'I Lost My Pet',
@@ -84,7 +84,7 @@ window.I18nLocales.en = {
   'home.effectiveness.title': 'Alert Effectiveness',
   'home.ef.rate': 'Reunion Rate',
   'home.ef.app': 'Reunited via App',
-  'home.ef.users': 'Registered People',
+  'home.ef.reached': 'People in Region',
 
   // — Stories —
   'home.stories.title': 'Happy Reunions',
@@ -399,6 +399,7 @@ window.I18nLocales.en = {
   'toast.location_imprecise': '⚠️ Location may be inaccurate (desktop). Edit the address below if needed.',
   'toast.address_found': '✅ Address found! Coordinates updated.',
   'toast.alert_radius': '🚨 Alert sent within a {radius}km radius!',
+  'toast.alert_reached': '🚨 Alert sent to {count} people within {radius}km!',
   'toast.alert_error': 'Error sending alert.',
   'toast.complete_done': 'Details completed! 🎉',
   'toast.save_error': 'Error saving.',

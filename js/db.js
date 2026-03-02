@@ -560,17 +560,54 @@ const DB = (() => {
   //  ESTATÍSTICAS
   // ============================================================
 
+  /**
+   * Conta usuários ativos dentro de um raio a partir de um ponto.
+   * Filtra: notificações ativadas + atividade nos últimos 30 dias.
+   * @param {number} centerLat
+   * @param {number} centerLng
+   * @param {number} radiusKm
+   * @returns {Promise<number>}
+   */
+  async function countUsersInRadius(centerLat, centerLng, radiusKm = 3) {
+    try {
+      if (!centerLat || !centerLng) return 0;
+      const usersResult = await list(TABLES.USUARIOS, { limit: 1000 });
+      const allUsers = (usersResult.data || []).filter(u => !u.is_anonymous);
+      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+
+      let count = 0;
+      for (const user of allUsers) {
+        if (!user.latitude && !user.location?.lat) continue;
+        const uLat = user.latitude || user.location?.lat || 0;
+        const uLng = user.longitude || user.location?.lng || 0;
+        if (!uLat || !uLng) continue;
+
+        // Verificar atividade recente (se campo existir)
+        if (user.lastActive) {
+          const lastActive = typeof user.lastActive === 'number' ? user.lastActive :
+            (user.lastActive?.toMillis ? user.lastActive.toMillis() : new Date(user.lastActive).getTime());
+          if (lastActive < thirtyDaysAgo) continue;
+        }
+
+        const distance = GeoUtils.calculateDistance(centerLat, centerLng, uLat, uLng);
+        if (distance <= radiusKm) count++;
+      }
+      return count;
+    } catch (err) {
+      console.warn('[DB] countUsersInRadius error:', err);
+      return 0;
+    }
+  }
+
   async function getStats() {
     try {
       const petsResult = await list(TABLES.PETS, { limit: 500 });
       const avistResult = await list(TABLES.AVISTAMENTOS, { limit: 500 });
-      const usersResult = await list(TABLES.USUARIOS, { limit: 500 });
       const allPets = petsResult.data || [];
       const encerrados = allPets.filter(p => p.status !== 'ativo');
       const encontradosVivos = allPets.filter(p => p.status === 'encontrado' || p.desfecho === 'encontrado_vivo');
       const totalPetsAtivos = allPets.filter(p => p.status === 'ativo').length;
       const totalEncontrados = encontradosVivos.length;
-      const totalPets = allPets.length;
 
       // Taxa de sucesso (%) — pets encontrados vivos / total encerrados
       const totalEncerrados = encerrados.length;
@@ -583,7 +620,6 @@ const DB = (() => {
         totalPets: totalPetsAtivos,
         encontrados: totalEncontrados,
         avistamentos: (avistResult.data || []).length,
-        usuarios: (usersResult.data || []).filter(u => !u.is_anonymous).length,
         taxaSucesso,
         appAjudou,
         historiasSucesso: encontradosVivos
@@ -597,7 +633,7 @@ const DB = (() => {
       };
     } catch (err) {
       console.error('[DB] Stats error:', err);
-      return { totalPets: 0, encontrados: 0, avistamentos: 0, usuarios: 0, taxaSucesso: 0, appAjudou: 0, historiasSucesso: [] };
+      return { totalPets: 0, encontrados: 0, avistamentos: 0, taxaSucesso: 0, appAjudou: 0, historiasSucesso: [] };
     }
   }
 
@@ -648,6 +684,7 @@ const DB = (() => {
     completarCadastro,
     marcarEncontrado,
     reabrirReporte,
+    countUsersInRadius,
     listarPetsAtivos,
     listarPetsPorProximidade,
     reportarAvistamento,
