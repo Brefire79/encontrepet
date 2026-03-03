@@ -448,6 +448,23 @@ window.I18nLocales.pt = {
   'lang.en': 'English',
   'lang.es': 'Español',
 
+  // — Admin Profile Dashboard —
+  'profile.admin.title': 'Painel do Administrador',
+  'profile.admin.users': 'Usuários Cadastrados',
+  'profile.admin.pets': 'Pets Reportados',
+  'profile.admin.sightings': 'Avistamentos',
+  'profile.admin.found': 'Encontrados',
+  'profile.admin.success_rate': 'Taxa de Sucesso',
+  'profile.admin.blocked': 'Bloqueados',
+  'profile.admin.go_panel': 'Abrir Painel Completo',
+  'profile.change_pass': 'Alterar Senha',
+  'profile.current_pass': 'Senha atual',
+  'profile.current_pass.placeholder': 'Sua senha atual',
+  'profile.new_pass': 'Nova senha',
+  'profile.new_pass.placeholder': 'Mínimo 6 caracteres',
+  'profile.confirm_pass': 'Confirmar nova senha',
+  'profile.confirm_pass.placeholder': 'Repita a nova senha',
+
   // — Admin —
   'menu.admin': 'Painel Admin',
   'admin.title': 'Painel Admin',

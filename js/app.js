@@ -392,13 +392,61 @@ const App = (() => {
     // Badge de tipo de conta
     const accountBadge = document.getElementById('account-type-badge');
     if (accountBadge) {
-      if (data.isAnonymous) {
+      if (Auth.isAdmin()) {
+        accountBadge.innerHTML = '<i class="fas fa-crown"></i> Admin Master';
+        accountBadge.className = 'account-badge admin-master';
+      } else if (data.isAnonymous) {
         accountBadge.innerHTML = '<i class="fas fa-user-secret"></i> Visitante';
         accountBadge.className = 'account-badge anonymous';
       } else {
         accountBadge.innerHTML = '<i class="fas fa-shield-alt"></i> Conta Protegida';
         accountBadge.className = 'account-badge verified';
       }
+    }
+
+    // Admin Master Dashboard (somente admin)
+    const adminSection = document.getElementById('admin-master-section');
+    if (adminSection) {
+      if (Auth.isAdmin()) {
+        adminSection.style.display = '';
+        loadAdminDashboardStats();
+      } else {
+        adminSection.style.display = 'none';
+      }
+    }
+
+    // Botão ir para painel admin completo
+    document.getElementById('btn-goto-admin')?.addEventListener('click', () => {
+      navigateTo('admin');
+    });
+  }
+
+  /**
+   * Carrega estatísticas resumidas no dashboard admin do perfil
+   */
+  async function loadAdminDashboardStats() {
+    try {
+      const [usersRes, petsRes, sightingsRes] = await Promise.all([
+        DB.list(DB.TABLES.USUARIOS, { limit: 1000 }),
+        DB.list(DB.TABLES.PETS, { limit: 1000 }),
+        DB.list(DB.TABLES.AVISTAMENTOS, { limit: 500 })
+      ]);
+      const users = (usersRes.data || []).filter(u => !u.is_anonymous);
+      const pets = petsRes.data || [];
+      const sightings = sightingsRes.data || [];
+      const found = pets.filter(p => p.status === 'encontrado' || p.desfecho === 'encontrado_vivo');
+      const encerrados = pets.filter(p => p.status !== 'ativo');
+      const rate = encerrados.length > 0 ? Math.round((found.length / encerrados.length) * 100) : 0;
+      const blocked = (usersRes.data || []).filter(u => u.status === 'bloqueado');
+
+      document.getElementById('admin-dash-users').textContent = users.length;
+      document.getElementById('admin-dash-pets').textContent = pets.length;
+      document.getElementById('admin-dash-sightings').textContent = sightings.length;
+      document.getElementById('admin-dash-found').textContent = found.length;
+      document.getElementById('admin-dash-rate').textContent = rate + '%';
+      document.getElementById('admin-dash-blocked').textContent = blocked.length;
+    } catch (err) {
+      console.warn('[Admin] Dashboard stats error:', err);
     }
   }
 

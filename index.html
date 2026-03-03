@@ -865,6 +865,63 @@
             <span id="account-type-badge" class="account-badge"></span>
           </div>
         </div>
+
+        <!-- ===== ADMIN MASTER DASHBOARD (somente admin) ===== -->
+        <div id="admin-master-section" class="admin-master-dashboard" style="display:none">
+          <div class="admin-master-header">
+            <i class="fas fa-crown"></i>
+            <span data-i18n="profile.admin.title">Painel do Administrador</span>
+          </div>
+          <div class="admin-master-stats">
+            <div class="admin-master-stat">
+              <i class="fas fa-users"></i>
+              <div class="admin-master-stat-info">
+                <span id="admin-dash-users" class="admin-master-val">0</span>
+                <small data-i18n="profile.admin.users">Usuários Cadastrados</small>
+              </div>
+            </div>
+            <div class="admin-master-stat">
+              <i class="fas fa-paw"></i>
+              <div class="admin-master-stat-info">
+                <span id="admin-dash-pets" class="admin-master-val">0</span>
+                <small data-i18n="profile.admin.pets">Pets Reportados</small>
+              </div>
+            </div>
+            <div class="admin-master-stat">
+              <i class="fas fa-eye"></i>
+              <div class="admin-master-stat-info">
+                <span id="admin-dash-sightings" class="admin-master-val">0</span>
+                <small data-i18n="profile.admin.sightings">Avistamentos</small>
+              </div>
+            </div>
+            <div class="admin-master-stat">
+              <i class="fas fa-check-circle"></i>
+              <div class="admin-master-stat-info">
+                <span id="admin-dash-found" class="admin-master-val">0</span>
+                <small data-i18n="profile.admin.found">Encontrados</small>
+              </div>
+            </div>
+            <div class="admin-master-stat">
+              <i class="fas fa-chart-line"></i>
+              <div class="admin-master-stat-info">
+                <span id="admin-dash-rate" class="admin-master-val">0%</span>
+                <small data-i18n="profile.admin.success_rate">Taxa de Sucesso</small>
+              </div>
+            </div>
+            <div class="admin-master-stat">
+              <i class="fas fa-user-slash"></i>
+              <div class="admin-master-stat-info">
+                <span id="admin-dash-blocked" class="admin-master-val">0</span>
+                <small data-i18n="profile.admin.blocked">Bloqueados</small>
+              </div>
+            </div>
+          </div>
+          <button id="btn-goto-admin" class="btn-admin-panel">
+            <i class="fas fa-shield-alt"></i> <span data-i18n="profile.admin.go_panel">Abrir Painel Completo</span>
+          </button>
+        </div>
+
+        <!-- ===== DADOS DO PERFIL (todos os usuários) ===== -->
         <div class="form-container">
           <div class="form-group">
             <label><i class="fas fa-user"></i> <span data-i18n="profile.name">Nome</span></label>
@@ -883,26 +940,27 @@
           </button>
         </div>
 
-        <!-- Alterar Senha -->
+        <!-- ===== ALTERAR SENHA (todos os usuários logados) ===== -->
         <div id="password-section" class="form-container" style="margin-top:16px">
-          <h4 style="margin-bottom:12px"><i class="fas fa-key"></i> Alterar Senha</h4>
+          <h4 style="margin-bottom:12px"><i class="fas fa-key"></i> <span data-i18n="profile.change_pass">Alterar Senha</span></h4>
           <div class="form-group">
-            <label>Senha atual</label>
-            <input type="password" id="current-password" class="form-input" placeholder="Sua senha atual">
+            <label data-i18n="profile.current_pass">Senha atual</label>
+            <input type="password" id="current-password" class="form-input" placeholder="Sua senha atual" data-i18n-placeholder="profile.current_pass.placeholder">
           </div>
           <div class="form-group">
-            <label>Nova senha</label>
-            <input type="password" id="new-password" class="form-input" placeholder="Mínimo 6 caracteres">
+            <label data-i18n="profile.new_pass">Nova senha</label>
+            <input type="password" id="new-password" class="form-input" placeholder="Mínimo 6 caracteres" data-i18n-placeholder="profile.new_pass.placeholder">
           </div>
           <div class="form-group">
-            <label>Confirmar nova senha</label>
-            <input type="password" id="new-password2" class="form-input" placeholder="Repita a nova senha">
+            <label data-i18n="profile.confirm_pass">Confirmar nova senha</label>
+            <input type="password" id="new-password2" class="form-input" placeholder="Repita a nova senha" data-i18n-placeholder="profile.confirm_pass.placeholder">
           </div>
           <button id="btn-change-password" class="btn-secondary">
             <i class="fas fa-lock"></i> <span data-i18n="profile.change_pass.btn">Alterar Senha</span>
           </button>
         </div>
 
+        <!-- ===== ESTATÍSTICAS DO USUÁRIO ===== -->
         <div class="profile-stats">
           <div class="stat-box"><span id="profile-stat-reports">0</span><small data-i18n="profile.stat.reports">Reportes</small></div>
           <div class="stat-box"><span id="profile-stat-sightings">0</span><small data-i18n="profile.stat.sightings">Avistamentos</small></div>
