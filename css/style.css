@@ -42,6 +42,52 @@
   padding: 0;
 }
 
+/* ===== SCROLLBAR - DESTAQUE DESKTOP ===== */
+@media (min-width: 769px) {
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--bg);
+    border-radius: 5px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--primary-light);
+    border-radius: 5px;
+    border: 2px solid var(--bg);
+    transition: background 0.2s;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+  }
+  ::-webkit-scrollbar-thumb:active {
+    background: var(--primary-dark);
+  }
+
+  /* Firefox */
+  * {
+    scrollbar-width: auto;
+    scrollbar-color: var(--primary-light) var(--bg);
+  }
+}
+
+/* Dark mode scrollbar */
+@media (min-width: 769px) and (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-track {
+    background: #1e1e2e;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-color: #1e1e2e;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-light);
+  }
+  * {
+    scrollbar-color: var(--primary) #1e1e2e;
+  }
+}
+
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
