@@ -236,6 +236,56 @@ O projeto funciona em qualquer host de site estático:
 
 > Basta servir a pasta raiz como site estático.
 
+### Firebase (Functions + Firestore + Storage)
+
+Este repositório já inclui `firebase.json` e `.firebaserc` base. Não é necessário rodar `firebase init`.
+
+```bash
+# 1) Login
+firebase login
+
+# 2) Selecionar projeto
+firebase use seu-project-id
+
+# 3) Deploy apenas das functions
+npm run deploy:functions
+
+# (Opcional) Deploy completo
+npm run deploy
+```
+
+Arquivos de configuração incluídos:
+- `firebase.json` (functions/firestore/storage + emulators)
+- `.firebaserc` (placeholder de projectId)
+- `firestore.rules` e `storage.rules` (regras mínimas)
+
+#### Pipeline de duplicidade por imagem + distância
+
+- Upload padronizado no Storage: `alerts/{alertId}/original.jpg`
+- Function `generateImageHash` (`southamerica-east1`) gera `blockhash16` e atualiza o alerta com:
+  - `imageHash`
+  - `imageHashAlgo`
+  - `imageHashVersion`
+  - `imageHashCreatedAt`
+  - `imageHashProcessed`
+- Client cria listener pós-submit no documento do alerta e executa verificação quando `imageHashProcessed=true`.
+- Regras ativas:
+  - Client não pode escrever `imageHash*` processado no Firestore
+  - Upload permitido apenas em `alerts/{alertId}/original.jpg` com imagem válida
+
+#### Campos de schema do alerta
+
+- `imageHash`, `imageHashAlgo`, `imageHashVersion`, `imageHashCreatedAt`, `imageHashProcessed`
+- `imageStoragePath`, `imageStorageUrl`
+- `linkedToCaseId`
+- `suspiciousFlag`, `suspiciousReason`, `flaggedByUid`
+- `similarCandidates[]`
+
+#### Índices Firestore
+
+Atualmente a checagem de candidatos recentes é filtrada em aplicação (sem exigir índice composto obrigatório).
+Se o volume crescer, recomenda-se criar índices para acelerar consultas por `tipo_animal` + data.
+
 ---
 
 ## 🤝 Como Contribuir

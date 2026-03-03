@@ -1,0 +1,8 @@
+{
+  "name": "encontrepet-root",
+  "private": true,
+  "scripts": {
+    "deploy:functions": "firebase deploy --only functions",
+    "deploy": "firebase deploy"
+  }
+}

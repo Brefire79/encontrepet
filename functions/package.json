@@ -1,0 +1,25 @@
+{
+  "name": "encontrepet-functions",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf lib",
+    "deploy": "npm run build && firebase deploy --only functions",
+    "serve": "npm run build && firebase emulators:start --only functions"
+  },
+  "dependencies": {
+    "blockhash-core": "^0.1.0",
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^5.1.1",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.11",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.6.3"
+  }
+}
