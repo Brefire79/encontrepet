@@ -175,6 +175,8 @@
       <li data-page="como-funciona"><i class="fas fa-info-circle"></i> <span data-i18n="menu.how">Como Funciona</span></li>
       <li data-page="patrocinadores"><i class="fas fa-handshake"></i> <span data-i18n="menu.sponsors">Patrocinadores</span></li>
       <li data-page="sobre"><i class="fas fa-heart"></i> <span data-i18n="menu.about">Sobre o App</span></li>
+      <li class="menu-divider admin-only" style="display:none"></li>
+      <li data-page="admin" class="admin-only" style="display:none"><i class="fas fa-shield-alt"></i> <span data-i18n="menu.admin">Painel Admin</span></li>
       <li class="menu-divider"></li>
       <li id="menu-logout"><i class="fas fa-sign-out-alt"></i> <span data-i18n="menu.logout">Sair</span></li>
     </ul>
@@ -1154,6 +1156,83 @@
             Feito com <i class="fas fa-heart" style="color:#e74c3c"></i> para todos os amantes de animais.
           </p>
         </div>
+      </div>
+    </section>
+
+    <!-- ===== ADMIN PANEL ===== -->
+    <section id="page-admin" class="page">
+      <div class="page-header">
+        <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
+        <h2 data-i18n="admin.title"><i class="fas fa-shield-alt"></i> Painel Admin</h2>
+      </div>
+      <div class="content-page admin-panel">
+
+        <!-- Admin Stats Overview -->
+        <div class="admin-stats-grid">
+          <div class="admin-stat-card">
+            <i class="fas fa-paw"></i>
+            <span id="admin-total-pets" class="admin-stat-value">0</span>
+            <small data-i18n="admin.stat.total_pets">Total de Pets</small>
+          </div>
+          <div class="admin-stat-card">
+            <i class="fas fa-users"></i>
+            <span id="admin-total-users" class="admin-stat-value">0</span>
+            <small data-i18n="admin.stat.total_users">Usuários</small>
+          </div>
+          <div class="admin-stat-card">
+            <i class="fas fa-eye"></i>
+            <span id="admin-total-sightings" class="admin-stat-value">0</span>
+            <small data-i18n="admin.stat.total_sightings">Avistamentos</small>
+          </div>
+          <div class="admin-stat-card">
+            <i class="fas fa-check-circle"></i>
+            <span id="admin-total-found" class="admin-stat-value">0</span>
+            <small data-i18n="admin.stat.total_found">Encontrados</small>
+          </div>
+        </div>
+
+        <!-- Admin Tabs -->
+        <div class="admin-tabs">
+          <button class="admin-tab active" data-admin-tab="users" data-i18n="admin.tab.users">Usuários</button>
+          <button class="admin-tab" data-admin-tab="reports" data-i18n="admin.tab.reports">Reportes</button>
+          <button class="admin-tab" data-admin-tab="sightings" data-i18n="admin.tab.sightings">Avistamentos</button>
+        </div>
+
+        <!-- Tab: Usuários -->
+        <div id="admin-tab-users" class="admin-tab-content active">
+          <div class="admin-search-bar">
+            <input type="text" id="admin-search-users" placeholder="Buscar por nome ou email..." data-i18n-placeholder="admin.search.users">
+            <i class="fas fa-search"></i>
+          </div>
+          <div id="admin-users-list" class="admin-list">
+            <div class="admin-loading"><i class="fas fa-spinner fa-spin"></i> <span data-i18n="app.loading">Carregando...</span></div>
+          </div>
+        </div>
+
+        <!-- Tab: Reportes -->
+        <div id="admin-tab-reports" class="admin-tab-content">
+          <div class="admin-search-bar">
+            <input type="text" id="admin-search-reports" placeholder="Buscar por nome do pet..." data-i18n-placeholder="admin.search.reports">
+            <i class="fas fa-search"></i>
+          </div>
+          <div class="admin-filter-bar">
+            <button class="admin-filter active" data-filter="todos" data-i18n="admin.filter.all">Todos</button>
+            <button class="admin-filter" data-filter="ativo" data-i18n="admin.filter.active">Ativos</button>
+            <button class="admin-filter" data-filter="encontrado" data-i18n="admin.filter.found">Encontrados</button>
+            <button class="admin-filter" data-filter="encerrado" data-i18n="admin.filter.closed">Encerrados</button>
+          </div>
+          <div id="admin-reports-list" class="admin-list">
+            <div class="admin-loading"><i class="fas fa-spinner fa-spin"></i> <span data-i18n="app.loading">Carregando...</span></div>
+          </div>
+        </div>
+
+        <!-- Tab: Avistamentos -->
+        <div id="admin-tab-sightings" class="admin-tab-content">
+          <div id="admin-sightings-list" class="admin-list">
+            <div class="admin-loading"><i class="fas fa-spinner fa-spin"></i> <span data-i18n="app.loading">Carregando...</span></div>
+          </div>
+        </div>
+
       </div>
     </section>
 

@@ -486,6 +486,21 @@ const Auth = (() => {
     return currentUser?.uid || 'anon_' + Date.now();
   }
 
+  /**
+   * Verifica se o usuário logado é admin
+   * Baseado no campo 'role' do perfil no Firestore
+   */
+  function isAdmin() {
+    return userProfile?.role === 'admin';
+  }
+
+  /**
+   * Retorna o perfil completo do usuário (incluindo role)
+   */
+  function getProfile() {
+    return userProfile || null;
+  }
+
   // ====== VALIDAÇÕES ======
 
   function validateEmail(email) {
@@ -533,9 +548,11 @@ const Auth = (() => {
     changePassword,
     isLoggedIn,
     isAnonymous,
+    isAdmin,
     getUserData,
     getUserSettings,
     getUID,
+    getProfile,
     onAuthChange,
     validateEmail,
     validatePassword

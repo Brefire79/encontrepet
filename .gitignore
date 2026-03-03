@@ -17,6 +17,10 @@ npm-debug.log
 .env.local
 .env.production
 
+# Firebase Service Account (NUNCA commitar)
+scripts/serviceAccountKey.json
+**/serviceAccountKey.json
+
 # Test files
 test/
 *.test.js

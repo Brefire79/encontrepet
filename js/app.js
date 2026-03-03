@@ -46,6 +46,7 @@ const App = (() => {
     setupPrivacyPage();
     setupPasswordToggles();
     initFoundFeedbackModal();
+    initAdminEvents();
 
     // 6. Splash screen
     setTimeout(() => {
@@ -139,11 +140,13 @@ const App = (() => {
     if (event === 'login') {
       authScreen?.classList.add('hidden');
       updateUserUI(userData);
+      updateAdminMenuVisibility();
       loadHomeData();
       requestLocation();
     } else if (event === 'logout') {
       authScreen?.classList.remove('hidden');
       showAuthForm('login');
+      updateAdminMenuVisibility();
     } else if (event === 'profile_updated') {
       updateUserUI(userData);
     }
@@ -564,6 +567,7 @@ const App = (() => {
       case 'mapa': loadMap(); break;
       case 'perfil': loadProfilePage(); break;
       case 'privacidade': loadPrivacyPage(); break;
+      case 'admin': loadAdminPanel(); break;
     }
   }
 
@@ -722,6 +726,264 @@ const App = (() => {
       if (p < 1) requestAnimationFrame(step);
     }
     requestAnimationFrame(step);
+  }
+
+  // ====== ADMIN PANEL ======
+
+  let adminData = { users: [], pets: [], sightings: [] };
+
+  /**
+   * Atualiza visibilidade do menu admin com base no role do usuário
+   */
+  function updateAdminMenuVisibility() {
+    const items = document.querySelectorAll('.admin-only');
+    const show = Auth.isAdmin();
+    items.forEach(el => { el.style.display = show ? '' : 'none'; });
+  }
+
+  /**
+   * Carrega dados do painel admin
+   */
+  async function loadAdminPanel() {
+    if (!Auth.isAdmin()) {
+      navigateTo('home');
+      showToast(I18n.t('admin.access_denied'), 'error');
+      return;
+    }
+
+    try {
+      // Carregar dados em paralelo
+      const [usersRes, petsRes, sightingsRes] = await Promise.all([
+        DB.list(DB.TABLES.USUARIOS, { limit: 1000 }),
+        DB.list(DB.TABLES.PETS, { limit: 1000 }),
+        DB.list(DB.TABLES.AVISTAMENTOS, { limit: 500 })
+      ]);
+
+      adminData.users = (usersRes.data || []).sort((a, b) => {
+        const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tB - tA;
+      });
+      adminData.pets = (petsRes.data || []).sort((a, b) => {
+        const tA = a.data_reporte ? new Date(a.data_reporte).getTime() : 0;
+        const tB = b.data_reporte ? new Date(b.data_reporte).getTime() : 0;
+        return tB - tA;
+      });
+      adminData.sightings = (sightingsRes.data || []).sort((a, b) => {
+        const tA = a.data_avistamento ? new Date(a.data_avistamento).getTime() : 0;
+        const tB = b.data_avistamento ? new Date(b.data_avistamento).getTime() : 0;
+        return tB - tA;
+      });
+
+      // Stats
+      const allPets = adminData.pets;
+      document.getElementById('admin-total-pets')?.setAttribute('data-val', allPets.length);
+      animateCounter('admin-total-pets', allPets.length);
+      animateCounter('admin-total-users', adminData.users.filter(u => !u.is_anonymous).length);
+      animateCounter('admin-total-sightings', adminData.sightings.length);
+      animateCounter('admin-total-found', allPets.filter(p => p.status === 'encontrado' || p.desfecho === 'encontrado_vivo').length);
+
+      renderAdminUsers(adminData.users);
+      renderAdminReports(adminData.pets);
+      renderAdminSightings(adminData.sightings);
+    } catch (err) {
+      console.error('[Admin] Erro ao carregar painel:', err);
+      showToast(I18n.t('admin.load_error'), 'error');
+    }
+  }
+
+  function renderAdminUsers(users) {
+    const container = document.getElementById('admin-users-list');
+    if (!container) return;
+    if (users.length === 0) {
+      container.innerHTML = `<div class="admin-empty"><i class="fas fa-users"></i><br>${I18n.t('admin.no_users')}</div>`;
+      return;
+    }
+    container.innerHTML = users.map(u => {
+      const nome = Security.sanitize(u.nome || 'Sem nome');
+      const email = Security.sanitize(u.email || 'Anônimo');
+      const isBlocked = u.status === 'bloqueado';
+      const isAdmin = u.role === 'admin';
+      const isAnon = u.is_anonymous;
+      const avatar = u.foto_perfil
+        ? `<img src="${u.foto_perfil}" alt="${nome}">`
+        : `<i class="fas ${isAnon ? 'fa-user-secret' : 'fa-user'}"></i>`;
+      const badges = [
+        isAdmin ? `<span class="admin-badge admin">Admin</span>` : '',
+        isBlocked ? `<span class="admin-badge bloqueado">${I18n.t('admin.blocked')}</span>` : ''
+      ].filter(Boolean).join(' ');
+
+      return `<div class="admin-card" data-uid="${u.id}">
+        <div class="admin-card-avatar">${avatar}</div>
+        <div class="admin-card-info">
+          <div class="admin-card-name">${nome} ${badges}</div>
+          <div class="admin-card-detail">${email}</div>
+        </div>
+        <div class="admin-card-actions">
+          ${!isAdmin ? (isBlocked
+            ? `<button class="admin-btn btn-unblock" data-action="unblock" data-uid="${u.id}" title="${I18n.t('admin.unblock')}"><i class="fas fa-unlock"></i></button>`
+            : `<button class="admin-btn btn-block" data-action="block" data-uid="${u.id}" title="${I18n.t('admin.block')}"><i class="fas fa-ban"></i></button>`
+          ) : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderAdminReports(pets, filter = 'todos') {
+    const container = document.getElementById('admin-reports-list');
+    if (!container) return;
+    let filtered = filter === 'todos' ? pets : pets.filter(p => {
+      if (filter === 'encerrado') return p.status !== 'ativo' && p.status !== 'encontrado';
+      return p.status === filter;
+    });
+    if (filtered.length === 0) {
+      container.innerHTML = `<div class="admin-empty"><i class="fas fa-folder-open"></i><br>${I18n.t('admin.no_reports')}</div>`;
+      return;
+    }
+    container.innerHTML = filtered.map(p => {
+      const nome = Security.sanitize(p.nome_pet || 'Pet');
+      const status = p.status || 'ativo';
+      const statusLabel = { ativo: 'Ativo', encontrado: 'Encontrado', encerrado: 'Encerrado', desistencia: 'Desistência' }[status] || status;
+      const data = p.data_reporte ? new Date(p.data_reporte).toLocaleDateString('pt-BR') : '';
+      const foto = p.foto_comprimida ? fixCorruptedDataUrl(p.foto_comprimida) : '';
+      const avatar = foto ? `<img src="${foto}" alt="${nome}">` : `<i class="fas fa-paw"></i>`;
+      return `<div class="admin-card" data-pet-id="${p.id}">
+        <div class="admin-card-avatar">${avatar}</div>
+        <div class="admin-card-info">
+          <div class="admin-card-name">${nome} <span class="admin-badge ${status}">${statusLabel}</span></div>
+          <div class="admin-card-detail">${p.tipo_animal || ''} · ${data} · ${p.cidade || ''}</div>
+        </div>
+        <div class="admin-card-actions">
+          <button class="admin-btn btn-view" data-action="view-pet" data-pet-id="${p.id}" title="Ver"><i class="fas fa-eye"></i></button>
+          <button class="admin-btn btn-delete" data-action="delete-pet" data-pet-id="${p.id}" title="${I18n.t('admin.delete')}"><i class="fas fa-trash"></i></button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderAdminSightings(sightings) {
+    const container = document.getElementById('admin-sightings-list');
+    if (!container) return;
+    if (sightings.length === 0) {
+      container.innerHTML = `<div class="admin-empty"><i class="fas fa-eye-slash"></i><br>${I18n.t('admin.no_sightings')}</div>`;
+      return;
+    }
+    container.innerHTML = sightings.map(s => {
+      const desc = Security.sanitize(s.descricao || s.observacoes || 'Avistamento');
+      const data = s.data_avistamento ? new Date(s.data_avistamento).toLocaleDateString('pt-BR') : '';
+      const foto = s.foto_comprimida ? fixCorruptedDataUrl(s.foto_comprimida) : '';
+      const avatar = foto ? `<img src="${foto}" alt="Avistamento">` : `<i class="fas fa-camera"></i>`;
+      return `<div class="admin-card" data-sighting-id="${s.id}">
+        <div class="admin-card-avatar">${avatar}</div>
+        <div class="admin-card-info">
+          <div class="admin-card-name">${desc.substring(0, 50)}${desc.length > 50 ? '...' : ''}</div>
+          <div class="admin-card-detail">${data} · ${s.cidade || s.bairro || ''}</div>
+        </div>
+        <div class="admin-card-actions">
+          <button class="admin-btn btn-delete" data-action="delete-sighting" data-sighting-id="${s.id}" title="${I18n.t('admin.delete')}"><i class="fas fa-trash"></i></button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Admin event handlers
+  function initAdminEvents() {
+    // Admin tabs
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        const target = document.getElementById('admin-tab-' + tab.dataset.adminTab);
+        if (target) target.classList.add('active');
+      });
+    });
+
+    // Admin report filters
+    document.querySelectorAll('.admin-filter').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.admin-filter').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderAdminReports(adminData.pets, btn.dataset.filter);
+      });
+    });
+
+    // Admin search users
+    const searchUsers = document.getElementById('admin-search-users');
+    if (searchUsers) {
+      searchUsers.addEventListener('input', () => {
+        const q = searchUsers.value.toLowerCase().trim();
+        const filtered = q ? adminData.users.filter(u =>
+          (u.nome || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)
+        ) : adminData.users;
+        renderAdminUsers(filtered);
+      });
+    }
+
+    // Admin search reports
+    const searchReports = document.getElementById('admin-search-reports');
+    if (searchReports) {
+      searchReports.addEventListener('input', () => {
+        const q = searchReports.value.toLowerCase().trim();
+        const activeFilter = document.querySelector('.admin-filter.active')?.dataset.filter || 'todos';
+        let filtered = q ? adminData.pets.filter(p =>
+          (p.nome_pet || '').toLowerCase().includes(q)
+        ) : adminData.pets;
+        if (activeFilter !== 'todos') {
+          filtered = filtered.filter(p => activeFilter === 'encerrado'
+            ? (p.status !== 'ativo' && p.status !== 'encontrado')
+            : p.status === activeFilter);
+        }
+        renderAdminReports(filtered, 'todos');
+      });
+    }
+
+    // Admin action clicks (event delegation)
+    document.querySelector('.admin-panel')?.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn || !Auth.isAdmin()) return;
+
+      const action = btn.dataset.action;
+      try {
+        if (action === 'block') {
+          const uid = btn.dataset.uid;
+          if (!confirm(I18n.t('admin.confirm_block'))) return;
+          await DB.update(DB.TABLES.USUARIOS, uid, { status: 'bloqueado' });
+          showToast(I18n.t('admin.user_blocked'), 'success');
+          loadAdminPanel();
+        }
+        else if (action === 'unblock') {
+          const uid = btn.dataset.uid;
+          await DB.update(DB.TABLES.USUARIOS, uid, { status: 'ativo' });
+          showToast(I18n.t('admin.user_unblocked'), 'success');
+          loadAdminPanel();
+        }
+        else if (action === 'view-pet') {
+          const petId = btn.dataset.petId;
+          navigateTo('detalhes');
+          // Trigger detail loading
+          const pet = adminData.pets.find(p => p.id === petId);
+          if (pet) loadPetDetails(pet);
+        }
+        else if (action === 'delete-pet') {
+          const petId = btn.dataset.petId;
+          if (!confirm(I18n.t('admin.confirm_delete'))) return;
+          await DB.remove(DB.TABLES.PETS, petId);
+          showToast(I18n.t('admin.report_deleted'), 'success');
+          loadAdminPanel();
+        }
+        else if (action === 'delete-sighting') {
+          const sId = btn.dataset.sightingId;
+          if (!confirm(I18n.t('admin.confirm_delete'))) return;
+          await DB.remove(DB.TABLES.AVISTAMENTOS, sId);
+          showToast(I18n.t('admin.sighting_deleted'), 'success');
+          loadAdminPanel();
+        }
+      } catch (err) {
+        console.error('[Admin] Ação falhou:', err);
+        showToast(I18n.t('admin.action_error'), 'error');
+      }
+    });
   }
 
   async function loadAlertsFeed() {
