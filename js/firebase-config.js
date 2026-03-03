@@ -2,7 +2,7 @@
  * Encontre Pet - Firebase Configuration
  * Projeto: encontre-pet-137d2
  * 
- * Usa APENAS Firestore (banco de dados).
+ * Usa Firestore + Storage.
  * Auth é local (SHA-256 + sessão) — mais seguro.
  * Fallback para REST API se Firebase falhar.
  */
@@ -20,8 +20,31 @@ const FirebaseConfig = (() => {
 
   let app = null;
   let db = null;
+  let storage = null;
+  let auth = null;
+  let firebaseUID = '';
   let initialized = false;
   let isAvailable = false;
+  let authInitPromise = null;
+
+  async function ensureAnonymousAuth() {
+    if (!auth || typeof auth.signInAnonymously !== 'function') return '';
+    try {
+      if (auth.currentUser?.uid) {
+        firebaseUID = auth.currentUser.uid;
+        return firebaseUID;
+      }
+      const result = await auth.signInAnonymously();
+      firebaseUID = result?.user?.uid || '';
+      if (firebaseUID) {
+        console.log('[Firebase] ✅ Auth anônimo ativo:', firebaseUID);
+      }
+      return firebaseUID;
+    } catch (err) {
+      console.warn('[Firebase] Auth anônimo indisponível:', err?.message || err);
+      return '';
+    }
+  }
 
   /**
    * Inicializa o Firebase e Firestore
@@ -48,6 +71,20 @@ const FirebaseConfig = (() => {
 
       // Inicializar Firestore
       db = firebase.firestore();
+
+      // Inicializar Storage (opcional)
+      if (firebase.storage) {
+        storage = firebase.storage();
+      }
+
+      // Inicializar Auth anônimo (opcional, para regras de segurança)
+      if (firebase.auth) {
+        auth = firebase.auth();
+        authInitPromise = ensureAnonymousAuth();
+        auth.onAuthStateChanged?.((user) => {
+          firebaseUID = user?.uid || '';
+        });
+      }
 
       // Habilitar persistência offline (API moderna)
       try {
@@ -91,11 +128,66 @@ const FirebaseConfig = (() => {
     return db;
   }
 
+  function getStorage() {
+    if (!initialized) init();
+    return storage;
+  }
+
+  function getFirebaseUID() {
+    if (!initialized) init();
+    return firebaseUID || auth?.currentUser?.uid || '';
+  }
+
+  async function waitForAuthUID(timeoutMs = 6000) {
+    if (!initialized) init();
+    if (getFirebaseUID()) return getFirebaseUID();
+
+    const start = Date.now();
+    if (authInitPromise) {
+      try { await authInitPromise; } catch {}
+      if (getFirebaseUID()) return getFirebaseUID();
+    }
+
+    while (Date.now() - start < timeoutMs) {
+      if (getFirebaseUID()) return getFirebaseUID();
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return getFirebaseUID();
+  }
+
+  async function uploadAlertImage({ alertId, dataUrl, collection = '', ownerUid = '' }) {
+    if (!alertId || !dataUrl) throw new Error('uploadAlertImage requer alertId e dataUrl');
+    const s = getStorage();
+    if (!s) throw new Error('Firebase Storage não inicializado');
+
+    const firebaseUserId = await waitForAuthUID();
+    const path = `alerts/${alertId}/original.jpg`;
+    const ref = s.ref(path);
+    const metadata = {
+      contentType: 'image/jpeg',
+      customMetadata: {
+        alertId: String(alertId),
+        collection: String(collection || ''),
+        ownerUid: String(ownerUid || ''),
+        ownerFirebaseUid: String(firebaseUserId || ''),
+        imageHashGenerated: 'false'
+      }
+    };
+
+    await ref.putString(dataUrl, 'data_url', metadata);
+    const downloadURL = await ref.getDownloadURL();
+    return { path, downloadURL };
+  }
+
   /**
    * Verifica se Firestore está disponível
    */
   function isReady() {
     return isAvailable && db !== null;
+  }
+
+  function isStorageReady() {
+    return isAvailable && storage !== null;
   }
 
   /**
@@ -112,7 +204,12 @@ const FirebaseConfig = (() => {
   return {
     init,
     getDB,
+    getStorage,
     isReady,
+    isStorageReady,
+    getFirebaseUID,
+    waitForAuthUID,
+    uploadAlertImage,
     getProjectInfo,
     CONFIG
   };

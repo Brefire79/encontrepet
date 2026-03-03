@@ -26,7 +26,15 @@ const DB = (() => {
   const CACHE_TTL = 5 * 60 * 1000;
 
   let useFirestore = false;
-  let restAvailable = true; // assume REST works until proven otherwise
+  const isLocalDevHost = (() => {
+    try {
+      const h = window?.location?.hostname || '';
+      return h === 'localhost' || h === '127.0.0.1';
+    } catch {
+      return false;
+    }
+  })();
+  let restAvailable = isLocalDevHost; // evita 405 em produção sem backend REST
 
   function init() {
     try {
@@ -372,10 +380,44 @@ const DB = (() => {
       raio_busca_km: raio,
       data_perda: data.data_perda || new Date().toISOString().split('T')[0],
       visualizacoes: 0,
+      imageHash: data.imageHash || data.foto_hash || '',
+      imageHashAlgo: data.imageHashAlgo || '',
+      imageHashVersion: data.imageHashVersion || 1,
+      imageHashCreatedAt: data.imageHashCreatedAt || null,
+      imageHashProcessed: data.imageHashProcessed || false,
+      imageStoragePath: data.imageStoragePath || '',
+      imageStorageUrl: data.imageStorageUrl || '',
+      linkedToCaseId: data.linkedToCaseId || '',
+      suspiciousFlag: data.suspiciousFlag || false,
+      suspiciousReason: Security.sanitize(data.suspiciousReason || ''),
+      flaggedByUid: data.flaggedByUid || '',
+      owner_firebase_uid: data.owner_firebase_uid || FirebaseConfig.getFirebaseUID?.() || '',
+      similarCandidates: Array.isArray(data.similarCandidates) ? data.similarCandidates.slice(0, 5) : [],
       owner_uid: Auth.getUID()
     };
 
     const result = await create(TABLES.PETS, record);
+
+    if (result?.id && data.foto_comprimida && FirebaseConfig.isStorageReady?.()) {
+      try {
+        const upload = await FirebaseConfig.uploadAlertImage({
+          alertId: result.id,
+          dataUrl: data.foto_comprimida,
+          collection: TABLES.PETS,
+          ownerUid: record.owner_uid
+        });
+        await update(TABLES.PETS, result.id, {
+          imageStoragePath: upload.path,
+          imageStorageUrl: upload.downloadURL,
+          imageHashProcessed: false
+        });
+        result.imageStoragePath = upload.path;
+        result.imageStorageUrl = upload.downloadURL;
+      } catch (err) {
+        console.error('[DB] Upload Storage pet_perdido falhou:', err);
+      }
+    }
+
     saveMyReport(result.id, 'pet_perdido');
     return result;
   }
@@ -492,16 +534,148 @@ const DB = (() => {
       cor: data.cor || '',
       porte: data.porte || '',
       data_avistamento: new Date().toISOString(),
+      imageHash: data.imageHash || data.foto_hash || '',
+      imageHashAlgo: data.imageHashAlgo || '',
+      imageHashVersion: data.imageHashVersion || 1,
+      imageHashCreatedAt: data.imageHashCreatedAt || null,
+      imageHashProcessed: data.imageHashProcessed || false,
+      imageStoragePath: data.imageStoragePath || '',
+      imageStorageUrl: data.imageStorageUrl || '',
+      linkedToCaseId: data.linkedToCaseId || '',
+      suspiciousFlag: data.suspiciousFlag || false,
+      suspiciousReason: Security.sanitize(data.suspiciousReason || ''),
+      flaggedByUid: data.flaggedByUid || '',
+      owner_firebase_uid: data.owner_firebase_uid || FirebaseConfig.getFirebaseUID?.() || '',
+      similarCandidates: Array.isArray(data.similarCandidates) ? data.similarCandidates.slice(0, 5) : [],
       owner_uid: Auth.getUID()
     };
 
     const result = await create(TABLES.AVISTAMENTOS, record);
+
+    if (result?.id && data.foto_comprimida && FirebaseConfig.isStorageReady?.()) {
+      try {
+        const upload = await FirebaseConfig.uploadAlertImage({
+          alertId: result.id,
+          dataUrl: data.foto_comprimida,
+          collection: TABLES.AVISTAMENTOS,
+          ownerUid: record.owner_uid
+        });
+        await update(TABLES.AVISTAMENTOS, result.id, {
+          imageStoragePath: upload.path,
+          imageStorageUrl: upload.downloadURL,
+          imageHashProcessed: false
+        });
+        result.imageStoragePath = upload.path;
+        result.imageStorageUrl = upload.downloadURL;
+      } catch (err) {
+        console.error('[DB] Upload Storage avistamento falhou:', err);
+      }
+    }
+
     saveMyReport(result.id, 'avistamento');
     return result;
   }
 
   async function listarAvistamentos(page = 1) {
     return await list(TABLES.AVISTAMENTOS, { limit: 50 });
+  }
+
+  async function listRecentAlertsForSimilarity(tipoAnimal, recentDays = 30, limitPerCollection = 250) {
+    try {
+      const minTs = Date.now() - (recentDays * 24 * 60 * 60 * 1000);
+
+      const [petsResult, avistResult] = await Promise.all([
+        list(TABLES.PETS, { limit: limitPerCollection }),
+        list(TABLES.AVISTAMENTOS, { limit: limitPerCollection })
+      ]);
+
+      const toTs = (value) => {
+        if (!value) return 0;
+        if (typeof value === 'number') return value;
+        if (value?.toMillis) return value.toMillis();
+        if (typeof value === 'string') {
+          const parsed = Date.parse(value);
+          return Number.isNaN(parsed) ? 0 : parsed;
+        }
+        return 0;
+      };
+
+      const normalize = (item, alertType) => {
+        const createdAt = item.created_at || item.data_avistamento || item.data_perda;
+        return {
+          id: item.id,
+          alertType,
+          tipo_animal: item.tipo_animal,
+          imageHash: item.imageHash || item.foto_hash || '',
+          foto_hash: item.foto_hash || item.imageHash || '',
+          latitude: Number(item.latitude || item.latitude_publica || 0),
+          longitude: Number(item.longitude || item.longitude_publica || 0),
+          owner_uid: item.owner_uid || '',
+          contato: item.contato || item.contato_telefone || '',
+          contato_telefone: item.contato_telefone || item.contato || '',
+          nome_pet: item.nome_pet || '',
+          descricao: item.descricao || '',
+          endereco: item.endereco_publico || item.endereco || '',
+          created_at: createdAt,
+          created_at_ts: toTs(createdAt)
+        };
+      };
+
+      const all = [
+        ...((petsResult.data || []).map(item => normalize(item, 'pet_perdido'))),
+        ...((avistResult.data || []).map(item => normalize(item, 'avistamento')))
+      ];
+
+      return all
+        .filter(item => item.tipo_animal === tipoAnimal)
+        .filter(item => item.imageHash)
+        .filter(item => item.created_at_ts >= minTs)
+        .filter(item => item.latitude && item.longitude)
+        .sort((a, b) => b.created_at_ts - a.created_at_ts);
+    } catch (err) {
+      console.error('[DB] listRecentAlertsForSimilarity error:', err);
+      return [];
+    }
+  }
+
+  function watchAlertDocument(alertType, alertId, onChange) {
+    const collection = alertType === 'pet_perdido' ? TABLES.PETS : TABLES.AVISTAMENTOS;
+    if (!alertId || typeof onChange !== 'function') return () => {};
+
+    if (useFirestore) {
+      try {
+        const db = FirebaseConfig.getDB();
+        const unsubscribe = db.collection(collection).doc(alertId).onSnapshot(
+          (doc) => {
+            if (!doc?.exists) return;
+            onChange({ id: doc.id, ...doc.data() });
+          },
+          (err) => {
+            console.error('[DB] watchAlertDocument snapshot error:', err);
+          }
+        );
+        return () => {
+          try { unsubscribe?.(); } catch {}
+        };
+      } catch (err) {
+        console.error('[DB] watchAlertDocument init error:', err);
+      }
+    }
+
+    let active = true;
+    const loop = async () => {
+      while (active) {
+        try {
+          const alert = await get(collection, alertId);
+          if (alert) onChange(alert);
+        } catch (err) {
+          console.error('[DB] watchAlertDocument polling error:', err);
+        }
+        await new Promise(resolve => setTimeout(resolve, 2500));
+      }
+    };
+    loop();
+    return () => { active = false; };
   }
 
   // ============================================================
@@ -689,6 +863,8 @@ const DB = (() => {
     listarPetsPorProximidade,
     reportarAvistamento,
     listarAvistamentos,
+    listRecentAlertsForSimilarity,
+    watchAlertDocument,
     criarNotificacao,
     listarNotificacoes,
     marcarNotificacaoLida,

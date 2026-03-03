@@ -24,7 +24,9 @@
 
   <!-- Firebase SDK (apenas Firestore - SEM Auth do Firebase) -->
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 
   <!-- TensorFlow.js + MobileNet (IA gratuita no navegador - carregamento lazy) -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js" defer></script>
@@ -1444,6 +1446,38 @@
     </div>
   </div>
 
+  <div id="duplicate-case-modal" class="modal hidden">
+    <div class="modal-overlay" id="duplicate-modal-overlay"></div>
+    <div class="duplicate-case-sheet">
+      <div class="duplicate-case-header">
+        <h3 data-i18n="duplicate.title">Possível ocorrência duplicada</h3>
+        <button id="duplicate-btn-close" class="btn-close-modal"><i class="fas fa-times"></i></button>
+      </div>
+      <p class="duplicate-case-desc" data-i18n="duplicate.desc">Encontramos uma imagem muito parecida em uma região distante. Revise antes de continuar.</p>
+      <div id="duplicate-strong-warning" class="duplicate-strong-warning hidden" data-i18n="duplicate.strong_warning">
+        ⚠️ Similaridade muito alta em distância muito grande. Caso potencialmente suspeito.
+      </div>
+      <div class="duplicate-case-grid">
+        <div><small data-i18n="duplicate.hash_distance">Distância hash</small><strong id="duplicate-hash-distance">-</strong></div>
+        <div><small data-i18n="duplicate.geo_distance">Distância geográfica</small><strong id="duplicate-geo-distance">-</strong></div>
+        <div><small data-i18n="duplicate.type">Tipo</small><strong id="duplicate-type">-</strong></div>
+        <div><small data-i18n="duplicate.species">Espécie</small><strong id="duplicate-species">-</strong></div>
+      </div>
+      <div class="duplicate-case-address" id="duplicate-address">-</div>
+      <div class="form-group" style="margin-top:10px">
+        <label for="duplicate-suspicious-reason" data-i18n="duplicate.suspicious_reason">Motivo da suspeita (opcional)</label>
+        <textarea id="duplicate-suspicious-reason" class="form-input" rows="2" placeholder="Explique por que esse caso parece suspeito" data-i18n-placeholder="duplicate.suspicious_reason.placeholder"></textarea>
+      </div>
+      <div class="duplicate-case-actions">
+        <button id="duplicate-btn-continue" class="btn-primary" data-i18n="duplicate.action.continue">Continuar mesmo assim</button>
+        <button id="duplicate-btn-view" class="btn-secondary" data-i18n="duplicate.action.view">Ver ocorrência similar</button>
+        <button id="duplicate-btn-link" class="btn-secondary" data-i18n="duplicate.action.link">Vincular ao caso</button>
+        <button id="duplicate-btn-chat" class="btn-secondary" data-i18n="duplicate.action.chat">Abrir chat</button>
+        <button id="duplicate-btn-flag" class="btn-danger" data-i18n="duplicate.action.flag">Marcar como suspeito</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== TOAST NOTIFICATIONS ===== -->
   <div id="toast-container" class="toast-container"></div>
 
@@ -1463,10 +1497,13 @@
   <script src="js/firebase-config.js"></script>
   <script src="js/security.js"></script>
   <script src="js/auth.js"></script>
+  <script src="js/services/image-hash.js"></script>
+  <script src="js/services/similarity.js"></script>
   <script src="js/image-utils.js"></script>
   <script src="js/geo-utils.js"></script>
   <script src="js/ai-match.js"></script>
   <script src="js/ai-vision.js"></script>
+  <script src="js/components/ModalDuplicateCase.js"></script>
   <script src="js/db.js"></script>
   <script src="js/app.js"></script>
 

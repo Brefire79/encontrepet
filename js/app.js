@@ -16,6 +16,13 @@ const App = (() => {
     aiReady: false
   };
 
+  const DUPLICATE_RULES = {
+    maxHashDistance: 10,
+    minGeoDistanceKm: 50,
+    recentDays: 30,
+    maxCandidates: 5
+  };
+
   // ====== INICIALIZAÇÃO ======
 
   function init() {
@@ -1387,7 +1394,7 @@ const App = (() => {
       const cor = document.querySelector('input[name="cor-pet"]:checked')?.value || '';
       const porte = document.querySelector('input[name="porte-pet"]:checked')?.value || '';
 
-      await DB.reportarPetPerdido({
+      const payload = {
         tipo_animal: tipo,
         subtipo_animal: subtipo,
         foto_comprimida: state.photoData?.dataUrl || '',
@@ -1402,7 +1409,26 @@ const App = (() => {
         recompensa: document.getElementById('valor-recompensa')?.value.trim() || '',
         contato_telefone: document.getElementById('telefone-rapido')?.value.trim() || '',
         cadastro_completo: false
-      });
+      };
+
+      payload.imageHash = await ImageHashService.ensureAlertImageHash(state.photoData);
+      if (payload.imageHash) {
+        payload.foto_hash = payload.imageHash;
+        payload.imageHashAlgo = 'client-dhash16';
+        payload.imageHashVersion = 1;
+        payload.imageHashCreatedAt = new Date().toISOString();
+        payload.imageHashProcessed = true;
+      } else {
+        payload.imageHashProcessed = false;
+        console.warn('[App] Hash de imagem indisponível no alerta de pet perdido. Cadastro seguirá normalmente.');
+      }
+
+      showLoading('Disparando alerta...');
+      const createdAlert = await DB.reportarPetPerdido(payload);
+
+      if (createdAlert?.id) {
+        startPostSubmitDuplicatePipeline('pet_perdido', createdAlert.id, state.photoData);
+      }
 
       hideLoading();
 
@@ -1427,6 +1453,10 @@ const App = (() => {
       document.getElementById('upload-placeholder-perdido')?.classList.remove('hidden');
     } catch (err) {
       hideLoading();
+      if (err?.message === I18n.t('duplicate.cancelled')) {
+        showToast(err.message, 'info');
+        return;
+      }
       showToast(err.message || I18n.t('toast.alert_error'), 'error');
     } finally { state.isLoading = false; }
   }
@@ -1652,7 +1682,7 @@ const App = (() => {
     state.isLoading = true;
     showLoading('Enviando...');
     try {
-      await DB.reportarAvistamento({
+      const payload = {
         tipo_animal: document.querySelector('input[name="tipo-avistamento"]:checked')?.value || 'cao',
         subtipo_animal: (document.querySelector('input[name="tipo-avistamento"]:checked')?.value === 'outro') ? getSubtipoAnimal('avistamento') : '',
         foto_comprimida: state.avistamentoPhotoData?.dataUrl || '',
@@ -1664,7 +1694,27 @@ const App = (() => {
         contato: document.getElementById('contato-avistamento')?.value.trim() || '',
         cor: document.getElementById('cor-avistamento')?.value || '',
         porte: document.getElementById('porte-avistamento')?.value || ''
-      });
+      };
+
+      payload.imageHash = await ImageHashService.ensureAlertImageHash(state.avistamentoPhotoData);
+      if (payload.imageHash) {
+        payload.foto_hash = payload.imageHash;
+        payload.imageHashAlgo = 'client-dhash16';
+        payload.imageHashVersion = 1;
+        payload.imageHashCreatedAt = new Date().toISOString();
+        payload.imageHashProcessed = true;
+      } else {
+        payload.imageHashProcessed = false;
+        console.warn('[App] Hash de imagem indisponível no avistamento. Cadastro seguirá normalmente.');
+      }
+
+      showLoading('Enviando...');
+      const createdAlert = await DB.reportarAvistamento(payload);
+
+      if (createdAlert?.id) {
+        startPostSubmitDuplicatePipeline('avistamento', createdAlert.id, state.avistamentoPhotoData);
+      }
+
       hideLoading();
       showToast(I18n.t('toast.sighting_thanks'), 'success');
       incrementarContadorPerfil('avistamentos_count');
@@ -1672,6 +1722,10 @@ const App = (() => {
       navigateTo('home');
     } catch (err) {
       hideLoading();
+      if (err?.message === I18n.t('duplicate.cancelled')) {
+        showToast(err.message, 'info');
+        return;
+      }
       showToast(err.message || I18n.t('toast.send_error'), 'error');
     } finally { state.isLoading = false; }
   }
@@ -2091,6 +2145,179 @@ const App = (() => {
       tartaruga: 'Tartaruga', peixe: 'Peixe', reptil: 'Réptil', ferret: 'Furão'
     };
     return nomes[selected.value] || selected.value;
+  }
+
+  async function applyDuplicateFlow(alertType, alertDoc) {
+    if (!alertDoc?.id || !alertDoc?.imageHash || !alertDoc?.latitude || !alertDoc?.longitude) {
+      return { reviewed: false };
+    }
+
+    const recentAlerts = await DB.listRecentAlertsForSimilarity(
+      alertDoc.tipo_animal,
+      DUPLICATE_RULES.recentDays,
+      250
+    );
+
+    const candidates = SimilarityService.findDuplicateCandidates(
+      {
+        id: alertDoc.id,
+        tipo_animal: alertDoc.tipo_animal,
+        imageHash: alertDoc.imageHash,
+        latitude: Number(alertDoc.latitude),
+        longitude: Number(alertDoc.longitude)
+      },
+      recentAlerts,
+      DUPLICATE_RULES
+    )
+      .filter(c => c.isDuplicate)
+      .slice(0, DUPLICATE_RULES.maxCandidates)
+      .map(c => ({
+        ...c,
+        isStrongSuspicion: c.hashDistance <= 3 && c.geoDistanceKm > 300
+      }));
+
+    if (!candidates.length) {
+      return { reviewed: true, decision: 'none', candidates: [] };
+    }
+
+    const topCandidate = candidates[0];
+    const decisionResult = await ModalDuplicateCase.open({
+      candidate: topCandidate,
+      onView: async (candidate) => {
+        if (candidate.alertType === 'pet_perdido') {
+          window.open(`${window.location.origin}/index.html#detalhes?id=${encodeURIComponent(candidate.id)}`, '_blank');
+          return;
+        }
+        window.open(`${window.location.origin}/index.html#mapa`, '_blank');
+        showToast(I18n.t('duplicate.sighting_only_map'), 'info');
+      },
+      onChat: async (candidate) => {
+        const contact = candidate.contato_telefone || candidate.contato || '';
+        if (contact) {
+          contactWhatsApp(contact, candidate.nome_pet || I18n.t('duplicate.pet_default_name'));
+          return;
+        }
+        if (candidate.owner_uid) {
+          showToast(I18n.t('duplicate.chat_unavailable'), 'warning');
+          return;
+        }
+        showToast(I18n.t('duplicate.no_owner'), 'warning');
+      }
+    });
+
+    const action = decisionResult?.action || 'continue';
+    const suspiciousReason = decisionResult?.suspiciousReason || '';
+
+    const updatePayload = {
+      similarCandidates: candidates.map(c => ({
+        id: c.id,
+        alertType: c.alertType,
+        hashDistance: c.hashDistance,
+        geoDistanceKm: Math.round(c.geoDistanceKm * 10) / 10,
+        owner_uid: c.owner_uid || '',
+        isStrongSuspicion: !!c.isStrongSuspicion
+      })),
+      duplicateReviewedAt: new Date().toISOString(),
+      duplicateDecision: action
+    };
+
+    if (action === 'link') {
+      updatePayload.linkedToCaseId = topCandidate.id;
+    }
+
+    if (action === 'suspicious' || topCandidate.isStrongSuspicion) {
+      updatePayload.suspiciousFlag = true;
+      updatePayload.suspiciousReason = suspiciousReason || (topCandidate.isStrongSuspicion ? I18n.t('duplicate.strong_reason_default') : '');
+      updatePayload.flaggedByUid = Auth.getUID?.() || '';
+    }
+
+    await DB.update(getAlertCollection(alertType), alertDoc.id, updatePayload);
+
+    return { reviewed: true, decision: action, candidates };
+  }
+
+  function getAlertCollection(alertType) {
+    return alertType === 'pet_perdido' ? DB.TABLES.PETS : DB.TABLES.AVISTAMENTOS;
+  }
+
+  function saveDuplicateReviewLock(alertId) {
+    try {
+      localStorage.setItem(`encontrePet_duplicateReviewed_${alertId}`, '1');
+    } catch {}
+  }
+
+  function hasDuplicateReviewLock(alertId) {
+    try {
+      return localStorage.getItem(`encontrePet_duplicateReviewed_${alertId}`) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  async function persistClientHashFallback(collection, alertId, photoData) {
+    if (!photoData) return '';
+
+    try {
+      const hash = await ImageHashService.ensureAlertImageHash(photoData);
+      if (!hash) return '';
+
+      await DB.update(collection, alertId, {
+        imageHash: hash,
+        foto_hash: hash,
+        imageHashAlgo: 'client-dhash16',
+        imageHashVersion: 1,
+        imageHashCreatedAt: new Date().toISOString(),
+        imageHashProcessed: true
+      });
+
+      return hash;
+    } catch (err) {
+      console.error('[App] fallback hash persist error:', err);
+      return '';
+    }
+  }
+
+  async function startPostSubmitDuplicatePipeline(alertType, alertId, photoData) {
+    const collection = getAlertCollection(alertType);
+    if (!alertId || hasDuplicateReviewLock(alertId)) return;
+
+    showToast(I18n.t('duplicate.analysis_started'), 'info');
+
+    let completed = false;
+    const stop = DB.watchAlertDocument(alertType, alertId, async (alertDoc) => {
+      if (completed || hasDuplicateReviewLock(alertId)) return;
+      if (!alertDoc?.imageHashProcessed || !(alertDoc?.imageHash || alertDoc?.foto_hash)) return;
+
+      try {
+        completed = true;
+        await applyDuplicateFlow(alertType, {
+          ...alertDoc,
+          imageHash: alertDoc.imageHash || alertDoc.foto_hash || ''
+        });
+        saveDuplicateReviewLock(alertId);
+      } catch (err) {
+        completed = true;
+        console.error('[App] duplicate listener flow error:', err);
+        showToast(I18n.t('duplicate.analysis_failed'), 'warning');
+      } finally {
+        try { stop?.(); } catch {}
+      }
+    });
+
+    setTimeout(async () => {
+      if (completed || hasDuplicateReviewLock(alertId)) return;
+      const hash = await persistClientHashFallback(collection, alertId, photoData);
+      if (hash) {
+        showToast(I18n.t('duplicate.client_fallback_used'), 'info');
+      }
+    }, 10000);
+
+    setTimeout(() => {
+      if (completed || hasDuplicateReviewLock(alertId)) return;
+      completed = true;
+      try { stop?.(); } catch {}
+      showToast(I18n.t('duplicate.analysis_failed'), 'warning');
+    }, 45000);
   }
 
   // ====== MODAL SELEÇÃO DE FOTO (Câmera / Galeria) ======

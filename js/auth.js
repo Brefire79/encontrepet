@@ -80,7 +80,15 @@ const Auth = (() => {
 
   // ====== HELPERS REST API (tolerante a falhas — Netlify não tem backend) ======
 
-  let restAvailable = true;
+  const isLocalDevHost = (() => {
+    try {
+      const h = window?.location?.hostname || '';
+      return h === 'localhost' || h === '127.0.0.1';
+    } catch {
+      return false;
+    }
+  })();
+  let restAvailable = isLocalDevHost;
 
   async function apiCreateUser(data) {
     if (!restAvailable) return null;
@@ -138,8 +146,7 @@ const Auth = (() => {
       try {
         const result = await fsCreateUser(uid, data);
         console.log('[Auth] ✅ Perfil salvo no Firestore');
-        // Backup na REST (silencioso)
-        apiCreateUser({ ...data, id: uid });
+        // Não espelhar em REST quando Firestore já concluiu (evita ruído 405 em produção)
         return result;
       } catch (err) {
         console.warn('[Auth] Firestore create falhou:', err.message);
@@ -180,8 +187,7 @@ const Auth = (() => {
       try {
         await fsUpdateUser(uid, data);
         console.log('[Auth] ✅ Perfil atualizado no Firestore');
-        // Backup na REST (silencioso)
-        apiUpdateUser(uid, data);
+        // Não espelhar em REST quando Firestore já concluiu (evita ruído 405 em produção)
         return { id: uid, ...data };
       } catch (err) {
         console.warn('[Auth] Firestore update falhou:', err.message);

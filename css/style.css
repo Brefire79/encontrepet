@@ -2151,6 +2151,106 @@ a { color: var(--primary); text-decoration: none; }
   color: var(--text-muted);
 }
 
+.duplicate-case-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  background: var(--bg-card);
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 18px;
+  animation: slideUp 0.25s ease;
+  z-index: 2;
+}
+
+.duplicate-case-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.duplicate-case-header h3 {
+  font-size: 1.05rem;
+  color: var(--danger);
+}
+
+.duplicate-case-desc {
+  color: var(--text-light);
+  font-size: 0.9rem;
+  margin-bottom: 10px;
+}
+
+.duplicate-strong-warning {
+  margin-bottom: 10px;
+  border: 1px solid #FFD8A8;
+  background: #FFF4E6;
+  color: #D9480F;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.duplicate-case-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.duplicate-case-grid > div {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.duplicate-case-grid small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.duplicate-case-grid strong {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.duplicate-case-address {
+  margin-top: 10px;
+  font-size: 0.86rem;
+  color: var(--text-light);
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border);
+  padding: 8px 10px;
+}
+
+.duplicate-case-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.duplicate-case-actions .btn-danger {
+  border: 1px solid #FAD1D1;
+  background: #FFF5F5;
+  color: #C92A2A;
+}
+
+.duplicate-case-actions .btn-danger:active {
+  transform: scale(0.99);
+}
+
+.duplicate-case-actions .btn-secondary,
+.duplicate-case-actions .btn-danger,
+.duplicate-case-actions .btn-primary {
+  width: 100%;
+}
+
 /* ===== MAPA CARDS ===== */
 .mapa-lista {
   padding: 12px;
