@@ -57,6 +57,7 @@ window.I18nLocales.es = {
   'menu.sponsors': 'Patrocinadores',
   'menu.about': 'Sobre la App',
   'menu.logout': 'Salir',
+  'menu.login_switch': 'Iniciar sesión con cuenta',
 
   // — Home —
   'home.hero.title': '¿Perdiste tu mascota?',
@@ -76,7 +77,7 @@ window.I18nLocales.es = {
   'home.info.dogs': 'Perros',
   'home.info.dogs.desc': 'Alerta en un radio de <strong>5 km</strong>',
   'home.info.cats': 'Gatos',
-  'home.info.cats.desc': 'Alerta en un radio de <strong>2 km</strong>',
+  'home.info.cats.desc': 'Alerta en un radio de <strong>0.8 km</strong>',
   'home.info.others': 'Otros',
   'home.info.others.desc': 'Alerta en un radio de <strong>3 km</strong>',
 
@@ -109,7 +110,7 @@ window.I18nLocales.es = {
   'report.cat': 'Gato',
   'report.other': 'Otro',
   'report.dog.radius': 'Radio: 5km',
-  'report.cat.radius': 'Radio: 2km',
+  'report.cat.radius': 'Radio: 0.8km',
   'report.other.radius': 'Radio: 3km',
   'report.which_animal': '¿Qué animal?',
   'report.location.label': 'Lugar donde se perdió *',
@@ -137,12 +138,16 @@ window.I18nLocales.es = {
   'report.observation.placeholder': 'Ej: Collar azul, cojea de la pata izquierda, muy dócil...',
   'report.reward': 'Ofrezco recompensa',
   'report.reward.placeholder': 'Monto o descripción de la recompensa',
-  'report.phone': 'Teléfono de contacto *',
+  'report.phone': 'Teléfono de contacto (opcional)',
   'report.phone.placeholder': '(00) 00000-0000',
+  'report.phone_public': 'Mostrar mi teléfono públicamente',
+  'report.phone_public.hint': 'Facilita el contacto directo de quien aviste tu mascota.',
   'report.submit': 'ENVIAR ALERTA AHORA',
   'report.validate.photo_phone': 'Agrega foto y teléfono',
+  'report.validate.photo_location': 'Agrega foto y ubicación',
   'report.validate.photo': 'Agrega una foto de la mascota',
   'report.validate.phone': 'Ingresa el teléfono de contacto',
+  'report.validate.location': 'Ingresa la ubicación',
   'report.note': 'La alerta se enviará a personas en un radio de hasta <strong id="raio-info">{radius} km</strong>. Podrás completar después.',
 
   // — Complete profile —
@@ -184,13 +189,21 @@ window.I18nLocales.es = {
   'sighting.observation': 'Observaciones',
   'sighting.observation.placeholder': 'Estado, si tenía collar, lugar exacto...',
   'sighting.contact': 'Tu contacto (opcional)',
+  'sighting.phone_public': 'Mostrar mi teléfono al dueño',
+  'sighting.phone_public.hint': 'El dueño podrá contactarte directamente.',
   'sighting.submit': 'Enviar Avistamiento',
   'sighting.ai.no_pets': 'Ninguna mascota reportada para comparar.',
   'sighting.ai.no_match': 'Sin match. ¡Envía el avistamiento de todas formas!',
   'sighting.ai.error': 'Error en la comparación. Envía de todas formas.',
 
+  // — Validación —
+  'validation.phone_invalid': 'Teléfono inválido. Use formato brasileño: (XX) XXXXX-XXXX',
+
   // — Details —
   'details.title': 'Detalles de la Mascota',
+  'details.contact_label': 'Contacto',
+  'details.btn_call': 'Llamar',
+  'details.request_contact': 'Solicitar contacto',
 
   // — My reports —
   'myreports.title': 'Mis Reportes',
@@ -216,6 +229,21 @@ window.I18nLocales.es = {
   'sighting.ai.pet_unnamed': 'Mascota sin nombre',
   'sighting.ai.match_label': '¡Match!',
   'sighting.ai.possible_label': 'Posible',
+  'sighting.ai.link_pet': 'Vincular a esta mascota',
+  'sighting.ai.linked': 'Vinculado ✓',
+  'sighting.ai.view_details': 'Ver detalles',
+  'sighting.ai.linked_to': 'Vinculado a: {name} ({score}% match)',
+
+  // — Detalles de la mascota (acciones para no-dueños) —
+  'details.report_sighting': 'Reportar avistamiento de esta mascota',
+  'details.found_this_pet': '¿Encontraste esta mascota? ¡Contacta!',
+  'details.contact_tutor': 'Ver contacto del tutor',
+  'details.login_required': 'Inicia sesión para ver el contacto del tutor',
+  'details.loading_contact': 'Buscando contacto...',
+  'details.tutor_info': 'Contacto del Tutor',
+  'details.contact_revealed': 'Contacto revelado',
+  'details.no_contact': 'Contacto del tutor no disponible',
+  'details.contact_error': 'Error al buscar contacto del tutor',
 
   // — Notifications —
   'notif.title': 'Notificaciones',

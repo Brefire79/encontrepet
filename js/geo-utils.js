@@ -8,7 +8,7 @@ const GeoUtils = (() => {
   // Raios de busca por tipo de animal (em km)
   const RAIO_BUSCA = {
     cao: 5,
-    gato: 2,
+    gato: 0.8,
     outro: 3
   };
 

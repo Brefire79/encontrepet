@@ -57,6 +57,7 @@ window.I18nLocales.pt = {
   'menu.sponsors': 'Patrocinadores',
   'menu.about': 'Sobre o App',
   'menu.logout': 'Sair',
+  'menu.login_switch': 'Entrar com conta',
 
   // — Home hero —
   'home.hero.title': 'Perdeu seu pet?',
@@ -76,7 +77,7 @@ window.I18nLocales.pt = {
   'home.info.dogs': 'Cães',
   'home.info.dogs.desc': 'Alerta em raio de <strong>5 km</strong>',
   'home.info.cats': 'Gatos',
-  'home.info.cats.desc': 'Alerta em raio de <strong>2 km</strong>',
+  'home.info.cats.desc': 'Alerta em raio de <strong>0.8 km</strong>',
   'home.info.others': 'Outros',
   'home.info.others.desc': 'Alerta em raio de <strong>3 km</strong>',
 
@@ -109,7 +110,7 @@ window.I18nLocales.pt = {
   'report.cat': 'Gato',
   'report.other': 'Outro',
   'report.dog.radius': 'Raio: 5km',
-  'report.cat.radius': 'Raio: 2km',
+  'report.cat.radius': 'Raio: 0.8km',
   'report.other.radius': 'Raio: 3km',
   'report.which_animal': 'Qual animal?',
   'report.location.label': 'Local onde foi perdido *',
@@ -137,12 +138,16 @@ window.I18nLocales.pt = {
   'report.observation.placeholder': 'Ex: Usando coleira azul, manca da pata esquerda, muito dócil...',
   'report.reward': 'Ofereço recompensa',
   'report.reward.placeholder': 'Valor ou descrição da recompensa',
-  'report.phone': 'Telefone para contato *',
+  'report.phone': 'Telefone para contato (opcional)',
   'report.phone.placeholder': '(00) 00000-0000',
+  'report.phone_public': 'Exibir meu telefone publicamente',
+  'report.phone_public.hint': 'Facilita o contato direto de quem avistar seu pet.',
   'report.submit': 'DISPARAR ALERTA AGORA',
   'report.validate.photo_phone': 'Adicione foto e telefone',
+  'report.validate.photo_location': 'Adicione foto e localização',
   'report.validate.photo': 'Adicione uma foto do pet',
   'report.validate.phone': 'Informe o telefone de contato',
+  'report.validate.location': 'Informe a localização',
   'report.note': 'O alerta será enviado para pessoas em um raio de até <strong id="raio-info">{radius} km</strong>. Você poderá completar o cadastro depois.',
 
   // — Cadastro completo —
@@ -184,13 +189,21 @@ window.I18nLocales.pt = {
   'sighting.observation': 'Observações',
   'sighting.observation.placeholder': 'Estado do animal, se tinha coleira, local exato...',
   'sighting.contact': 'Seu contato (opcional)',
+  'sighting.phone_public': 'Exibir meu telefone para o tutor',
+  'sighting.phone_public.hint': 'O tutor poderá entrar em contato diretamente.',
   'sighting.submit': 'Enviar Avistamento',
   'sighting.ai.no_pets': 'Nenhum pet reportado para comparar.',
   'sighting.ai.no_match': 'Nenhum match. Envie o avistamento mesmo assim!',
   'sighting.ai.error': 'Erro na comparação. Envie mesmo assim.',
 
+  // — Validação —
+  'validation.phone_invalid': 'Telefone inválido. Use formato brasileiro: (XX) XXXXX-XXXX',
+
   // — Detalhes —
   'details.title': 'Detalhes do Pet',
+  'details.contact_label': 'Contato',
+  'details.btn_call': 'Ligar',
+  'details.request_contact': 'Solicitar contato',
 
   // — Meus reportes —
   'myreports.title': 'Meus Reportes',
@@ -216,6 +229,21 @@ window.I18nLocales.pt = {
   'sighting.ai.pet_unnamed': 'Pet sem nome',
   'sighting.ai.match_label': 'Match!',
   'sighting.ai.possible_label': 'Possível',
+  'sighting.ai.link_pet': 'Vincular a este pet',
+  'sighting.ai.linked': 'Vinculado ✓',
+  'sighting.ai.view_details': 'Ver detalhes',
+  'sighting.ai.linked_to': 'Vinculado a: {name} ({score}% match)',
+
+  // — Detalhes do Pet (ações para não-donos) —
+  'details.report_sighting': 'Reportar avistamento deste pet',
+  'details.found_this_pet': 'Encontrou este pet? Entre em contato!',
+  'details.contact_tutor': 'Ver contato do tutor',
+  'details.login_required': 'Faça login para ver o contato do tutor',
+  'details.loading_contact': 'Buscando contato...',
+  'details.tutor_info': 'Contato do Tutor',
+  'details.contact_revealed': 'Contato revelado',
+  'details.no_contact': 'Contato do tutor não disponível',
+  'details.contact_error': 'Erro ao buscar contato do tutor',
 
   // — Notificações —
   'notif.title': 'Notificações',

@@ -27,6 +27,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js"></script>
 
   <!-- TensorFlow.js + MobileNet (IA gratuita no navegador - carregamento lazy) -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js" defer></script>
@@ -272,7 +273,7 @@
           </div>
           <div class="info-text">
             <h4 data-i18n="home.info.cats">Gatos</h4>
-            <p data-i18n-html="home.info.cats.desc">Alerta em raio de <strong>2 km</strong></p>
+            <p data-i18n-html="home.info.cats.desc">Alerta em raio de <strong>0.8 km</strong></p>
           </div>
         </div>
         <div class="info-card">
@@ -405,7 +406,7 @@
               <div class="radio-card-content">
                 <i class="fas fa-cat"></i>
                 <span data-i18n="report.cat">Gato</span>
-                <small data-i18n="report.cat.radius">Raio: 2km</small>
+                <small data-i18n="report.cat.radius">Raio: 0.8km</small>
               </div>
             </label>
             <label class="radio-card">
@@ -497,8 +498,33 @@
 
         <!-- Contato Rápido -->
         <div class="form-group">
-          <label><i class="fas fa-phone"></i> <span data-i18n="report.phone">Telefone para contato *</span></label>
+          <label><i class="fas fa-phone"></i> <span data-i18n="report.phone">Telefone para contato (opcional)</span></label>
           <input type="tel" id="telefone-rapido" class="form-input" placeholder="(00) 00000-0000" data-i18n-placeholder="report.phone.placeholder">
+          <p id="telefone-rapido-erro" class="field-error hidden"></p>
+        </div>
+
+        <!-- Exibir telefone publicamente -->
+        <div class="form-group">
+          <label class="switch-label">
+            <span data-i18n="report.phone_public">Exibir meu telefone publicamente</span>
+            <label class="switch">
+              <input type="checkbox" id="check-telefone-publico">
+              <span class="switch-slider"></span>
+            </label>
+          </label>
+          <p class="field-hint" data-i18n="report.phone_public.hint">Facilita o contato direto de quem avistar seu pet.</p>
+        </div>
+
+        <!-- Exibir e-mail publicamente -->
+        <div class="form-group">
+          <label class="switch-label">
+            <span>Exibir meu e-mail publicamente</span>
+            <label class="switch">
+              <input type="checkbox" id="check-email-publico">
+              <span class="switch-slider"></span>
+            </label>
+          </label>
+          <p class="field-hint">Permite contato por e-mail de quem avistar seu pet.</p>
         </div>
 
         <!-- Botão Disparar Alerta -->
@@ -733,6 +759,19 @@
         <div class="form-group">
           <label data-i18n="sighting.contact">Seu contato (opcional)</label>
           <input type="tel" id="contato-avistamento" class="form-input" placeholder="(00) 00000-0000" data-i18n-placeholder="report.phone.placeholder">
+          <p id="contato-avistamento-erro" class="field-error hidden"></p>
+        </div>
+
+        <!-- Exibir telefone para o tutor -->
+        <div class="form-group">
+          <label class="switch-label">
+            <span data-i18n="sighting.phone_public">Exibir meu telefone para o tutor</span>
+            <label class="switch">
+              <input type="checkbox" id="check-telefone-publico-avistamento">
+              <span class="switch-slider"></span>
+            </label>
+          </label>
+          <p class="field-hint" data-i18n="sighting.phone_public.hint">O tutor poderá entrar em contato diretamente.</p>
         </div>
 
         <button id="btn-reportar-avistamento" class="btn-secondary btn-large" disabled>

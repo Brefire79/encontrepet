@@ -37,6 +37,16 @@ service cloud.firestore {
         && !changed.hasAny(hashFields());
     }
 
+    // ========================================
+    //  COLLECTIONS PÚBLICAS — leitura aberta
+    //  Campos públicos permitidos:
+    //    telefone_publico, telefone_publico_ativo
+    //    (opt-in do tutor/observador)
+    //  Campos que NUNCA estão aqui (ficam em alert_privado):
+    //    endereco_privado, latitude_privada, longitude_privada,
+    //    contato_email, contato_telefone (quando não público)
+    // ========================================
+
     match /pets_perdidos/{alertId} {
       allow read: if true;
       allow create: if canCreateAlert();
@@ -51,16 +61,52 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data);
     }
 
+    // ========================================
+    //  COLLECTION PRIVADA (LGPD)
+    //  Apenas o owner pode ler e escrever
+    // ========================================
+
+    match /alert_privado/{docId} {
+      allow read: if isSignedIn() && (
+        resource.data.owner_firebase_uid == request.auth.uid ||
+        resource.data.owner_uid == request.auth.uid
+      );
+      allow create: if isSignedIn() && (
+        request.resource.data.owner_firebase_uid == request.auth.uid ||
+        request.resource.data.owner_uid == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        resource.data.owner_firebase_uid == request.auth.uid ||
+        resource.data.owner_uid == request.auth.uid
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.owner_firebase_uid == request.auth.uid ||
+        resource.data.owner_uid == request.auth.uid
+      );
+    }
+
+    // ========================================
+    //  USUÁRIOS — apenas o próprio pode ler/editar
+    // ========================================
+
     match /usuarios/{uid} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && uid == request.auth.uid;
       allow create: if isSignedIn() && uid == request.auth.uid;
       allow update: if isSignedIn() && uid == request.auth.uid;
       allow delete: if false;
     }
 
+    // ========================================
+    //  NOTIFICAÇÕES
+    // ========================================
+
     match /notificacoes/{docId} {
       allow read, write: if isSignedIn();
     }
+
+    // ========================================
+    //  FALLBACK GLOBAL — negar tudo
+    // ========================================
 
     match /{document=**} {
       allow read, write: if false;

@@ -17,7 +17,8 @@ const DB = (() => {
     PETS: 'pets_perdidos',
     AVISTAMENTOS: 'avistamentos',
     NOTIFICACOES: 'notificacoes',
-    USUARIOS: 'usuarios'
+    USUARIOS: 'usuarios',
+    ALERT_PRIVADO: 'alert_privado'
   };
 
   const COLLECTIONS = TABLES;
@@ -351,6 +352,7 @@ const DB = (() => {
       data.latitude, data.longitude, data.endereco, settings
     );
 
+    // Documento PÚBLICO — sem dados sensíveis (LGPD)
     const record = {
       tipo_animal: data.tipo_animal || 'cao',
       subtipo_animal: Security.sanitize(data.subtipo_animal || ''),
@@ -362,9 +364,7 @@ const DB = (() => {
       foto_comprimida: data.foto_comprimida || '',
       foto_hash: data.foto_hash || '',
       embedding: data.embedding || null,
-      latitude: data.latitude || 0,
-      longitude: data.longitude || 0,
-      endereco: Security.sanitize(data.endereco || ''),
+      // Apenas localização pública (ofuscada)
       latitude_publica: pubLoc.latitude,
       longitude_publica: pubLoc.longitude,
       endereco_publico: pubLoc.endereco,
@@ -373,18 +373,19 @@ const DB = (() => {
       recompensa: Security.sanitize(data.recompensa || ''),
       tem_recompensa: data.tem_recompensa || false,
       contato_nome: Security.sanitize(data.contato_nome || ''),
-      contato_telefone: Security.sanitizePhone(data.contato_telefone || ''),
-      contato_email: Security.sanitizeEmail(data.contato_email || ''),
+      // Telefone público (opt-in do tutor)
+      telefone_publico: data.telefone_publico_ativo ? Security.sanitizePhone(data.contato_telefone || '') : '',
+      telefone_publico_ativo: !!data.telefone_publico_ativo,
+      // E-mail público (opt-in do tutor)
+      contato_email_publico: data.email_publico_ativo ? Security.sanitizeEmail(data.contato_email || Auth.getUserData()?.email || '') : '',
+      email_publico_ativo: !!data.email_publico_ativo,
       status: 'ativo',
       cadastro_completo: data.cadastro_completo || false,
       raio_busca_km: raio,
       data_perda: data.data_perda || new Date().toISOString().split('T')[0],
       visualizacoes: 0,
-      imageHash: data.imageHash || data.foto_hash || '',
-      imageHashAlgo: data.imageHashAlgo || '',
-      imageHashVersion: data.imageHashVersion || 1,
-      imageHashCreatedAt: data.imageHashCreatedAt || null,
-      imageHashProcessed: data.imageHashProcessed || false,
+      // Hash será gerado server-side via Cloud Function — não enviar do client
+      imageHashProcessed: false,
       imageStoragePath: data.imageStoragePath || '',
       imageStorageUrl: data.imageStorageUrl || '',
       linkedToCaseId: data.linkedToCaseId || '',
@@ -398,24 +399,41 @@ const DB = (() => {
 
     const result = await create(TABLES.PETS, record);
 
+    // Salvar dados PRIVADOS em collection separada (LGPD)
+    if (result?.id) {
+      await savePrivateAlertData('pets_perdidos', result.id, {
+        contato_telefone: Security.sanitizePhone(data.contato_telefone || ''),
+        contato_email: Security.sanitizeEmail(data.contato_email || ''),
+        endereco_privado: Security.sanitize(data.endereco || ''),
+        latitude_privada: data.latitude || 0,
+        longitude_privada: data.longitude || 0
+      });
+    }
+
+    // Upload Storage em background (fire-and-forget) — não bloqueia o retorno
     if (result?.id && data.foto_comprimida && FirebaseConfig.isStorageReady?.()) {
-      try {
-        const upload = await FirebaseConfig.uploadAlertImage({
-          alertId: result.id,
-          dataUrl: data.foto_comprimida,
-          collection: TABLES.PETS,
-          ownerUid: record.owner_uid
-        });
-        await update(TABLES.PETS, result.id, {
-          imageStoragePath: upload.path,
-          imageStorageUrl: upload.downloadURL,
-          imageHashProcessed: false
-        });
-        result.imageStoragePath = upload.path;
-        result.imageStorageUrl = upload.downloadURL;
-      } catch (err) {
-        console.error('[DB] Upload Storage pet_perdido falhou:', err);
-      }
+      const uploadId = result.id;
+      const uploadOwner = record.owner_uid;
+      (async () => {
+        try {
+          const uid = FirebaseConfig.getFirebaseUID();
+          if (!uid) { console.warn('[DB] Upload Storage ignorado — sem Firebase Auth'); return; }
+          const upload = await FirebaseConfig.uploadAlertImage({
+            alertId: uploadId,
+            dataUrl: data.foto_comprimida,
+            collection: TABLES.PETS,
+            ownerUid: uploadOwner
+          });
+          await update(TABLES.PETS, uploadId, {
+            imageStoragePath: upload.path,
+            imageStorageUrl: upload.downloadURL,
+            imageHashProcessed: false
+          });
+          console.log('[DB] Upload Storage pet_perdido concluído em background');
+        } catch (err) {
+          console.warn('[DB] Upload Storage pet_perdido falhou (background):', err.message);
+        }
+      })();
     }
 
     saveMyReport(result.id, 'pet_perdido');
@@ -423,16 +441,22 @@ const DB = (() => {
   }
 
   async function completarCadastro(petId, data) {
-    return await update(TABLES.PETS, petId, {
+    // Dados públicos
+    await update(TABLES.PETS, petId, {
       nome_pet: Security.sanitize(data.nome_pet),
       raca: Security.sanitize(data.raca),
       sexo: data.sexo,
       data_perda: data.data_perda,
       descricao: Security.sanitize(data.descricao),
       contato_nome: Security.sanitize(data.contato_nome),
-      contato_email: Security.sanitizeEmail(data.contato_email),
       cadastro_completo: true
     });
+    // Dados privados (email do tutor)
+    if (data.contato_email) {
+      await savePrivateAlertData('pets_perdidos', petId, {
+        contato_email: Security.sanitizeEmail(data.contato_email)
+      });
+    }
   }
 
   async function marcarEncontrado(petId, feedback = {}) {
@@ -516,6 +540,12 @@ const DB = (() => {
   async function reportarAvistamento(data) {
     Security.checkRateLimit('report_sighting', 5, 300000);
 
+    const settings = Auth.getUserSettings();
+    const pubLoc = Security.getPublicLocation(
+      data.latitude, data.longitude, data.endereco || '', settings
+    );
+
+    // Documento PÚBLICO — sem dados sensíveis (LGPD)
     const record = {
       pet_perdido_id: data.pet_perdido_id || '',
       tipo_animal: data.tipo_animal || 'cao',
@@ -523,22 +553,27 @@ const DB = (() => {
       foto_comprimida: data.foto_comprimida || '',
       foto_hash: data.foto_hash || '',
       embedding: data.embedding || null,
-      latitude: data.latitude || 0,
-      longitude: data.longitude || 0,
-      endereco: Security.sanitize(data.endereco || ''),
+      // Apenas localização pública (ofuscada)
+      latitude_publica: pubLoc.latitude,
+      longitude_publica: pubLoc.longitude,
+      endereco_publico: pubLoc.endereco,
+      localizacao_aproximada: pubLoc.isApproximate,
       descricao: Security.sanitize(data.descricao || ''),
       reportado_por: Security.sanitize(data.reportado_por || ''),
-      contato: Security.sanitizePhone(data.contato || ''),
+      // Telefone público (opt-in do observador)
+      telefone_publico: data.telefone_publico_ativo ? Security.sanitizePhone(data.contato || '') : '',
+      telefone_publico_ativo: !!data.telefone_publico_ativo,
       match_percentual: data.match_percentual || 0,
       status: 'pendente',
       cor: data.cor || '',
       porte: data.porte || '',
       data_avistamento: new Date().toISOString(),
-      imageHash: data.imageHash || data.foto_hash || '',
-      imageHashAlgo: data.imageHashAlgo || '',
-      imageHashVersion: data.imageHashVersion || 1,
-      imageHashCreatedAt: data.imageHashCreatedAt || null,
-      imageHashProcessed: data.imageHashProcessed || false,
+      // Vinculação opcional a pet perdido (match IA)
+      matchedLostPetId: data.matchedLostPetId || '',
+      matchedScore: data.matchedScore || 0,
+      matchedEngine: data.matchedEngine || '',
+      // Hash será gerado server-side via Cloud Function
+      imageHashProcessed: false,
       imageStoragePath: data.imageStoragePath || '',
       imageStorageUrl: data.imageStorageUrl || '',
       linkedToCaseId: data.linkedToCaseId || '',
@@ -552,24 +587,41 @@ const DB = (() => {
 
     const result = await create(TABLES.AVISTAMENTOS, record);
 
+    // Salvar dados PRIVADOS em collection separada (LGPD)
+    if (result?.id) {
+      await savePrivateAlertData('avistamentos', result.id, {
+        contato_telefone: Security.sanitizePhone(data.contato || ''),
+        contato_email: '',
+        endereco_privado: Security.sanitize(data.endereco || ''),
+        latitude_privada: data.latitude || 0,
+        longitude_privada: data.longitude || 0
+      });
+    }
+
+    // Upload Storage em background (fire-and-forget) — não bloqueia o retorno
     if (result?.id && data.foto_comprimida && FirebaseConfig.isStorageReady?.()) {
-      try {
-        const upload = await FirebaseConfig.uploadAlertImage({
-          alertId: result.id,
-          dataUrl: data.foto_comprimida,
-          collection: TABLES.AVISTAMENTOS,
-          ownerUid: record.owner_uid
-        });
-        await update(TABLES.AVISTAMENTOS, result.id, {
-          imageStoragePath: upload.path,
-          imageStorageUrl: upload.downloadURL,
-          imageHashProcessed: false
-        });
-        result.imageStoragePath = upload.path;
-        result.imageStorageUrl = upload.downloadURL;
-      } catch (err) {
-        console.error('[DB] Upload Storage avistamento falhou:', err);
-      }
+      const uploadId = result.id;
+      const uploadOwner = record.owner_uid;
+      (async () => {
+        try {
+          const uid = FirebaseConfig.getFirebaseUID();
+          if (!uid) { console.warn('[DB] Upload Storage avistamento ignorado — sem Firebase Auth'); return; }
+          const upload = await FirebaseConfig.uploadAlertImage({
+            alertId: uploadId,
+            dataUrl: data.foto_comprimida,
+            collection: TABLES.AVISTAMENTOS,
+            ownerUid: uploadOwner
+          });
+          await update(TABLES.AVISTAMENTOS, uploadId, {
+            imageStoragePath: upload.path,
+            imageStorageUrl: upload.downloadURL,
+            imageHashProcessed: false
+          });
+          console.log('[DB] Upload Storage avistamento concluído em background');
+        } catch (err) {
+          console.warn('[DB] Upload Storage avistamento falhou (background):', err.message);
+        }
+      })();
     }
 
     saveMyReport(result.id, 'avistamento');
@@ -608,8 +660,8 @@ const DB = (() => {
           tipo_animal: item.tipo_animal,
           imageHash: item.imageHash || item.foto_hash || '',
           foto_hash: item.foto_hash || item.imageHash || '',
-          latitude: Number(item.latitude || item.latitude_publica || 0),
-          longitude: Number(item.longitude || item.longitude_publica || 0),
+          latitude: Number(item.latitude_publica || item.latitude || 0),
+          longitude: Number(item.longitude_publica || item.longitude || 0),
           owner_uid: item.owner_uid || '',
           contato: item.contato || item.contato_telefone || '',
           contato_telefone: item.contato_telefone || item.contato || '',
@@ -679,6 +731,79 @@ const DB = (() => {
   }
 
   // ============================================================
+  //  DADOS PRIVADOS (LGPD) — Collection alert_privado
+  // ============================================================
+
+  /**
+   * Salva dados sensíveis em collection separada (alert_privado).
+   * O docId segue o padrão: {colecao}_{alertId}
+   * Apenas o owner pode ler/escrever (via Firestore Rules).
+   * @param {string} colecao - 'pets_perdidos' ou 'avistamentos'
+   * @param {string} alertId - ID do documento público
+   * @param {Object} privateData - { contato_telefone, contato_email, endereco_privado, latitude_privada, longitude_privada }
+   */
+  async function savePrivateAlertData(colecao, alertId, privateData) {
+    const docId = `${colecao}_${alertId}`;
+    const payload = {
+      owner_firebase_uid: FirebaseConfig.getFirebaseUID?.() || '',
+      owner_uid: Auth.getUID(),
+      contato_telefone: privateData.contato_telefone || '',
+      contato_email: privateData.contato_email || '',
+      endereco_privado: privateData.endereco_privado || '',
+      latitude_privada: privateData.latitude_privada || 0,
+      longitude_privada: privateData.longitude_privada || 0,
+      alert_collection: colecao,
+      alert_id: alertId,
+      createdAt: new Date().toISOString()
+    };
+
+    if (useFirestore) {
+      try {
+        const db = FirebaseConfig.getDB();
+        await db.collection(TABLES.ALERT_PRIVADO).doc(docId).set(
+          Security.sanitizeObject(payload),
+          { merge: true }
+        );
+        console.log('[DB] Dados privados salvos (LGPD):', docId);
+        return;
+      } catch (err) {
+        console.warn('[DB] Firestore alert_privado falhou:', err.message);
+      }
+    }
+    // Fallback local
+    try {
+      const queue = JSON.parse(localStorage.getItem('encontrePet_privateData') || '{}');
+      queue[docId] = payload;
+      localStorage.setItem('encontrePet_privateData', JSON.stringify(queue));
+      console.log('[DB] Dados privados salvos localmente (LGPD):', docId);
+    } catch (e) { /* localStorage full */ }
+  }
+
+  /**
+   * Busca dados privados de um alerta (apenas owner pode acessar via rules).
+   * @param {string} colecao - 'pets_perdidos' ou 'avistamentos'
+   * @param {string} alertId - ID do documento público
+   * @returns {Object|null}
+   */
+  async function getPrivateAlertData(colecao, alertId) {
+    const docId = `${colecao}_${alertId}`;
+    if (useFirestore) {
+      try {
+        const db = FirebaseConfig.getDB();
+        const doc = await db.collection(TABLES.ALERT_PRIVADO).doc(docId).get();
+        if (doc.exists) return { id: doc.id, ...doc.data() };
+      } catch (err) {
+        console.warn('[DB] getPrivateAlertData falhou:', err.message);
+      }
+    }
+    // Fallback local
+    try {
+      const queue = JSON.parse(localStorage.getItem('encontrePet_privateData') || '{}');
+      return queue[docId] || null;
+    } catch { return null; }
+  }
+
+  // ============================================================
   //  NOTIFICAÇÕES
   // ============================================================
 
@@ -714,9 +839,50 @@ const DB = (() => {
   }
 
   async function loadMyReports() {
+    const uid = Auth.getUID();
+    if (!uid) return [];
+
+    let results = [];
+
+    if (useFirestore) {
+      try {
+        const petsResult = await fsList(TABLES.PETS, {
+          where: [['owner_uid', '==', uid]],
+          limit: 100
+        });
+        const pets = (petsResult.data || []).map(d => ({
+          ...d,
+          _reportType: 'pet_perdido',
+          _reportDate: d.created_at?.toMillis ? d.created_at.toMillis() : new Date(d.created_at || 0).getTime()
+        }));
+
+        const avistResult = await fsList(TABLES.AVISTAMENTOS, {
+          where: [['owner_uid', '==', uid]],
+          limit: 100
+        });
+        const avist = (avistResult.data || []).map(d => ({
+          ...d,
+          _reportType: 'avistamento',
+          _reportDate: d.created_at?.toMillis ? d.created_at.toMillis() : new Date(d.created_at || d.data_avistamento || 0).getTime()
+        }));
+
+        results = [...pets, ...avist];
+        results.forEach(r => saveMyReport(r.id, r._reportType));
+
+      } catch (err) {
+        console.warn('[DB] loadMyReports Firestore falhou, usando localStorage:', err.message);
+        results = await loadMyReportsFromLocalStorage();
+      }
+    } else {
+      results = await loadMyReportsFromLocalStorage();
+    }
+
+    return results.sort((a, b) => b._reportDate - a._reportDate);
+  }
+
+  async function loadMyReportsFromLocalStorage() {
     const reports = getMyReports();
     const results = [];
-
     for (const report of reports) {
       try {
         const table = report.type === 'pet_perdido' ? TABLES.PETS : TABLES.AVISTAMENTOS;
@@ -726,8 +892,7 @@ const DB = (() => {
         console.warn('Report not found:', report.id);
       }
     }
-
-    return results.sort((a, b) => b._reportDate - a._reportDate);
+    return results;
   }
 
   // ============================================================
@@ -868,8 +1033,11 @@ const DB = (() => {
     criarNotificacao,
     listarNotificacoes,
     marcarNotificacaoLida,
+    savePrivateAlertData,
+    getPrivateAlertData,
     getMyReports,
     loadMyReports,
+    loadMyReportsFromLocalStorage,
     getStats,
     clearCache,
     getStatus

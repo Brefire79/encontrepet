@@ -186,6 +186,40 @@ const Security = (() => {
   }
 
   /**
+   * Normaliza telefone BR para apenas dígitos (sem formatação).
+   * Remove +55 se existir. Resultado: 10 ou 11 dígitos (DDD + número).
+   * Retorna string vazia se inválido.
+   */
+  function normalizePhoneBR(phone) {
+    if (!phone) return '';
+    let digits = phone.replace(/\D/g, '');
+    // Remover prefixo do país (55)
+    if (digits.length >= 12 && digits.startsWith('55')) {
+      digits = digits.substring(2);
+    }
+    // Deve ter 10 (fixo) ou 11 (celular) dígitos
+    if (digits.length < 10 || digits.length > 11) return '';
+    // DDD válido: 11-99
+    const ddd = parseInt(digits.substring(0, 2));
+    if (ddd < 11 || ddd > 99) return '';
+    return digits;
+  }
+
+  /**
+   * Valida se é um telefone brasileiro válido.
+   * Aceita: (11) 91234-5678, 11912345678, +55 11 91234-5678, etc.
+   * @returns {{ valid: boolean, normalized: string, error: string }}
+   */
+  function validatePhoneBR(phone) {
+    if (!phone || !phone.trim()) return { valid: true, normalized: '', error: '' }; // Opcional
+    const normalized = normalizePhoneBR(phone);
+    if (!normalized) {
+      return { valid: false, normalized: '', error: 'phone_invalid' };
+    }
+    return { valid: true, normalized, error: '' };
+  }
+
+  /**
    * Sanitiza email
    */
   function sanitizeEmail(email) {
@@ -408,6 +442,8 @@ const Security = (() => {
     sanitizeObject,
     sanitizePhone,
     sanitizeEmail,
+    normalizePhoneBR,
+    validatePhoneBR,
     // Localização
     obfuscateLocation,
     getPublicLocation,

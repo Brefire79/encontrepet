@@ -243,101 +243,16 @@ const AIVision = (() => {
 
   /**
    * Matching avançado combinando IA + hash + características
+   * Agora delegado para AIMatch.findMatches com engine 'AI' (gates + pesos dinâmicos)
    * @param {Object} sighting - Dados do avistamento
    * @param {Array} lostPets - Pets perdidos cadastrados
    * @returns {Array} matches ordenados
    */
   async function advancedMatching(sighting, lostPets) {
-    const results = [];
-
-    for (const pet of lostPets) {
-      if (pet.status !== 'ativo') continue;
-
-      let score = 0;
-      const details = {};
-
-      // 1. Embedding IA (40%) - o mais importante
-      if (sighting.embedding && pet.embedding) {
-        details.embeddingScore = compareEmbeddings(sighting.embedding, pet.embedding);
-        score += details.embeddingScore * 0.40;
-      } else {
-        // Fallback: usar hash perceptual
-        if (sighting.foto_hash && pet.foto_hash) {
-          details.hashScore = ImageUtils.compareHashes(sighting.foto_hash, pet.foto_hash);
-          score += details.hashScore * 0.40;
-        }
-      }
-
-      // 2. Tipo de animal (20%)
-      details.typeMatch = (sighting.tipo_animal === pet.tipo_animal) ? 100 : 0;
-      score += details.typeMatch * 0.20;
-
-      // 3. Cor (15%)
-      details.colorMatch = compareColors(sighting.cor, pet.cor);
-      score += details.colorMatch * 0.15;
-
-      // 4. Porte (10%)
-      details.sizeMatch = compareSizes(sighting.porte, pet.porte);
-      score += details.sizeMatch * 0.10;
-
-      // 5. Proximidade (15%)
-      details.proximityScore = calculateProximity(sighting, pet);
-      score += details.proximityScore * 0.15;
-
-      const totalScore = Math.round(score);
-
-      if (totalScore > 40) {
-        results.push({
-          pet,
-          totalScore,
-          details,
-          isMatch: totalScore >= 92
-        });
-      }
-    }
-
-    return results.sort((a, b) => b.totalScore - a.totalScore);
+    return AIMatch.findMatches(sighting, lostPets, 'AI');
   }
 
   // ====== HELPERS INTERNOS ======
-
-  function compareColors(cor1, cor2) {
-    if (!cor1 || !cor2) return 50;
-    if (cor1 === cor2) return 100;
-    
-    const groups = {
-      escuros: ['preto', 'cinza'],
-      claros: ['branco', 'creme'],
-      marrons: ['marrom', 'caramelo'],
-      mistos: ['rajado', 'malhado'],
-      multicolor: ['tricolor', 'bicolor', 'malhado'],
-      pb: ['preto_branco', 'malhado', 'bicolor']
-    };
-
-    for (const group of Object.values(groups)) {
-      if (group.includes(cor1) && group.includes(cor2)) return 70;
-    }
-    return 20;
-  }
-
-  function compareSizes(p1, p2) {
-    if (!p1 || !p2) return 50;
-    if (p1 === p2) return 100;
-    const sizes = ['pequeno', 'medio', 'grande'];
-    const diff = Math.abs(sizes.indexOf(p1) - sizes.indexOf(p2));
-    return diff === 1 ? 60 : 20;
-  }
-
-  function calculateProximity(s, p) {
-    if (!s.latitude || !p.latitude) return 50;
-    const dist = GeoUtils.calculateDistance(s.latitude, s.longitude, p.latitude, p.longitude);
-    if (dist <= 0.5) return 100;
-    if (dist <= 1) return 90;
-    if (dist <= 3) return 70;
-    if (dist <= 5) return 50;
-    if (dist <= 10) return 30;
-    return 10;
-  }
 
   /**
    * Análise básica sem modelo de IA (fallback)

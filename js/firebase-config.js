@@ -22,6 +22,7 @@ const FirebaseConfig = (() => {
   let db = null;
   let storage = null;
   let auth = null;
+  let functions = null;
   let firebaseUID = '';
   let initialized = false;
   let isAvailable = false;
@@ -75,6 +76,13 @@ const FirebaseConfig = (() => {
       // Inicializar Storage (opcional)
       if (firebase.storage) {
         storage = firebase.storage();
+      }
+
+      // Inicializar Functions (opcional, para Cloud Functions)
+      if (firebase.functions) {
+        functions = firebase.functions();
+        // Em produção, o SDK aponta automaticamente para a região correta.
+        // Para usar emulador local: functions.useEmulator('localhost', 5001);
       }
 
       // Inicializar Auth anônimo (opcional, para regras de segurança)
@@ -133,18 +141,23 @@ const FirebaseConfig = (() => {
     return storage;
   }
 
+  function getFunctions() {
+    if (!initialized) init();
+    return functions;
+  }
+
   function getFirebaseUID() {
     if (!initialized) init();
     return firebaseUID || auth?.currentUser?.uid || '';
   }
 
-  async function waitForAuthUID(timeoutMs = 6000) {
+  async function waitForAuthUID(timeoutMs = 2000) {
     if (!initialized) init();
     if (getFirebaseUID()) return getFirebaseUID();
 
     const start = Date.now();
     if (authInitPromise) {
-      try { await authInitPromise; } catch {}
+      try { await Promise.race([authInitPromise, new Promise(r => setTimeout(r, timeoutMs))]); } catch {}
       if (getFirebaseUID()) return getFirebaseUID();
     }
 
@@ -205,6 +218,7 @@ const FirebaseConfig = (() => {
     init,
     getDB,
     getStorage,
+    getFunctions,
     isReady,
     isStorageReady,
     getFirebaseUID,

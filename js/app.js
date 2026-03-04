@@ -13,7 +13,16 @@ const App = (() => {
     avistamentoPhotoData: null,
     userLocation: null,
     isLoading: false,
-    aiReady: false
+    aiReady: false,
+    // Match linking (Vi um Pet → vincular a pet perdido)
+    matchedLostPetId: null,
+    matchedLostPetName: null,
+    matchedScore: 0,
+    matchedEngine: '',
+    // Matching control
+    isAnalyzing: false,
+    _matchDebounceTimer: null,
+    _matchCancelToken: null
   };
 
   const DUPLICATE_RULES = {
@@ -22,6 +31,109 @@ const App = (() => {
     recentDays: 30,
     maxCandidates: 5
   };
+
+  // ====== NOTIFICATION SOUND (Web Audio API) ======
+  let _audioCtx = null;
+  let _lastKnownUnread = -1; // -1 = not yet loaded
+  let _notifPollTimer = null;
+  let _lastKnownFeedIds = null; // Set of IDs from the last feed check
+
+  /**
+   * Plays a short, pleasant notification chime using Web Audio API.
+   * No external files needed.
+   */
+  function playNotificationSound() {
+    try {
+      if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = _audioCtx;
+      const now = ctx.currentTime;
+
+      // Two-tone chime: C5 → E5
+      const freqs = [523.25, 659.25];
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.18, now + i * 0.15);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.15 + 0.4);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.15);
+        osc.stop(now + i * 0.15 + 0.4);
+      });
+    } catch (e) {
+      console.warn('[Sound] Notification sound failed:', e);
+    }
+  }
+
+  /**
+   * Plays a softer, lower-pitched sound for general feed updates.
+   * Single gentle tone (G4) at lower volume.
+   */
+  function playFeedSound() {
+    try {
+      if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = _audioCtx;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 392; // G4 — tom suave
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.5);
+    } catch (e) {
+      console.warn('[Sound] Feed sound failed:', e);
+    }
+  }
+
+  // ====== ALERTAS EM TEMPO REAL ======
+
+  function flashTabTitle(message, duration = 12000) {
+    const original = document.title;
+    let showing = false;
+    const interval = setInterval(() => {
+      document.title = showing ? original : message;
+      showing = !showing;
+    }, 1000);
+    setTimeout(() => {
+      clearInterval(interval);
+      document.title = original;
+    }, duration);
+  }
+
+  async function notifyNewPetNearby(pet) {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+    if (Notification.permission !== 'granted') return;
+
+    const nome = pet.nome_pet || 'Um pet';
+    const tipo = { cao: 'Cachorro', gato: 'Gato', outro: 'Animal' }[pet.tipo_animal] || 'Pet';
+    const local = pet.endereco_publico || pet.endereco || 'sua região';
+
+    const notif = new Notification(`🐾 ${tipo} perdido perto de você!`, {
+      body: `${nome} foi perdido em ${local}. Toque para ver detalhes e ajudar.`,
+      icon: 'icons/icon-192.png',
+      badge: 'icons/icon-192.png',
+      tag: `pet-alert-${pet.id}`,
+      requireInteraction: false,
+      vibrate: [200, 100, 200, 100, 200]
+    });
+
+    notif.onclick = () => {
+      window.focus();
+      App.showPetDetails(pet.id);
+      notif.close();
+    };
+
+    setTimeout(() => notif.close(), 10000);
+  }
 
   // ====== INICIALIZAÇÃO ======
 
@@ -68,7 +180,93 @@ const App = (() => {
     handleDeepLink();
     window.addEventListener('hashchange', handleDeepLink);
 
+    // 9. Notification badge polling (every 60s)
+    startNotifPolling();
+
     console.log('🐾 Encontre Pet v1.0.0 inicializado!');
+  }
+
+  /**
+   * Periodic polling to update notification badge count and check feed.
+   * Plays a sound and flashes when new unread notifications appear.
+   * Also checks for new feed items (pets/sightings) every 60s.
+   */
+  function startNotifPolling() {
+    // Initial check after 5 seconds (let auth settle)
+    setTimeout(() => { updateNotifBadge(); checkFeedUpdates(); }, 5000);
+    // Then poll every 60 seconds
+    _notifPollTimer = setInterval(() => { updateNotifBadge(); checkFeedUpdates(); }, 60000);
+  }
+
+  async function updateNotifBadge() {
+    try {
+      if (!Auth.isLoggedIn()) return;
+      const result = await DB.listarNotificacoes();
+      const myIds = DB.getMyReports().filter(r => (r.type || r._reportType) === 'pet_perdido').map(r => r.id);
+      const notifs = (result.data || []).filter(n => myIds.includes(n.pet_perdido_id));
+      const unread = notifs.filter(n => !n.lida).length;
+
+      const badge = document.getElementById('notif-badge');
+      if (badge) {
+        badge.textContent = unread;
+        badge.classList.toggle('hidden', unread === 0);
+      }
+
+      // Play sound + flash if there are NEW unread notifications
+      if (_lastKnownUnread >= 0 && unread > _lastKnownUnread) {
+        playNotificationSound();
+        // Flash the bell icon
+        const bellBtn = document.getElementById('btn-notificacoes');
+        if (bellBtn) {
+          bellBtn.classList.add('notif-bell-flash');
+          setTimeout(() => bellBtn.classList.remove('notif-bell-flash'), 40000);
+        }
+      }
+      _lastKnownUnread = unread;
+    } catch (e) {
+      // Silencioso — não quebrar o polling
+    }
+  }
+
+  /**
+   * Checks if new pets or sightings appeared in the feed.
+   * Plays a soft sound and flashes new cards.
+   */
+  async function checkFeedUpdates() {
+    try {
+      const petsResult = await DB.listarPetsAtivos();
+      const avistResult = await DB.listarAvistamentos();
+      const petIds = (petsResult.data || []).filter(p => p.status === 'ativo').map(p => p.id);
+      const avistIds = (avistResult.data || []).map(a => a.id);
+      const currentIds = new Set([...petIds, ...avistIds]);
+
+      if (_lastKnownFeedIds !== null) {
+        const newIds = [...currentIds].filter(id => !_lastKnownFeedIds.has(id));
+        if (newIds.length > 0) {
+          playFeedSound();
+          flashTabTitle(`🐾 ${newIds.length} novo(s) alerta(s) perto de você!`);
+          const newPet = (petsResult.data || []).find(p => newIds.includes(p.id) && p.status === 'ativo');
+          if (newPet) notifyNewPetNearby(newPet);
+          // If user is on home page, reload the feed and flash new cards
+          if (state.currentPage === 'home') {
+            await loadAlertsFeed();
+            // Flash new cards
+            setTimeout(() => {
+              newIds.forEach(id => {
+                const card = document.querySelector(`.alert-card[data-id="${id}"]`);
+                if (card) {
+                  card.classList.add('feed-card-flash');
+                  setTimeout(() => card.classList.remove('feed-card-flash'), 40000);
+                }
+              });
+            }, 300);
+          }
+        }
+      }
+      _lastKnownFeedIds = currentIds;
+    } catch (e) {
+      // Silencioso
+    }
   }
 
   // ====== DEEP LINK ======
@@ -90,8 +288,12 @@ const App = (() => {
           } else {
             // Timeout: auth não completou, navegar quando logar
             console.warn('[DeepLink] Auth timeout — aguardando login para abrir pet', id);
+            let deepLinkHandled = false;
             const onceAuth = (evt) => {
-              if (evt === 'login') { showPetDetails(id); Auth.offAuthChange?.(onceAuth); }
+              if (evt === 'login' && !deepLinkHandled) {
+                deepLinkHandled = true;
+                showPetDetails(id);
+              }
             };
             Auth.onAuthChange?.(onceAuth);
           }
@@ -150,6 +352,9 @@ const App = (() => {
       updateAdminMenuVisibility();
       loadHomeData();
       requestLocation();
+      if ('Notification' in window && Notification.permission === 'default') {
+        setTimeout(() => Notification.requestPermission(), 3000);
+      }
     } else if (event === 'logout') {
       authScreen?.classList.remove('hidden');
       showAuthForm('login');
@@ -177,7 +382,20 @@ const App = (() => {
     // Mostrar/ocultar itens de menu baseado no tipo de conta
     const logoutItem = document.getElementById('menu-logout');
     if (logoutItem) {
-      logoutItem.style.display = userData.isAnonymous ? 'none' : '';
+      // Sempre visível — visitante também precisa poder sair / trocar de conta
+      logoutItem.style.display = '';
+      const logoutLabel = logoutItem.querySelector('span');
+      if (logoutLabel) {
+        logoutLabel.textContent = userData.isAnonymous
+          ? (I18n.t('menu.login_switch') || 'Entrar com conta')
+          : (I18n.t('menu.logout') || 'Sair');
+      }
+      const logoutIcon = logoutItem.querySelector('i');
+      if (logoutIcon) {
+        logoutIcon.className = userData.isAnonymous
+          ? 'fas fa-sign-in-alt'
+          : 'fas fa-sign-out-alt';
+      }
     }
   }
 
@@ -522,6 +740,9 @@ const App = (() => {
         setInterval(() => { reg.update().catch(() => {}); }, 900000);
         document.addEventListener('visibilitychange', () => {
           if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+        window.addEventListener('focus', () => {
+          navigator.serviceWorker.ready.then(reg => reg.update().catch(() => {}));
         });
 
       }).catch(err => console.error('[App] SW Error:', err));
@@ -1015,10 +1236,7 @@ const App = (() => {
         }
         else if (action === 'view-pet') {
           const petId = btn.dataset.petId;
-          navigateTo('detalhes');
-          // Trigger detail loading
-          const pet = adminData.pets.find(p => p.id === petId);
-          if (pet) loadPetDetails(pet);
+          showPetDetails(petId);
         }
         else if (action === 'delete-pet') {
           const petId = btn.dataset.petId;
@@ -1204,6 +1422,7 @@ const App = (() => {
           info?.classList.remove('hidden');
           document.getElementById('location-text').textContent = result.display_name;
           showToast(I18n.t('toast.address_found'), 'success');
+          validateReportForm();
         }
       }, 1200);
     });
@@ -1221,6 +1440,7 @@ const App = (() => {
           const info = document.getElementById('location-info');
           info?.classList.remove('hidden');
           document.getElementById('location-text').textContent = result.display_name;
+          validateReportForm();
         }
       }
     });
@@ -1319,10 +1539,15 @@ const App = (() => {
     } else {
       if (state.avistamentoPhotoData?._objectUrl) URL.revokeObjectURL(state.avistamentoPhotoData._objectUrl);
       state.avistamentoPhotoData = null;
+      state.matchedLostPetId = null;
+      state.matchedLostPetName = null;
+      state.matchedScore = 0;
+      state.matchedEngine = '';
       document.getElementById('foto-avistamento').value = '';
       document.getElementById('upload-preview-avistamento')?.classList.add('hidden');
       document.getElementById('upload-placeholder-avistamento')?.classList.remove('hidden');
       document.getElementById('ai-analysis-result')?.classList.add('hidden');
+      document.getElementById('matched-pet-banner')?.classList.add('hidden');
     }
     validateReportForm();
     validateSightingForm();
@@ -1362,20 +1587,21 @@ const App = (() => {
 
   function validateReportForm() {
     const hasPhoto = state.photoData !== null;
-    const rawPhone = document.getElementById('telefone-rapido')?.value || '';
-    const hasPhone = rawPhone.replace(/\D/g, '').length >= 10;
+    const hasLat = !!document.getElementById('lat-perdido')?.value;
+    const hasLng = !!document.getElementById('lng-perdido')?.value;
+    const hasLocation = hasLat && hasLng;
     const btn = document.getElementById('btn-disparar-alerta');
     if (btn) {
-      btn.disabled = !(hasPhoto && hasPhone);
+      btn.disabled = !(hasPhoto && hasLocation);
       // Atualizar texto do botão com feedback
       const span = btn.querySelector('span');
       if (span) {
-        if (!hasPhoto && !hasPhone) {
-          span.textContent = I18n.t('report.validate.photo_phone');
+        if (!hasPhoto && !hasLocation) {
+          span.textContent = I18n.t('report.validate.photo_location') || 'Adicione foto e localização';
         } else if (!hasPhoto) {
           span.textContent = I18n.t('report.validate.photo');
-        } else if (!hasPhone) {
-          span.textContent = I18n.t('report.validate.phone');
+        } else if (!hasLocation) {
+          span.textContent = I18n.t('report.validate.location') || 'Informe a localização';
         } else {
           span.textContent = I18n.t('report.submit');
         }
@@ -1394,6 +1620,21 @@ const App = (() => {
       const cor = document.querySelector('input[name="cor-pet"]:checked')?.value || '';
       const porte = document.querySelector('input[name="porte-pet"]:checked')?.value || '';
 
+      // Validar telefone BR (FASE 5)
+      const rawPhone = document.getElementById('telefone-rapido')?.value.trim() || '';
+      const phoneResult = Security.validatePhoneBR(rawPhone);
+      if (!phoneResult.valid) {
+        hideLoading();
+        state.isLoading = false;
+        const erroEl = document.getElementById('telefone-rapido-erro');
+        if (erroEl) { erroEl.textContent = I18n.t('validation.phone_invalid'); erroEl.classList.remove('hidden'); }
+        showToast(I18n.t('validation.phone_invalid'), 'error');
+        return;
+      }
+      document.getElementById('telefone-rapido-erro')?.classList.add('hidden');
+
+      const telefonePublicoAtivo = document.getElementById('check-telefone-publico')?.checked || false;
+
       const payload = {
         tipo_animal: tipo,
         subtipo_animal: subtipo,
@@ -1407,43 +1648,42 @@ const App = (() => {
         descricao: document.getElementById('obs-rapida')?.value.trim() || '',
         tem_recompensa: document.getElementById('check-recompensa')?.checked || false,
         recompensa: document.getElementById('valor-recompensa')?.value.trim() || '',
-        contato_telefone: document.getElementById('telefone-rapido')?.value.trim() || '',
+        contato_telefone: phoneResult.normalized || rawPhone,
+        telefone_publico_ativo: telefonePublicoAtivo,
+        email_publico_ativo: document.getElementById('check-email-publico')?.checked || false,
+        contato_email: Auth.getUserData()?.email || '',
         cadastro_completo: false
       };
 
-      payload.imageHash = await ImageHashService.ensureAlertImageHash(state.photoData);
-      if (payload.imageHash) {
-        payload.foto_hash = payload.imageHash;
-        payload.imageHashAlgo = 'client-dhash16';
-        payload.imageHashVersion = 1;
-        payload.imageHashCreatedAt = new Date().toISOString();
-        payload.imageHashProcessed = true;
-      } else {
-        payload.imageHashProcessed = false;
-        console.warn('[App] Hash de imagem indisponível no alerta de pet perdido. Cadastro seguirá normalmente.');
-      }
+      // imageHash será gerado server-side pela Cloud Function
+      // Não enviar imageHash* do client
 
-      showLoading('Disparando alerta...');
       const createdAlert = await DB.reportarPetPerdido(payload);
 
+      // Ocultar loading IMEDIATAMENTE após salvar
+      hideLoading();
+
+      // Pipeline de duplicidade em background (não bloqueia)
       if (createdAlert?.id) {
         startPostSubmitDuplicatePipeline('pet_perdido', createdAlert.id, state.photoData);
       }
 
-      hideLoading();
-
-      // Calcular pessoas alcançadas no raio do alerta
+      // Contagem de alcance em background (não bloqueia navegação)
       const alertLat = parseFloat(document.getElementById('lat-perdido')?.value) || 0;
       const alertLng = parseFloat(document.getElementById('lng-perdido')?.value) || 0;
       const alertRadius = GeoUtils.getSearchRadius(tipo);
-      const reached = await DB.countUsersInRadius(alertLat, alertLng, alertRadius).catch(() => 0);
-
-      if (reached > 0) {
-        showToast(I18n.t('toast.alert_reached', {count: reached, radius: alertRadius}), 'success');
-      } else {
+      DB.countUsersInRadius(alertLat, alertLng, alertRadius).then(reached => {
+        if (reached > 0) {
+          showToast(I18n.t('toast.alert_reached', {count: reached, radius: alertRadius}), 'success');
+        } else {
+          showToast(I18n.t('toast.alert_radius', {radius: alertRadius}), 'success');
+        }
+      }).catch(() => {
         showToast(I18n.t('toast.alert_radius', {radius: alertRadius}), 'success');
-      }
+      });
+
       incrementarContadorPerfil('pets_reportados');
+      showToast('✅ Alerta salvo!', 'success');
       navigateTo('cadastro-completo');
       // Revogar objectURL antes de limpar (evita leak)
       if (state.photoData?._objectUrl) URL.revokeObjectURL(state.photoData._objectUrl);
@@ -1516,13 +1756,29 @@ const App = (() => {
     document.getElementById('btn-get-location-avistamento')?.addEventListener('click', handleGetLocSighting);
     document.getElementById('btn-reportar-avistamento')?.addEventListener('click', handleReportarAvistamento);
 
-    // Tipo de animal — avistamento
+    // Tipo de animal — avistamento (com debounce matching)
     document.querySelectorAll('input[name="tipo-avistamento"]').forEach(radio => {
       radio.addEventListener('change', () => {
         toggleSubtipoOutro('avistamento', radio.value === 'outro');
+        scheduleMatchingRerun();
       });
     });
+    // Cor / Porte — debounce matching ao alterar
+    document.getElementById('cor-avistamento')?.addEventListener('change', scheduleMatchingRerun);
+    document.getElementById('porte-avistamento')?.addEventListener('change', scheduleMatchingRerun);
     setupSubtipoChips('avistamento');
+  }
+
+  /**
+   * Agenda re-execução de matching com debounce 400 ms.
+   * Cancela execução anterior automaticamente.
+   */
+  function scheduleMatchingRerun() {
+    if (!state.avistamentoPhotoData) return; // sem foto, nada a fazer
+    clearTimeout(state._matchDebounceTimer);
+    state._matchDebounceTimer = setTimeout(() => {
+      runAIMatching(state.avistamentoPhotoData);
+    }, 400);
   }
 
   async function handleSightingPhoto(e) {
@@ -1583,8 +1839,14 @@ const App = (() => {
     const aiMatches = document.getElementById('ai-matches');
     if (!aiResult || !aiMatches) return;
 
+    // ── Cancelar execução anterior ──
+    const cancelToken = AIMatch.createCancelToken();
+    state._matchCancelToken = cancelToken;
+    state.isAnalyzing = true;
+
     try {
       const petsResult = await DB.listarPetsAtivos();
+      if (cancelToken.cancelled) return;
       const pets = (petsResult.data || []).filter(p => p.status === 'ativo');
 
       if (pets.length === 0) {
@@ -1603,13 +1865,11 @@ const App = (() => {
         longitude: parseFloat(document.getElementById('lng-avistamento')?.value) || (state.userLocation?.lng || 0)
       };
 
-      let matches;
-      if (state.aiReady && photoData.embedding && typeof AIVision !== 'undefined') {
-        matches = await AIVision.advancedMatching(sightingData, pets);
-      } else {
-        matches = await AIMatch.analyzeAndMatch(sightingData, pets);
-        matches = [...(matches.highMatches || []), ...(matches.possibleMatches || [])];
-      }
+      // ── Engine com timeout + fallback automático ──
+      const result = await AIMatch.advancedMatchingWithTimeout(sightingData, pets, cancelToken);
+      if (!result || cancelToken.cancelled) return;
+      const matches = result.matches || [];
+      const engineUsed = result.engine || 'HASH';
 
       aiResult.classList.remove('hidden');
 
@@ -1618,8 +1878,9 @@ const App = (() => {
           const pet = match.pet;
           const name = pet.nome_pet || I18n.t('sighting.ai.pet_unnamed');
           const emoji = match.totalScore >= 92 ? '🎉' : match.totalScore >= 75 ? '👀' : '🤔';
+          const isLinked = state.matchedLostPetId === pet.id;
           return `
-            <div class="ai-match-item" data-pet-id="${pet.id}">
+            <div class="ai-match-item ${isLinked ? 'linked' : ''}" data-pet-id="${pet.id}" data-pet-name="${Security.sanitize(name)}" data-score="${match.totalScore}" data-engine="${engineUsed}">
               ${pet.foto_comprimida ? `<img class="ai-match-photo" src="${fixCorruptedDataUrl(pet.foto_comprimida)}" alt="">` :
                 `<div class="ai-match-photo" style="display:flex;align-items:center;justify-content:center;background:var(--bg);"><i class="fas fa-paw" style="font-size:1.5rem;color:var(--text-muted)"></i></div>`}
               <div class="ai-match-info">
@@ -1630,11 +1891,70 @@ const App = (() => {
                 <span class="match-percentage">${match.totalScore}%</span>
                 <span class="match-label">${match.totalScore >= 92 ? I18n.t('sighting.ai.match_label') : I18n.t('sighting.ai.possible_label')}</span>
               </div>
+              <div class="ai-match-actions">
+                <button class="btn-link-pet ${isLinked ? 'linked' : ''}" data-action="link">
+                  <i class="fas fa-${isLinked ? 'check-circle' : 'link'}"></i> ${isLinked ? I18n.t('sighting.ai.linked') : I18n.t('sighting.ai.link_pet')}
+                </button>
+                <button class="btn-view-pet" data-action="view">
+                  <i class="fas fa-eye"></i> ${I18n.t('sighting.ai.view_details')}
+                </button>
+              </div>
             </div>`;
         }).join('');
 
+        // Event delegation for match card actions
         aiMatches.querySelectorAll('.ai-match-item').forEach(item => {
-          item.addEventListener('click', () => showPetDetails(item.dataset.petId));
+          // "Vincular a este pet" button
+          item.querySelector('[data-action="link"]')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const petId = item.dataset.petId;
+            const petName = item.dataset.petName;
+            const score = parseInt(item.dataset.score) || 0;
+            const engine = item.dataset.engine || '';
+
+            if (state.matchedLostPetId === petId) {
+              // Desvincular
+              state.matchedLostPetId = null;
+              state.matchedLostPetName = null;
+              state.matchedScore = 0;
+              state.matchedEngine = '';
+              document.getElementById('matched-pet-banner')?.classList.add('hidden');
+              item.classList.remove('linked');
+              const btn = item.querySelector('[data-action="link"]');
+              if (btn) {
+                btn.classList.remove('linked');
+                btn.innerHTML = `<i class="fas fa-link"></i> ${I18n.t('sighting.ai.link_pet')}`;
+              }
+            } else {
+              // Desvincular anterior
+              aiMatches.querySelectorAll('.ai-match-item.linked').forEach(prev => {
+                prev.classList.remove('linked');
+                const prevBtn = prev.querySelector('[data-action="link"]');
+                if (prevBtn) {
+                  prevBtn.classList.remove('linked');
+                  prevBtn.innerHTML = `<i class="fas fa-link"></i> ${I18n.t('sighting.ai.link_pet')}`;
+                }
+              });
+              // Vincular novo
+              state.matchedLostPetId = petId;
+              state.matchedLostPetName = petName;
+              state.matchedScore = score;
+              state.matchedEngine = engine;
+              item.classList.add('linked');
+              const btn = item.querySelector('[data-action="link"]');
+              if (btn) {
+                btn.classList.add('linked');
+                btn.innerHTML = `<i class="fas fa-check-circle"></i> ${I18n.t('sighting.ai.linked')}`;
+              }
+              // Show banner
+              showMatchedPetBanner(petName, score);
+            }
+          });
+          // "Ver detalhes" button — opens details but user can return
+          item.querySelector('[data-action="view"]')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showPetDetails(item.dataset.petId, 'avistamento');
+          });
         });
 
         if (matches.some(m => m.totalScore >= 92)) {
@@ -1648,8 +1968,49 @@ const App = (() => {
       }
     } catch (err) {
       console.error('[App] Matching error:', err);
-      if (aiResult) { aiResult.classList.remove('hidden'); aiMatches.innerHTML = `<div class="ai-no-match"><i class="fas fa-exclamation-triangle"></i><p>${I18n.t('sighting.ai.error')}</p></div>`; }
+      if (aiResult && !cancelToken.cancelled) {
+        aiResult.classList.remove('hidden');
+        aiMatches.innerHTML = `<div class="ai-no-match"><i class="fas fa-exclamation-triangle"></i><p>${I18n.t('sighting.ai.error')}</p></div>`;
+      }
+    } finally {
+      // ── NEVER leave isAnalyzing stuck ──
+      if (!cancelToken.cancelled) state.isAnalyzing = false;
+      // ── ALWAYS validate form (CTA must reflect photo+location, not matching) ──
+      validateSightingForm();
     }
+  }
+
+  function showMatchedPetBanner(petName, score) {
+    let banner = document.getElementById('matched-pet-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'matched-pet-banner';
+      banner.className = 'matched-pet-banner';
+      const aiResult = document.getElementById('ai-analysis-result');
+      if (aiResult) aiResult.parentNode.insertBefore(banner, aiResult.nextSibling);
+    }
+    banner.innerHTML = `
+      <div class="matched-pet-banner-content">
+        <i class="fas fa-link"></i>
+        <span>${I18n.t('sighting.ai.linked_to').replace('{name}', Security.sanitize(petName)).replace('{score}', score)}</span>
+        <button class="btn-unlink-pet" id="btn-unlink-pet"><i class="fas fa-times"></i></button>
+      </div>`;
+    banner.classList.remove('hidden');
+    document.getElementById('btn-unlink-pet')?.addEventListener('click', () => {
+      state.matchedLostPetId = null;
+      state.matchedLostPetName = null;
+      state.matchedScore = 0;
+      state.matchedEngine = '';
+      banner.classList.add('hidden');
+      document.querySelectorAll('.ai-match-item.linked').forEach(item => {
+        item.classList.remove('linked');
+        const btn = item.querySelector('[data-action="link"]');
+        if (btn) {
+          btn.classList.remove('linked');
+          btn.innerHTML = `<i class="fas fa-link"></i> ${I18n.t('sighting.ai.link_pet')}`;
+        }
+      });
+    });
   }
 
   async function handleGetLocSighting() {
@@ -1665,6 +2026,9 @@ const App = (() => {
       document.getElementById('location-text-avistamento').textContent = address;
       if (btn) btn.querySelector('span').textContent = I18n.t('sighting.location.got');
       btn?.classList.remove('loading');
+      validateSightingForm();
+      // Re-rodar matching com dados de geo atualizados
+      scheduleMatchingRerun();
     } catch (err) {
       btn?.classList.remove('loading');
       if (btn) btn.querySelector('span').textContent = I18n.t('sighting.location.btn');
@@ -1674,7 +2038,9 @@ const App = (() => {
 
   function validateSightingForm() {
     const btn = document.getElementById('btn-reportar-avistamento');
-    if (btn) btn.disabled = !state.avistamentoPhotoData;
+    const hasPhoto = !!state.avistamentoPhotoData;
+    const hasLocation = !!(document.getElementById('lat-avistamento')?.value && document.getElementById('lng-avistamento')?.value);
+    if (btn) btn.disabled = !(hasPhoto && hasLocation);
   }
 
   async function handleReportarAvistamento() {
@@ -1682,6 +2048,21 @@ const App = (() => {
     state.isLoading = true;
     showLoading('Enviando...');
     try {
+      // Validar telefone BR (FASE 5)
+      const rawPhoneAv = document.getElementById('contato-avistamento')?.value.trim() || '';
+      const phoneResultAv = Security.validatePhoneBR(rawPhoneAv);
+      if (!phoneResultAv.valid) {
+        hideLoading();
+        state.isLoading = false;
+        const erroEl = document.getElementById('contato-avistamento-erro');
+        if (erroEl) { erroEl.textContent = I18n.t('validation.phone_invalid'); erroEl.classList.remove('hidden'); }
+        showToast(I18n.t('validation.phone_invalid'), 'error');
+        return;
+      }
+      document.getElementById('contato-avistamento-erro')?.classList.add('hidden');
+
+      const telefonePublicoAtivoAv = document.getElementById('check-telefone-publico-avistamento')?.checked || false;
+
       const payload = {
         tipo_animal: document.querySelector('input[name="tipo-avistamento"]:checked')?.value || 'cao',
         subtipo_animal: (document.querySelector('input[name="tipo-avistamento"]:checked')?.value === 'outro') ? getSubtipoAnimal('avistamento') : '',
@@ -1691,31 +2072,29 @@ const App = (() => {
         latitude: parseFloat(document.getElementById('lat-avistamento')?.value) || 0,
         longitude: parseFloat(document.getElementById('lng-avistamento')?.value) || 0,
         descricao: document.getElementById('obs-avistamento')?.value.trim() || '',
-        contato: document.getElementById('contato-avistamento')?.value.trim() || '',
+        contato: phoneResultAv.normalized || rawPhoneAv,
+        telefone_publico_ativo: telefonePublicoAtivoAv,
         cor: document.getElementById('cor-avistamento')?.value || '',
-        porte: document.getElementById('porte-avistamento')?.value || ''
+        porte: document.getElementById('porte-avistamento')?.value || '',
+        // Vinculação opcional a pet perdido (match IA)
+        matchedLostPetId: state.matchedLostPetId || '',
+        matchedScore: state.matchedScore || 0,
+        matchedEngine: state.matchedEngine || ''
       };
 
-      payload.imageHash = await ImageHashService.ensureAlertImageHash(state.avistamentoPhotoData);
-      if (payload.imageHash) {
-        payload.foto_hash = payload.imageHash;
-        payload.imageHashAlgo = 'client-dhash16';
-        payload.imageHashVersion = 1;
-        payload.imageHashCreatedAt = new Date().toISOString();
-        payload.imageHashProcessed = true;
-      } else {
-        payload.imageHashProcessed = false;
-        console.warn('[App] Hash de imagem indisponível no avistamento. Cadastro seguirá normalmente.');
-      }
+      // imageHash será gerado server-side pela Cloud Function
+      // Não enviar imageHash* do client
 
-      showLoading('Enviando...');
       const createdAlert = await DB.reportarAvistamento(payload);
 
+      // Ocultar loading IMEDIATAMENTE após salvar
+      hideLoading();
+
+      // Pipeline de duplicidade em background (não bloqueia)
       if (createdAlert?.id) {
         startPostSubmitDuplicatePipeline('avistamento', createdAlert.id, state.avistamentoPhotoData);
       }
 
-      hideLoading();
       showToast(I18n.t('toast.sighting_thanks'), 'success');
       incrementarContadorPerfil('avistamentos_count');
       clearPhoto('avistamento');
@@ -1732,13 +2111,22 @@ const App = (() => {
 
   // ====== DETALHES ======
 
-  async function showPetDetails(petId) {
+  async function showPetDetails(petId, returnTo) {
     showLoading('Carregando...');
     try {
       const pet = await DB.get(DB.COLLECTIONS.PETS, petId);
-      const isOwner = DB.getMyReports().some(r => r.id === petId);
+      const isOwner = !!(pet.owner_uid && pet.owner_uid === Auth.getUID());
+      const isLoggedIn = Auth.isLoggedIn();
       const settings = Auth.getUserSettings();
       const displayPet = isOwner ? pet : (Security.sanitizeForPublic(pet, settings) || pet);
+
+      // Buscar dados privados se for owner (LGPD)
+      let privateData = null;
+      if (isOwner) {
+        try {
+          privateData = await DB.getPrivateAlertData('pets_perdidos', petId);
+        } catch (e) { /* silencioso */ }
+      }
       
       const container = document.getElementById('detalhes-content');
       const labels = { cao: 'Cão', gato: 'Gato', outro: 'Outro' };
@@ -1746,12 +2134,113 @@ const App = (() => {
         ? displayPet.subtipo_animal 
         : (labels[displayPet.tipo_animal] || 'Pet');
       const name = displayPet.nome_pet || `${tipoLabel} perdido`;
-      const phone = isOwner ? pet.contato_telefone : (displayPet.contato_telefone_display || '');
-      const realPhone = pet.contato_telefone || '';
-      const loc = isOwner ? pet.endereco : (displayPet.endereco_publico || displayPet.endereco || '');
+      const loc = isOwner ? (privateData?.endereco_privado || pet.endereco || '') : (displayPet.endereco_publico || displayPet.endereco || '');
 
-      const rawFoto = displayPet.foto_comprimida || '';
-      const fixedFoto = fixCorruptedDataUrl(rawFoto);
+      // === Lógica de telefone conforme FASE 3 ===
+      // Owner: vê telefone privado completo
+      // Não-owner + telefone_publico_ativo: vê telefone público + botões diretos
+      // Não-owner + telefone_publico_ativo == false: vê "Solicitar contato"
+      let phoneDisplay = '';
+      let phoneActions = '';
+      const hasPublicPhone = pet.telefone_publico_ativo && pet.telefone_publico;
+
+      if (isOwner) {
+        const ownerPhone = privateData?.contato_telefone || pet.contato_telefone || pet.telefone_publico || '';
+        if (ownerPhone) {
+          phoneDisplay = `<div class="detalhes-section"><h4><i class="fas fa-phone"></i> ${I18n.t('details.contact_label')}</h4><p>${ownerPhone}</p></div>`;
+          phoneActions = `
+            <button class="btn-whatsapp" onclick="App.contactWhatsApp('${ownerPhone}','${Security.sanitize(name)}')"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+            <button class="btn-phone" onclick="App.callPhone('${ownerPhone}')"><i class="fas fa-phone"></i> ${I18n.t('details.btn_call')}</button>`;
+        }
+      } else if (hasPublicPhone) {
+        phoneDisplay = `<div class="detalhes-section"><h4><i class="fas fa-phone"></i> ${I18n.t('details.contact_label')}</h4><p>${pet.telefone_publico}</p></div>`;
+        phoneActions = `
+          <button class="btn-whatsapp" onclick="App.contactWhatsApp('${pet.telefone_publico}','${Security.sanitize(name)}')"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+          <button class="btn-phone" onclick="App.callPhone('${pet.telefone_publico}')"><i class="fas fa-phone"></i> ${I18n.t('details.btn_call')}</button>`;
+      }
+
+      const ownerEmail = isOwner
+        ? (privateData?.contato_email || '')
+        : (pet.contato_email_publico || '');
+
+      if (ownerEmail && !isOwner) {
+        phoneActions += `
+          <a href="mailto:${ownerEmail}?subject=Vi%20seu%20pet%20no%20Encontre%20Pet%20-%20${encodeURIComponent(Security.sanitize(name))}&body=Ol%C3%A1!%20Vi%20o%20alerta%20do%20${encodeURIComponent(Security.sanitize(name))}%20no%20app%20Encontre%20Pet%20e%20gostaria%20de%20ajudar."
+             class="btn-email" target="_blank">
+            <i class="fas fa-envelope"></i> E-mail
+          </a>`;
+      }
+
+      // Build non-owner extra actions
+      let nonOwnerActions = '';
+      let contactBanner = '';
+      if (!isOwner && displayPet.status === 'ativo') {
+        nonOwnerActions = `
+          <button class="btn-report-sighting" id="btn-report-sighting-from-details">
+            <i class="fas fa-eye"></i> ${I18n.t('details.report_sighting')}
+          </button>`;
+
+        // Banner de contato proeminente para não-donos
+        if (hasPublicPhone) {
+          contactBanner = `
+            <div class="contact-cta-banner">
+              <div class="contact-cta-header">
+                <i class="fas fa-hands-helping"></i>
+                <span>${I18n.t('details.found_this_pet')}</span>
+              </div>
+              <div class="contact-cta-actions">
+                <button class="btn-whatsapp btn-cta-big" onclick="App.contactWhatsApp('${pet.telefone_publico}','${Security.sanitize(name)}')"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+                <button class="btn-phone btn-cta-big" onclick="App.callPhone('${pet.telefone_publico}')"><i class="fas fa-phone"></i> ${I18n.t('details.btn_call')}</button>
+              </div>
+            </div>`;
+        } else {
+          if (isLoggedIn) {
+            contactBanner = `
+              <div class="contact-cta-banner">
+                <div class="contact-cta-header">
+                  <i class="fas fa-hands-helping"></i>
+                  <span>${I18n.t('details.found_this_pet')}</span>
+                </div>
+                <div class="contact-cta-actions">
+                  <button class="btn-tutor-contact btn-cta-big" id="btn-tutor-contact">
+                    <i class="fas fa-envelope"></i> ${I18n.t('details.request_contact')}
+                  </button>
+                </div>
+              </div>`;
+          } else {
+            contactBanner = `
+              <div class="contact-cta-banner">
+                <div class="contact-cta-header">
+                  <i class="fas fa-hands-helping"></i>
+                  <span>${I18n.t('details.found_this_pet')}</span>
+                </div>
+                <div class="contact-cta-actions">
+                  <button class="btn-tutor-contact btn-cta-big disabled" onclick="App.showToast('${I18n.t('details.login_required')}','info')">
+                    <i class="fas fa-lock"></i> ${I18n.t('details.request_contact')}
+                  </button>
+                </div>
+              </div>`;
+          }
+        }
+
+        if (!hasPublicPhone && pet.contato_email_publico && isLoggedIn) {
+          contactBanner = `
+            <div class="contact-cta-banner">
+              <div class="contact-cta-header">
+                <i class="fas fa-hands-helping"></i>
+                <span>Encontrou este pet? Entre em contato com o tutor!</span>
+              </div>
+              <div class="contact-cta-actions">
+                <a href="mailto:${pet.contato_email_publico}?subject=Encontrei%20seu%20pet%20-%20${encodeURIComponent(Security.sanitize(name))}&body=Ol%C3%A1!%20Vi%20o%20alerta%20no%20Encontre%20Pet%20e%20tenho%20informa%C3%A7%C3%B5es%20sobre%20${encodeURIComponent(Security.sanitize(name))}."
+                   class="btn-email btn-cta-big" target="_blank">
+                  <i class="fas fa-envelope"></i> Enviar E-mail ao Tutor
+                </a>
+              </div>
+            </div>`;
+        }
+      }
+
+      const fixedFoto = fixCorruptedDataUrl(displayPet.foto_comprimida);
       
       container.innerHTML = `
         ${fixedFoto && fixedFoto.startsWith('data:image/') ? `<img class="detalhes-photo" src="${fixedFoto}" alt="">` :
@@ -1776,15 +2265,85 @@ const App = (() => {
           ${displayPet.tem_recompensa ? `<div class="reward-banner"><i class="fas fa-gift"></i><div><strong>Recompensa!</strong>${displayPet.recompensa ? `<br>${Security.sanitize(displayPet.recompensa)}` : ''}</div></div>` : ''}
           ${loc ? `<div class="detalhes-section"><h4><i class="fas fa-map-marker-alt"></i> Local</h4><p>${Security.sanitize(loc)}</p></div>` : ''}
           ${displayPet.descricao ? `<div class="detalhes-section"><h4><i class="fas fa-align-left"></i> Descrição</h4><p>${Security.sanitize(displayPet.descricao)}</p></div>` : ''}
-          ${phone ? `<div class="detalhes-section"><h4><i class="fas fa-phone"></i> Contato</h4><p>${phone}</p></div>` : ''}
+          ${phoneDisplay}
+          <div id="tutor-contact-result" class="detalhes-section hidden"></div>
+          ${contactBanner}
         </div>
         <div class="detalhes-actions">
-          ${realPhone ? `
-            <button class="btn-whatsapp" onclick="App.contactWhatsApp('${realPhone}','${Security.sanitize(name)}')"><i class="fab fa-whatsapp"></i> WhatsApp</button>
-            <button class="btn-phone" onclick="App.callPhone('${realPhone}')"><i class="fas fa-phone"></i> Ligar</button>
-          ` : ''}
+          ${phoneActions}
+          ${nonOwnerActions}
           <button class="btn-share" onclick="App.sharePet('${displayPet.id}','${Security.sanitize(name)}')"><i class="fas fa-share-alt"></i></button>
         </div>`;
+
+      // Bind "Reportar avistamento deste pet" button
+      document.getElementById('btn-report-sighting-from-details')?.addEventListener('click', () => {
+        // Pre-set the matched pet and navigate to sighting form
+        state.matchedLostPetId = petId;
+        state.matchedLostPetName = name;
+        state.matchedScore = 0;
+        state.matchedEngine = 'manual';
+        navigateTo('avistamento');
+        // Show banner after navigation
+        setTimeout(() => showMatchedPetBanner(name, '-'), 100);
+      });
+
+      // Bind "Ver contato do tutor" button
+      document.getElementById('btn-tutor-contact')?.addEventListener('click', async () => {
+        const btn = document.getElementById('btn-tutor-contact');
+        if (!btn || btn.classList.contains('loading')) return;
+        btn.classList.add('loading');
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18n.t('details.loading_contact')}`;
+        try {
+          const result = await getTutorContact(petId);
+          if (result?.telefone || result?.email || result?.nome) {
+            const contactDiv = document.getElementById('tutor-contact-result');
+            if (contactDiv) {
+              contactDiv.classList.remove('hidden');
+              contactDiv.innerHTML = `
+                <h4><i class="fas fa-user"></i> ${I18n.t('details.tutor_info')}</h4>
+                ${result.nome ? `<p><strong>${result.nome}</strong></p>` : ''}
+                ${result.telefone ? `<p><i class="fas fa-phone"></i> ${result.telefone}</p>
+                  <div class="tutor-contact-actions">
+                    <button class="btn-whatsapp btn-small" onclick="App.contactWhatsApp('${result.telefone}','${Security.sanitize(name)}')"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+                    <button class="btn-phone btn-small" onclick="App.callPhone('${result.telefone}')"><i class="fas fa-phone"></i> Ligar</button>
+                  </div>` : ''}
+                ${result.email ? `<p><i class="fas fa-envelope"></i> ${result.email}</p>` : ''}`;
+            }
+            btn.innerHTML = `<i class="fas fa-check-circle"></i> ${I18n.t('details.contact_revealed')}`;
+            btn.disabled = true;
+
+            // LGPD: Log do acesso ao contato
+            try {
+              await DB.criarNotificacao({
+                tipo: 'contato_solicitado',
+                pet_id: petId,
+                pet_nome: name,
+                solicitante_uid: Auth.getUID(),
+                mensagem: `Contato do tutor de "${name}" foi visualizado`,
+                data: new Date().toISOString(),
+                lida: false,
+                destinatario_uid: pet.owner_uid || ''
+              });
+            } catch (e) { /* silencioso */ }
+          } else {
+            showToast(I18n.t('details.no_contact'), 'warning');
+            btn.innerHTML = `<i class="fas fa-envelope"></i> ${I18n.t('details.contact_tutor')}`;
+          }
+        } catch (err) {
+          console.error('[App] getTutorContact error:', err);
+          showToast(I18n.t('details.contact_error'), 'error');
+          btn.innerHTML = `<i class="fas fa-envelope"></i> ${I18n.t('details.contact_tutor')}`;
+        }
+        btn.classList.remove('loading');
+      });
+
+      // Set back button to return to originating page
+      if (returnTo) {
+        const backBtn = document.querySelector('#page-detalhes .btn-back');
+        if (backBtn) {
+          backBtn.setAttribute('data-back', returnTo);
+        }
+      }
 
       hideLoading();
       navigateTo('detalhes');
@@ -1792,6 +2351,21 @@ const App = (() => {
       hideLoading();
       showToast(I18n.t('toast.details_error'), 'error');
     }
+  }
+
+  /**
+   * Buscar contato do tutor via Cloud Function (LGPD-safe).
+   * Loga o acesso server-side para auditoria.
+   */
+  async function getTutorContact(petId) {
+    const functions = FirebaseConfig.getFunctions?.();
+    if (functions) {
+      const callable = functions.httpsCallable('getTutorContact');
+      const result = await callable({ petId });
+      return result.data;
+    }
+    // Fallback: tentar buscar via Firestore REST (requer regras adequadas)
+    throw new Error('Cloud Functions não disponível');
   }
 
   function contactWhatsApp(phone, name) {
@@ -1970,13 +2544,19 @@ const App = (() => {
       const unread = notifs.filter(n => !n.lida).length;
       if (badge) { badge.textContent = unread; badge.classList.toggle('hidden', unread === 0); }
 
+      // Sound + flash on new unreads
+      if (_lastKnownUnread >= 0 && unread > _lastKnownUnread) {
+        playNotificationSound();
+      }
+      _lastKnownUnread = unread;
+
       if (notifs.length === 0) {
         container.innerHTML = `<div class="empty-state"><i class="fas fa-bell-slash"></i><p>${I18n.t('notif.empty')}</p></div>`;
         return;
       }
 
       container.innerHTML = notifs.map(n => `
-        <div class="notif-item ${!n.lida ? 'unread' : ''}" data-nid="${n.id}">
+        <div class="notif-item ${!n.lida ? 'unread notif-flash' : ''}" data-nid="${n.id}">
           <div class="notif-icon ${n.tipo === 'match_ia' ? 'match' : 'alert'}">
             <i class="fas ${n.tipo === 'match_ia' ? 'fa-robot' : 'fa-bell'}"></i>
           </div>
@@ -1988,8 +2568,26 @@ const App = (() => {
           </div>
         </div>`).join('');
 
+      // Remove flash after 40s
+      setTimeout(() => {
+        container.querySelectorAll('.notif-flash').forEach(el => el.classList.remove('notif-flash'));
+      }, 40000);
+
       container.querySelectorAll('.notif-item').forEach(item => {
-        item.addEventListener('click', async () => { try { await DB.marcarNotificacaoLida(item.dataset.nid); item.classList.remove('unread'); } catch {} });
+        item.addEventListener('click', async () => {
+          try {
+            await DB.marcarNotificacaoLida(item.dataset.nid);
+            item.classList.remove('unread', 'notif-flash');
+            // Update badge count
+            const currentBadge = document.getElementById('notif-badge');
+            if (currentBadge) {
+              const newCount = Math.max(0, parseInt(currentBadge.textContent || '0') - 1);
+              currentBadge.textContent = newCount;
+              currentBadge.classList.toggle('hidden', newCount === 0);
+              _lastKnownUnread = newCount;
+            }
+          } catch {}
+        });
       });
     } catch { container.innerHTML = `<div class="empty-state"><p>${I18n.t('notif.load_error')}</p></div>`; }
   }
@@ -2003,7 +2601,7 @@ const App = (() => {
       const result = await DB.listarPetsAtivos();
       const avistResult = await DB.listarAvistamentos();
       const pets = (result.data || []).filter(p => p.status === 'ativo' && (p.latitude_publica || p.latitude));
-      const avistamentos = (avistResult.data || []).filter(a => a.latitude || a.longitude);
+      const avistamentos = (avistResult.data || []).filter(a => a.latitude_publica || a.longitude_publica || a.latitude || a.longitude);
       const total = pets.length + avistamentos.length;
 
       if (total === 0) {
@@ -2254,34 +2852,14 @@ const App = (() => {
     }
   }
 
-  async function persistClientHashFallback(collection, alertId, photoData) {
-    if (!photoData) return '';
-
-    try {
-      const hash = await ImageHashService.ensureAlertImageHash(photoData);
-      if (!hash) return '';
-
-      await DB.update(collection, alertId, {
-        imageHash: hash,
-        foto_hash: hash,
-        imageHashAlgo: 'client-dhash16',
-        imageHashVersion: 1,
-        imageHashCreatedAt: new Date().toISOString(),
-        imageHashProcessed: true
-      });
-
-      return hash;
-    } catch (err) {
-      console.error('[App] fallback hash persist error:', err);
-      return '';
-    }
-  }
+  // persistClientHashFallback removido — hash gerado exclusivamente server-side via Cloud Function
 
   async function startPostSubmitDuplicatePipeline(alertType, alertId, photoData) {
     const collection = getAlertCollection(alertType);
     if (!alertId || hasDuplicateReviewLock(alertId)) return;
 
-    showToast(I18n.t('duplicate.analysis_started'), 'info');
+    // Pipeline de duplicidade roda em background — não bloqueia a UI
+    console.log('[App] Pipeline duplicidade iniciado (background):', alertId);
 
     let completed = false;
     const stop = DB.watchAlertDocument(alertType, alertId, async (alertDoc) => {
@@ -2298,26 +2876,18 @@ const App = (() => {
       } catch (err) {
         completed = true;
         console.error('[App] duplicate listener flow error:', err);
-        showToast(I18n.t('duplicate.analysis_failed'), 'warning');
       } finally {
         try { stop?.(); } catch {}
       }
     });
 
-    setTimeout(async () => {
-      if (completed || hasDuplicateReviewLock(alertId)) return;
-      const hash = await persistClientHashFallback(collection, alertId, photoData);
-      if (hash) {
-        showToast(I18n.t('duplicate.client_fallback_used'), 'info');
-      }
-    }, 10000);
-
+    // Timeout curto — se não tiver Cloud Function, encerra sem bloquear
     setTimeout(() => {
       if (completed || hasDuplicateReviewLock(alertId)) return;
       completed = true;
       try { stop?.(); } catch {}
-      showToast(I18n.t('duplicate.analysis_failed'), 'warning');
-    }, 45000);
+      console.log('[App] Pipeline duplicidade: timeout (sem Cloud Function ativa)');
+    }, 12000);
   }
 
   // ====== MODAL SELEÇÃO DE FOTO (Câmera / Galeria) ======

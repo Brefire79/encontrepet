@@ -1,4 +1,5 @@
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as logger from 'firebase-functions/logger';
 import * as admin from 'firebase-admin';
 import sharp from 'sharp';
@@ -180,6 +181,118 @@ export const generateImageHash = onObjectFinalized(
         alertId
       });
       return;
+    }
+  }
+);
+
+/**
+ * getTutorContact — Cloud Function callable (LGPD-compliant)
+ * 
+ * Permite que um usuário autenticado solicite o contato do tutor de um pet perdido.
+ * Os dados sensíveis são lidos pela função com acesso admin e retornados ao solicitante.
+ * Um log de auditoria é criado para conformidade LGPD.
+ * 
+ * Requer: Firebase Auth (anônimo ou logado)
+ */
+export const getTutorContact = onCall(
+  {
+    region: 'southamerica-east1',
+    maxInstances: 10,
+  },
+  async (request) => {
+    // 1. Verificar autenticação
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Autenticação necessária para acessar contato do tutor.');
+    }
+
+    const { petId } = request.data;
+    if (!petId || typeof petId !== 'string') {
+      throw new HttpsError('invalid-argument', 'petId é obrigatório.');
+    }
+
+    const db = admin.firestore();
+    const requesterUid = request.auth.uid;
+
+    try {
+      // 2. Verificar se o pet existe
+      const petRef = db.collection('pets_perdidos').doc(petId);
+      const petSnap = await petRef.get();
+      if (!petSnap.exists) {
+        throw new HttpsError('not-found', 'Pet não encontrado.');
+      }
+
+      const petData = petSnap.data();
+      if (!petData) {
+        throw new HttpsError('not-found', 'Dados do pet não disponíveis.');
+      }
+
+      // 3. Verificar se não é o próprio dono tentando acessar (não faz sentido)
+      if (petData.owner_firebase_uid === requesterUid) {
+        throw new HttpsError('permission-denied', 'Você é o dono deste pet. Use seus dados privados.');
+      }
+
+      // 4. Buscar dados privados do tutor (alert_privado)
+      const privateRef = db.collection('alert_privado').doc(`pets_perdidos_${petId}`);
+      const privateSnap = await privateRef.get();
+      const privateData = privateSnap.exists ? privateSnap.data() : null;
+
+      const telefone = privateData?.contato_telefone || petData.contato_telefone || '';
+      const email = privateData?.contato_email || petData.contato_email || '';
+      const nome = petData.contato_nome || petData.nome_pet || '';
+
+      if (!telefone && !email) {
+        return { telefone: '', email: '', nome: '', available: false };
+      }
+
+      // 5. Log de auditoria LGPD
+      await db.collection('lgpd_access_log').add({
+        tipo: 'contato_tutor_acesso',
+        petId,
+        petNome: petData.nome_pet || '',
+        requesterFirebaseUid: requesterUid,
+        dadosAcessados: ['telefone', 'email', 'nome'].filter(k => {
+          if (k === 'telefone') return !!telefone;
+          if (k === 'email') return !!email;
+          if (k === 'nome') return !!nome;
+          return false;
+        }),
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        ip: request.rawRequest?.ip || ''
+      });
+
+      logger.info('Contato do tutor acessado via getTutorContact.', {
+        petId,
+        requesterUid,
+        campos: [telefone ? 'telefone' : '', email ? 'email' : '', nome ? 'nome' : ''].filter(Boolean)
+      });
+
+      // 6. Notificar o dono que alguém acessou seus dados
+      if (petData.owner_uid) {
+        await db.collection('notificacoes').add({
+          tipo: 'contato_acessado',
+          pet_id: petId,
+          pet_nome: petData.nome_pet || 'Pet',
+          mensagem: `Alguém visualizou seu contato referente a "${petData.nome_pet || 'seu pet'}"`,
+          data: new Date().toISOString(),
+          lida: false,
+          destinatario_uid: petData.owner_uid
+        });
+      }
+
+      return {
+        telefone: telefone || '',
+        email: email || '',
+        nome: nome || '',
+        available: true
+      };
+    } catch (error) {
+      if (error instanceof HttpsError) throw error;
+      logger.error('Erro ao buscar contato do tutor.', {
+        error: error instanceof Error ? error.message : String(error),
+        petId,
+        requesterUid
+      });
+      throw new HttpsError('internal', 'Erro ao buscar contato do tutor.');
     }
   }
 );

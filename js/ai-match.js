@@ -1,183 +1,228 @@
 /**
- * Encontre Pet - AI Matching Engine
- * Compara imagens de pets usando hash perceptual + características
- * para identificar possíveis matches com 92%+ de similaridade
+ * Encontre Pet - AI Matching Engine v2
+ * Gates → Pesos dinâmicos → Score → Timeout → Cancelamento
+ * Nunca bloqueia UI. Fallback hash se IA falhar/timeout.
  */
 
 const AIMatch = (() => {
 
-  // Limiar mínimo de similaridade para notificar (92%)
+  // ─── Configuração ───
   const MATCH_THRESHOLD = 92;
-  
-  // Pesos para cada critério de comparação
-  const WEIGHTS = {
-    imageHash: 0.45,    // 45% - Similaridade visual (hash perceptual)
-    colorMatch: 0.20,   // 20% - Cores dominantes
-    animalType: 0.15,   // 15% - Mesmo tipo de animal
-    sizeMatch: 0.10,    // 10% - Mesmo porte
-    proximity: 0.10     // 10% - Proximidade geográfica
+  const GATE_MAX_DISTANCE_KM = 50;          // G2: descarta se > 50 km
+  const GATE_HASH_REPOST_HAMMING = 5;       // G3: hamming <= 5 = imagem quase idêntica
+  const GATE_HASH_REPOST_GEO_KM  = 20;     // G3: se dist geo > 20 km + hash ≈ → fraude
+  const AI_TIMEOUT_MS = 4000;               // timeout de 4 s para TF.js
+
+  // ─── Pesos dinâmicos por distância (engine = 'AI' | 'HASH') ───
+  const WEIGHT_TABLE = {
+    AI:   [
+      { maxKm: 1,  w: { visual: 0.40, tipo: 0.20, cor: 0.15, porte: 0.10, geo: 0.15 } },
+      { maxKm: 5,  w: { visual: 0.35, tipo: 0.20, cor: 0.15, porte: 0.10, geo: 0.20 } },
+      { maxKm: 20, w: { visual: 0.25, tipo: 0.20, cor: 0.15, porte: 0.10, geo: 0.30 } },
+      { maxKm: Infinity, w: { visual: 0.15, tipo: 0.20, cor: 0.15, porte: 0.10, geo: 0.40 } }
+    ],
+    HASH: [
+      { maxKm: 1,  w: { visual: 0.45, tipo: 0.15, cor: 0.20, porte: 0.10, geo: 0.10 } },
+      { maxKm: 5,  w: { visual: 0.40, tipo: 0.15, cor: 0.20, porte: 0.10, geo: 0.15 } },
+      { maxKm: 20, w: { visual: 0.30, tipo: 0.15, cor: 0.20, porte: 0.10, geo: 0.25 } },
+      { maxKm: Infinity, w: { visual: 0.20, tipo: 0.15, cor: 0.20, porte: 0.10, geo: 0.35 } }
+    ]
   };
 
-  /**
-   * Compara um avistamento com todos os pets perdidos cadastrados
-   * Retorna lista de matches ordenados por similaridade
-   */
-  function findMatches(sighting, lostPets) {
-    if (!sighting || !lostPets || lostPets.length === 0) return [];
+  // Controle de cancelamento
+  let _runId = 0;
 
-    const results = lostPets
-      .filter(pet => pet.status === 'ativo')
-      .map(pet => {
-        const score = calculateMatchScore(sighting, pet);
-        return {
-          pet,
-          totalScore: score.total,
-          details: score,
-          isMatch: score.total >= MATCH_THRESHOLD
-        };
-      })
-      .filter(result => result.totalScore > 50) // Pelo menos 50% para aparecer
-      .sort((a, b) => b.totalScore - a.totalScore);
+  // ─── Helpers ───
+  function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-    return results;
+  function withTimeout(promise, ms) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('TIMEOUT')), ms);
+      promise.then(v => { clearTimeout(timer); resolve(v); })
+             .catch(e => { clearTimeout(timer); reject(e); });
+    });
   }
 
-  /**
-   * Calcula score de matching entre avistamento e pet perdido
-   * Retorna objeto com scores individuais e total
-   */
-  function calculateMatchScore(sighting, lostPet) {
-    const scores = {};
-
-    // 1. Similaridade de imagem (Hash Perceptual)
-    if (sighting.foto_hash && lostPet.foto_hash) {
-      scores.imageHash = ImageUtils.compareHashes(sighting.foto_hash, lostPet.foto_hash);
-    } else {
-      scores.imageHash = 0;
+  function getWeights(distKm, engine) {
+    const table = WEIGHT_TABLE[engine] || WEIGHT_TABLE.HASH;
+    for (const row of table) {
+      if (distKm <= row.maxKm) return row.w;
     }
+    return table[table.length - 1].w;
+  }
 
-    // 2. Match de cores
-    scores.colorMatch = compareColors(sighting.cor, lostPet.cor);
+  function geoDistKm(a, b) {
+    if (!a.latitude || !b.latitude) return Number.POSITIVE_INFINITY;
+    return GeoUtils.calculateDistance(
+      Number(a.latitude), Number(a.longitude),
+      Number(b.latitude), Number(b.longitude)
+    );
+  }
 
-    // 3. Tipo de animal
-    scores.animalType = (sighting.tipo_animal === lostPet.tipo_animal) ? 100 : 0;
-
-    // 4. Porte
-    scores.sizeMatch = compareSizes(sighting.porte, lostPet.porte);
-
-    // 5. Proximidade geográfica
-    scores.proximity = calculateProximityScore(sighting, lostPet);
-
-    // Calcular score total ponderado
-    const total = 
-      scores.imageHash * WEIGHTS.imageHash +
-      scores.colorMatch * WEIGHTS.colorMatch +
-      scores.animalType * WEIGHTS.animalType +
-      scores.sizeMatch * WEIGHTS.sizeMatch +
-      scores.proximity * WEIGHTS.proximity;
-
-    return {
-      ...scores,
-      total: Math.round(total * 100) / 100
-    };
+  // ─── Gate G3: hash quase idêntico + longe = provável repost/fraude ───
+  function isRepostFraud(sighting, pet, distKm) {
+    if (!sighting.foto_hash || !pet.foto_hash) return false;
+    if (distKm <= GATE_HASH_REPOST_GEO_KM) return false;
+    const hamming = SimilarityService.hammingDistance(sighting.foto_hash, pet.foto_hash);
+    return Number.isFinite(hamming) && hamming <= GATE_HASH_REPOST_HAMMING;
   }
 
   /**
-   * Compara cores de pets
+   * Hard filters — retorna razão de descarte ou null se candidato ok
    */
-  function compareColors(cor1, cor2) {
-    if (!cor1 || !cor2) return 50; // Neutro se não tem dados
+  function shouldDiscardCandidate(sighting, pet) {
+    // G1: tipo diferente
+    if (sighting.tipo_animal && pet.tipo_animal && sighting.tipo_animal !== pet.tipo_animal) {
+      return 'type_mismatch';
+    }
+    // Status
+    if (pet.status !== 'ativo') return 'inactive';
+    // Distância
+    const distKm = geoDistKm(sighting, pet);
+    // G2: > 50 km
+    if (Number.isFinite(distKm) && distKm > GATE_MAX_DISTANCE_KM) return 'too_far';
+    // G3: repost/fraude
+    if (isRepostFraud(sighting, pet, distKm)) return 'repost_fraud';
+    return null;
+  }
 
-    // Match exato
-    if (cor1 === cor2) return 100;
-
-    // Cores similares
-    const colorGroups = {
-      escuros: ['preto', 'cinza'],
-      claros: ['branco', 'creme'],
-      marrons: ['marrom', 'caramelo'],
-      mistos: ['rajado', 'malhado'],
+  // ─── Sub-scores ───
+  function compareColors(c1, c2) {
+    if (!c1 || !c2) return 50;
+    if (c1 === c2) return 100;
+    const groups = {
+      escuros: ['preto', 'cinza'], claros: ['branco', 'creme'],
+      marrons: ['marrom', 'caramelo'], mistos: ['rajado', 'malhado'],
       multicolor: ['tricolor', 'bicolor', 'malhado'],
-      preto_branco: ['preto_branco', 'malhado', 'bicolor']
+      pb: ['preto_branco', 'malhado', 'bicolor']
     };
-
-    for (const group of Object.values(colorGroups)) {
-      if (group.includes(cor1) && group.includes(cor2)) return 70;
-    }
-
-    return 20; // Cores diferentes
-  }
-
-  /**
-   * Compara portes
-   */
-  function compareSizes(porte1, porte2) {
-    if (!porte1 || !porte2) return 50; // Neutro
-
-    if (porte1 === porte2) return 100;
-
-    // Portes adjacentes (pequeno-medio, medio-grande)
-    const sizes = ['pequeno', 'medio', 'grande'];
-    const diff = Math.abs(sizes.indexOf(porte1) - sizes.indexOf(porte2));
-    
-    if (diff === 1) return 60;
+    for (const g of Object.values(groups)) { if (g.includes(c1) && g.includes(c2)) return 70; }
     return 20;
   }
 
-  /**
-   * Calcula score de proximidade geográfica
-   */
-  function calculateProximityScore(sighting, lostPet) {
-    if (!sighting.latitude || !lostPet.latitude) return 50;
-
-    const distance = GeoUtils.calculateDistance(
-      sighting.latitude, sighting.longitude,
-      lostPet.latitude, lostPet.longitude
-    );
-
-    const maxRadius = GeoUtils.getSearchRadius(lostPet.tipo_animal || 'outro');
-
-    if (distance <= 0.5) return 100;       // Menos de 500m
-    if (distance <= 1) return 90;          // Menos de 1km
-    if (distance <= maxRadius) return 75;   // Dentro do raio
-    if (distance <= maxRadius * 2) return 40; // Até o dobro do raio
-    return 10; // Muito longe
+  function compareSizes(p1, p2) {
+    if (!p1 || !p2) return 50;
+    if (p1 === p2) return 100;
+    const s = ['pequeno', 'medio', 'grande'];
+    const d = Math.abs(s.indexOf(p1) - s.indexOf(p2));
+    return d === 1 ? 60 : 20;
   }
 
-  /**
-   * Executa matching em tempo real quando uma foto é enviada
-   * Simula o processo de IA analisando a foto
-   */
-  async function analyzeAndMatch(sightingData, lostPets) {
-    // Simular tempo de processamento da IA
-    await delay(1500);
+  function proximityScore(distKm) {
+    if (!Number.isFinite(distKm)) return 50;
+    if (distKm <= 0.5) return 100;
+    if (distKm <= 1)   return 90;
+    if (distKm <= 3)   return 70;
+    if (distKm <= 5)   return 50;
+    if (distKm <= 10)  return 30;
+    if (distKm <= 20)  return 15;
+    return 5;
+  }
 
-    const matches = findMatches(sightingData, lostPets);
-    
-    // Separar matches altos (92%+) e possíveis
+  // ─── Score principal (com pesos dinâmicos) ───
+  function calculateScore(sighting, pet, engine) {
+    const distKm = geoDistKm(sighting, pet);
+    const w = getWeights(Number.isFinite(distKm) ? distKm : 999, engine);
+    const scores = {};
+
+    // Visual
+    if (engine === 'AI' && sighting.embedding && pet.embedding) {
+      scores.visual = (typeof AIVision !== 'undefined')
+        ? AIVision.compareEmbeddings(sighting.embedding, pet.embedding)
+        : 0;
+    } else if (sighting.foto_hash && pet.foto_hash) {
+      scores.visual = ImageUtils.compareHashes(sighting.foto_hash, pet.foto_hash);
+    } else {
+      scores.visual = 0;
+    }
+
+    scores.tipo  = (sighting.tipo_animal === pet.tipo_animal) ? 100 : 0;
+    scores.cor   = compareColors(sighting.cor, pet.cor);
+    scores.porte = compareSizes(sighting.porte, pet.porte);
+    scores.geo   = proximityScore(distKm);
+
+    const total = Math.round(
+      scores.visual * w.visual +
+      scores.tipo   * w.tipo  +
+      scores.cor    * w.cor   +
+      scores.porte  * w.porte +
+      scores.geo    * w.geo
+    );
+
+    return { ...scores, total, distKm, engine };
+  }
+
+  // ─── Pipeline com gates + pesos dinâmicos ───
+  function findMatches(sighting, pets, engine) {
+    if (!sighting || !pets || pets.length === 0) return [];
+    const eng = engine || 'HASH';
+
+    return pets
+      .map(pet => {
+        const gateReason = shouldDiscardCandidate(sighting, pet);
+        if (gateReason) return null;
+        const sc = calculateScore(sighting, pet, eng);
+        return { pet, totalScore: sc.total, details: sc, isMatch: sc.total >= MATCH_THRESHOLD };
+      })
+      .filter(r => r !== null && r.totalScore > 40)
+      .sort((a, b) => b.totalScore - a.totalScore)
+      .slice(0, 10);
+  }
+
+  // ─── analyzeAndMatch — hash engine (fallback, sem delay artificial) ───
+  async function analyzeAndMatch(sightingData, lostPets) {
+    const matches = findMatches(sightingData, lostPets, 'HASH');
     const highMatches = matches.filter(m => m.isMatch);
     const possibleMatches = matches.filter(m => !m.isMatch && m.totalScore >= 60);
-
     return {
-      highMatches,
-      possibleMatches,
+      highMatches, possibleMatches,
       totalAnalyzed: lostPets.filter(p => p.status === 'ativo').length,
-      hasStrongMatch: highMatches.length > 0
+      hasStrongMatch: highMatches.length > 0,
+      engine: 'HASH'
     };
   }
 
   /**
-   * Gera notificação de match para o dono do pet
+   * advancedMatchingWithTimeout
+   * Tenta IA (AIVision) com timeout. Se falhar, cai no hash.
+   * Respeita token de cancelamento.
    */
+  async function advancedMatchingWithTimeout(sightingData, lostPets, cancelToken) {
+    // Tentar engine IA com timeout
+    if (sightingData.embedding && typeof AIVision !== 'undefined') {
+      try {
+        const aiPromise = Promise.resolve(findMatches(sightingData, lostPets, 'AI'));
+        const results = await withTimeout(aiPromise, AI_TIMEOUT_MS);
+        if (cancelToken && cancelToken.cancelled) return null;
+        return { matches: results, engine: 'AI' };
+      } catch (e) {
+        console.warn('[AIMatch] IA timeout/erro, fallback hash:', e.message);
+      }
+    }
+    // Fallback hash
+    if (cancelToken && cancelToken.cancelled) return null;
+    const results = findMatches(sightingData, lostPets, 'HASH');
+    return { matches: results, engine: 'HASH' };
+  }
+
+  /**
+   * Cria token de cancelamento incremental.
+   * Se um novo run começar, o anterior é marcado cancelled.
+   */
+  function createCancelToken() {
+    const id = ++_runId;
+    return { id, get cancelled() { return id !== _runId; } };
+  }
+
+  // ─── Notificação ───
   function generateMatchNotification(match, sighting) {
     const pet = match.pet;
     const score = match.totalScore;
-    
     return {
       pet_perdido_id: pet.id,
       avistamento_id: sighting.id || '',
       tipo: 'match_ia',
-      mensagem: score >= MATCH_THRESHOLD 
+      mensagem: score >= MATCH_THRESHOLD
         ? `🎉 Possível match encontrado! Um animal com ${score}% de similaridade com ${pet.nome_pet || 'seu pet'} foi avistado!`
         : `👀 Um animal parecido com ${pet.nome_pet || 'seu pet'} foi avistado (${score}% de similaridade).`,
       similaridade: score,
@@ -186,27 +231,6 @@ const AIMatch = (() => {
     };
   }
 
-  /**
-   * Analisa características visuais da foto (simulação)
-   * Em produção, isso usaria um modelo de ML real
-   */
-  async function analyzeImage(imageData) {
-    await delay(800);
-    
-    return {
-      confidence: 95,
-      detected: 'animal',
-      analysis: 'Imagem analisada com sucesso'
-    };
-  }
-
-  function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  /**
-   * Formata o score para exibição
-   */
   function formatScore(score) {
     if (score >= 92) return { text: 'Match Forte!', class: 'high', emoji: '🎉' };
     if (score >= 75) return { text: 'Provável', class: 'medium', emoji: '👀' };
@@ -217,13 +241,17 @@ const AIMatch = (() => {
   // API pública
   return {
     findMatches,
-    calculateMatchScore,
+    calculateScore,
     analyzeAndMatch,
+    advancedMatchingWithTimeout,
+    createCancelToken,
+    shouldDiscardCandidate,
+    getWeights,
     generateMatchNotification,
-    analyzeImage,
     formatScore,
     MATCH_THRESHOLD,
-    WEIGHTS
+    GATE_MAX_DISTANCE_KM,
+    AI_TIMEOUT_MS
   };
 
 })();

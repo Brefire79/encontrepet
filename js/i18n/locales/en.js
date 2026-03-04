@@ -57,6 +57,7 @@ window.I18nLocales.en = {
   'menu.sponsors': 'Sponsors',
   'menu.about': 'About the App',
   'menu.logout': 'Sign out',
+  'menu.login_switch': 'Sign in with account',
 
   // — Home —
   'home.hero.title': 'Lost your pet?',
@@ -76,7 +77,7 @@ window.I18nLocales.en = {
   'home.info.dogs': 'Dogs',
   'home.info.dogs.desc': 'Alerts within a <strong>5 km</strong> radius',
   'home.info.cats': 'Cats',
-  'home.info.cats.desc': 'Alerts within a <strong>2 km</strong> radius',
+  'home.info.cats.desc': 'Alerts within a <strong>0.8 km</strong> radius',
   'home.info.others': 'Others',
   'home.info.others.desc': 'Alerts within a <strong>3 km</strong> radius',
 
@@ -109,7 +110,7 @@ window.I18nLocales.en = {
   'report.cat': 'Cat',
   'report.other': 'Other',
   'report.dog.radius': 'Radius: 5km',
-  'report.cat.radius': 'Radius: 2km',
+  'report.cat.radius': 'Radius: 0.8km',
   'report.other.radius': 'Radius: 3km',
   'report.which_animal': 'Which animal?',
   'report.location.label': 'Where it was lost *',
@@ -137,12 +138,16 @@ window.I18nLocales.en = {
   'report.observation.placeholder': 'E.g. Blue collar, limping left paw, very friendly...',
   'report.reward': 'Offer reward',
   'report.reward.placeholder': 'Reward amount or description',
-  'report.phone': 'Contact phone *',
+  'report.phone': 'Contact phone (optional)',
   'report.phone.placeholder': '(00) 00000-0000',
+  'report.phone_public': 'Show my phone publicly',
+  'report.phone_public.hint': 'Makes it easier for whoever spots your pet to contact you.',
   'report.submit': 'SEND ALERT NOW',
   'report.validate.photo_phone': 'Add photo and phone number',
+  'report.validate.photo_location': 'Add photo and location',
   'report.validate.photo': 'Add a photo of the pet',
   'report.validate.phone': 'Enter contact phone number',
+  'report.validate.location': 'Enter location',
   'report.note': 'The alert will be sent to people within a radius of up to <strong id="raio-info">{radius} km</strong>. You can complete details later.',
 
   // — Complete profile —
@@ -184,13 +189,21 @@ window.I18nLocales.en = {
   'sighting.observation': 'Notes',
   'sighting.observation.placeholder': 'Animal condition, collar, exact place...',
   'sighting.contact': 'Your contact (optional)',
+  'sighting.phone_public': 'Show my phone to the owner',
+  'sighting.phone_public.hint': 'The owner will be able to contact you directly.',
   'sighting.submit': 'Send Sighting',
   'sighting.ai.no_pets': 'No reported pets to compare.',
   'sighting.ai.no_match': 'No match. Send the sighting anyway!',
   'sighting.ai.error': 'Comparison error. Send anyway.',
 
+  // — Validation —
+  'validation.phone_invalid': 'Invalid phone. Use Brazilian format: (XX) XXXXX-XXXX',
+
   // — Details —
   'details.title': 'Pet Details',
+  'details.contact_label': 'Contact',
+  'details.btn_call': 'Call',
+  'details.request_contact': 'Request contact',
 
   // — My reports —
   'myreports.title': 'My Reports',
@@ -216,6 +229,21 @@ window.I18nLocales.en = {
   'sighting.ai.pet_unnamed': 'Unnamed pet',
   'sighting.ai.match_label': 'Match!',
   'sighting.ai.possible_label': 'Possible',
+  'sighting.ai.link_pet': 'Link to this pet',
+  'sighting.ai.linked': 'Linked ✓',
+  'sighting.ai.view_details': 'View details',
+  'sighting.ai.linked_to': 'Linked to: {name} ({score}% match)',
+
+  // — Pet Details (non-owner actions) —
+  'details.report_sighting': 'Report sighting of this pet',
+  'details.found_this_pet': 'Found this pet? Get in touch!',
+  'details.contact_tutor': 'View tutor contact',
+  'details.login_required': 'Log in to view tutor contact',
+  'details.loading_contact': 'Loading contact...',
+  'details.tutor_info': 'Tutor Contact',
+  'details.contact_revealed': 'Contact revealed',
+  'details.no_contact': 'Tutor contact not available',
+  'details.contact_error': 'Error loading tutor contact',
 
   // — Notifications —
   'notif.title': 'Notifications',
