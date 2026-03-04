@@ -198,6 +198,13 @@ export const getTutorContact = onCall(
   {
     region: 'southamerica-east1',
     maxInstances: 10,
+    cors: [
+      'http://localhost:5000',
+      'http://127.0.0.1:5000',
+      'http://localhost:3000',
+      'https://encontre-pet-137d2.web.app',
+      'https://encontre-pet-137d2.firebaseapp.com',
+    ],
   },
   async (request) => {
     // 1. Verificar autenticação

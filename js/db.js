@@ -812,7 +812,7 @@ const DB = (() => {
   }
 
   async function listarNotificacoes(page = 1) {
-    return await list(TABLES.NOTIFICACOES, { limit: 50 });
+    return await list(TABLES.NOTIFICACOES, { limit: 200 });
   }
 
   async function marcarNotificacaoLida(notifId) {

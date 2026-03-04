@@ -2174,9 +2174,33 @@ a { color: var(--primary); text-decoration: none; }
   flex-shrink: 0;
 }
 
-.notif-icon.match { background: #E8F8EB; color: var(--success); }
-.notif-icon.alert { background: #FFF0E6; color: var(--primary); }
-.notif-icon.found { background: #E6FBF9; color: var(--secondary); }
+.notif-icon.match   { background: #E8F8EB; color: var(--success); }
+.notif-icon.alert   { background: #FFF0E6; color: var(--primary); }
+.notif-icon.found   { background: #E6FBF9; color: var(--secondary); }
+.notif-icon.contact { background: #EDE7F6; color: #7C4DFF; }
+
+.notif-pet-name {
+  font-size: 0.78rem;
+  color: var(--primary);
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.notif-view-btn {
+  margin-top: 6px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.notif-view-btn:hover { opacity: 0.85; }
 
 .notif-text {
   flex: 1;

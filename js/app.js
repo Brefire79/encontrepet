@@ -201,9 +201,14 @@ const App = (() => {
   async function updateNotifBadge() {
     try {
       if (!Auth.isLoggedIn()) return;
+      const uid = Auth.getUID();
       const result = await DB.listarNotificacoes();
       const myIds = DB.getMyReports().filter(r => (r.type || r._reportType) === 'pet_perdido').map(r => r.id);
-      const notifs = (result.data || []).filter(n => myIds.includes(n.pet_perdido_id));
+      const notifs = (result.data || []).filter(n =>
+        (n.destinatario_uid && n.destinatario_uid === uid) ||
+        (n.pet_perdido_id && myIds.includes(n.pet_perdido_id)) ||
+        (n.pet_id && myIds.includes(n.pet_id))
+      );
       const unread = notifs.filter(n => !n.lida).length;
 
       const badge = document.getElementById('notif-badge');
@@ -2358,14 +2363,27 @@ const App = (() => {
    * Loga o acesso server-side para auditoria.
    */
   async function getTutorContact(petId) {
-    const functions = FirebaseConfig.getFunctions?.();
-    if (functions) {
-      const callable = functions.httpsCallable('getTutorContact');
-      const result = await callable({ petId });
-      return result.data;
+    // 1. Tentar via Cloud Function (produção)
+    try {
+      const functions = FirebaseConfig.getFunctions?.();
+      if (functions) {
+        const callable = functions.httpsCallable('getTutorContact');
+        const result = await callable({ petId });
+        if (result?.data) return result.data;
+      }
+    } catch (err) {
+      console.warn('[App] Cloud Function getTutorContact falhou, usando fallback Firestore:', err.message);
     }
-    // Fallback: tentar buscar via Firestore REST (requer regras adequadas)
-    throw new Error('Cloud Functions não disponível');
+
+    // 2. Fallback: leitura direta da coleção alert_privado (funciona em dev + quando CF indisponível)
+    const privateData = await DB.getPrivateAlertData('pets_perdidos', petId);
+    if (!privateData) throw new Error('Dados de contato não encontrados');
+
+    return {
+      nome:     privateData.contato_nome     || '',
+      telefone: privateData.contato_telefone || '',
+      email:    privateData.contato_email    || ''
+    };
   }
 
   function contactWhatsApp(phone, name) {
@@ -2536,9 +2554,28 @@ const App = (() => {
     if (!container) return;
     container.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Carregando...</p></div>';
     try {
+      const uid = Auth.getUID();
       const result = await DB.listarNotificacoes();
-      const myIds = DB.getMyReports().filter(r => (r.type || r._reportType) === 'pet_perdido').map(r => r.id);
-      const notifs = (result.data || []).filter(n => myIds.includes(n.pet_perdido_id));
+
+      // Buscar IDs do Firestore (garante sincronia entre dispositivos)
+      let myReports = [];
+      try { myReports = await DB.loadMyReports(); } catch (e) { myReports = DB.getMyReports(); }
+      const myIds = myReports
+        .filter(r => (r.type || r._reportType) === 'pet_perdido')
+        .map(r => r.id);
+
+      // Incluir por destinatario_uid OU pet_perdido_id OU pet_id
+      const notifs = (result.data || []).filter(n =>
+        (n.destinatario_uid && n.destinatario_uid === uid) ||
+        (n.pet_perdido_id && myIds.includes(n.pet_perdido_id)) ||
+        (n.pet_id && myIds.includes(n.pet_id))
+      );
+      // Ordenar mais recentes primeiro
+      notifs.sort((a, b) => {
+        const tA = a.created_at?.toMillis ? a.created_at.toMillis() : new Date(a.created_at || 0).getTime();
+        const tB = b.created_at?.toMillis ? b.created_at.toMillis() : new Date(b.created_at || 0).getTime();
+        return tB - tA;
+      });
       
       const badge = document.getElementById('notif-badge');
       const unread = notifs.filter(n => !n.lida).length;
@@ -2555,18 +2592,34 @@ const App = (() => {
         return;
       }
 
-      container.innerHTML = notifs.map(n => `
+      container.innerHTML = notifs.map(n => {
+        const tipoConfig = {
+          match_ia:          { icon: 'fa-robot',         cls: 'match',   titulo: I18n.t('notif.match_title') },
+          contato_solicitado:{ icon: 'fa-hands-helping', cls: 'contact', titulo: '👋 Alguém quer contato!' },
+          avistamento:       { icon: 'fa-eye',           cls: 'alert',   titulo: '👁️ Avistamento registrado' }
+        }[n.tipo] || { icon: 'fa-bell', cls: 'alert', titulo: I18n.t('notif.notification') };
+
+        const petNome = n.pet_nome ? `<div class="notif-pet-name"><i class="fas fa-paw"></i> ${Security.sanitize(n.pet_nome)}</div>` : '';
+        const petId   = n.pet_perdido_id || n.pet_id || '';
+        const viewLink = petId
+          ? `<button class="notif-view-btn" data-pet-id="${petId}"><i class="fas fa-eye"></i> Ver pet</button>`
+          : '';
+
+        return `
         <div class="notif-item ${!n.lida ? 'unread notif-flash' : ''}" data-nid="${n.id}">
-          <div class="notif-icon ${n.tipo === 'match_ia' ? 'match' : 'alert'}">
-            <i class="fas ${n.tipo === 'match_ia' ? 'fa-robot' : 'fa-bell'}"></i>
+          <div class="notif-icon ${tipoConfig.cls}">
+            <i class="fas ${tipoConfig.icon}"></i>
           </div>
           <div class="notif-text">
-            <div class="notif-title">${n.tipo === 'match_ia' ? I18n.t('notif.match_title') : I18n.t('notif.notification')}</div>
+            <div class="notif-title">${tipoConfig.titulo}</div>
+            ${petNome}
             <div class="notif-desc">${Security.sanitize(n.mensagem || '')}</div>
             ${n.similaridade ? `<div style="color:var(--success);font-weight:700;font-size:0.85rem">${I18n.t('notif.similarity', {pct: n.similaridade})}</div>` : ''}
             <div class="notif-time">${getTimeAgo(n.created_at)}</div>
+            ${viewLink}
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
 
       // Remove flash after 40s
       setTimeout(() => {
@@ -2574,7 +2627,9 @@ const App = (() => {
       }, 40000);
 
       container.querySelectorAll('.notif-item').forEach(item => {
-        item.addEventListener('click', async () => {
+        item.addEventListener('click', async (e) => {
+          // Não marcar como lida se clicar no botão "Ver pet" (tem seu próprio handler)
+          if (e.target.closest('.notif-view-btn')) return;
           try {
             await DB.marcarNotificacaoLida(item.dataset.nid);
             item.classList.remove('unread', 'notif-flash');
@@ -2587,6 +2642,21 @@ const App = (() => {
               _lastKnownUnread = newCount;
             }
           } catch {}
+        });
+      });
+
+      // Botões "Ver pet" dentro das notificações
+      container.querySelectorAll('.notif-view-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const petId = btn.dataset.petId;
+          if (!petId) return;
+          // Marcar notificação como lida
+          const item = btn.closest('.notif-item');
+          if (item) {
+            try { await DB.marcarNotificacaoLida(item.dataset.nid); item.classList.remove('unread', 'notif-flash'); } catch {}
+          }
+          showPetDetails(petId);
         });
       });
     } catch { container.innerHTML = `<div class="empty-state"><p>${I18n.t('notif.load_error')}</p></div>`; }
