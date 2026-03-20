@@ -45,7 +45,7 @@ const AIVision = (() => {
 
   // ====== INICIALIZAÇÃO DO MODELO ======
 
-  const TFJS_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js';
+  const TFJS_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js';
   const MOBILENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js';
 
   function loadScript(src) {
