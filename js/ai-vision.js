@@ -45,14 +45,28 @@ const AIVision = (() => {
 
   // ====== INICIALIZAÇÃO DO MODELO ======
 
+  const TFJS_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js';
+  const MOBILENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js';
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+      const s = document.createElement('script');
+      s.src = src;
+      s.crossOrigin = 'anonymous';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error(`Failed to load ${src}`));
+      document.head.appendChild(s);
+    });
+  }
+
   /**
-   * Carrega o modelo MobileNet (TensorFlow.js)
-   * ~7MB, roda 100% no navegador
+   * Carrega TF.js + MobileNet sob demanda (~19MB total).
+   * Scripts são injetados dinamicamente apenas quando o modelo é necessário.
    */
   async function loadModel() {
     if (isReady) return true;
     if (isLoading) {
-      // Esperar carregamento em andamento
       while (isLoading) {
         await new Promise(r => setTimeout(r, 200));
       }
@@ -62,18 +76,17 @@ const AIVision = (() => {
     isLoading = true;
 
     try {
-      // Verificar se TensorFlow.js está disponível
       if (typeof tf === 'undefined') {
-        console.warn('[AIVision] TensorFlow.js não carregado. Modo básico ativo.');
-        isLoading = false;
-        return false;
+        console.log('[AIVision] Injetando TensorFlow.js...');
+        await loadScript(TFJS_URL);
+      }
+      if (typeof mobilenet === 'undefined') {
+        console.log('[AIVision] Injetando MobileNet...');
+        await loadScript(MOBILENET_URL);
       }
 
       console.log('[AIVision] Carregando MobileNet...');
-      model = await mobilenet.load({
-        version: 2,
-        alpha: 0.5 // Versão leve (menor e mais rápida)
-      });
+      model = await mobilenet.load({ version: 2, alpha: 0.5 });
 
       isReady = true;
       isLoading = false;
@@ -339,6 +352,9 @@ const AIVision = (() => {
       tf.disposeVariables();
     }
   }
+
+  // Liberar recursos ao fechar/navegar a página
+  window.addEventListener('pagehide', dispose);
 
   // API pública
   return {

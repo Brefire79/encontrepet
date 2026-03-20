@@ -183,19 +183,84 @@ const App = (() => {
     // 9. Notification badge polling (every 60s)
     startNotifPolling();
 
+    // Registrar estado inicial no histórico para que popstate funcione ao voltar para home
+    history.replaceState({ page: 'home' }, '');
+
     console.log('🐾 Encontre Pet v1.0.0 inicializado!');
   }
 
   /**
-   * Periodic polling to update notification badge count and check feed.
-   * Plays a sound and flashes when new unread notifications appear.
-   * Also checks for new feed items (pets/sightings) every 60s.
+   * Inicia listeners em tempo real via Firestore onSnapshot para notificações e feed.
+   * Quando Firestore não está disponível, cai em polling de 60s como fallback.
    */
   function startNotifPolling() {
-    // Initial check after 5 seconds (let auth settle)
+    const uid = Auth.getUID();
+
+    // --- Notificações em tempo real ---
+    const unsubNotif = DB.watchNotificacoes(uid, (docs) => {
+      const myIds = DB.getMyReports()
+        .filter(r => (r.type || r._reportType) === 'pet_perdido')
+        .map(r => r.id);
+
+      const notifs = docs.filter(n =>
+        (n.destinatario_uid && n.destinatario_uid === uid) ||
+        (n.pet_perdido_id && myIds.includes(n.pet_perdido_id)) ||
+        (n.pet_id && myIds.includes(n.pet_id))
+      );
+      const unread = notifs.filter(n => !n.lida).length;
+
+      const badge = document.getElementById('notif-badge');
+      if (badge) {
+        badge.textContent = unread;
+        badge.classList.toggle('hidden', unread === 0);
+      }
+
+      if (_lastKnownUnread >= 0 && unread > _lastKnownUnread) {
+        playNotificationSound();
+        const bellBtn = document.getElementById('btn-notificacoes');
+        if (bellBtn) {
+          bellBtn.classList.add('notif-bell-flash');
+          setTimeout(() => bellBtn.classList.remove('notif-bell-flash'), 40000);
+        }
+      }
+      _lastKnownUnread = unread;
+    });
+
+    // --- Feed em tempo real (pets ativos) ---
+    const unsubFeed = DB.watchPetsAtivos((pets) => {
+      const currentIds = new Set(pets.map(p => p.id));
+
+      if (_lastKnownFeedIds !== null) {
+        const newIds = [...currentIds].filter(id => !_lastKnownFeedIds.has(id));
+        if (newIds.length > 0) {
+          playFeedSound();
+          flashTabTitle(`🐾 ${newIds.length} novo(s) alerta(s) perto de você!`);
+          const newPet = pets.find(p => newIds.includes(p.id));
+          if (newPet) notifyNewPetNearby(newPet);
+          if (state.currentPage === 'home') {
+            loadAlertsFeed().then(() => {
+              setTimeout(() => {
+                newIds.forEach(id => {
+                  const card = document.querySelector(`.alert-card[data-id="${id}"]`);
+                  if (card) {
+                    card.classList.add('feed-card-flash');
+                    setTimeout(() => card.classList.remove('feed-card-flash'), 40000);
+                  }
+                });
+              }, 300);
+            });
+          }
+        }
+      }
+      _lastKnownFeedIds = currentIds;
+    });
+
+    // Guardar unsubscribers para limpeza no logout
+    _notifPollTimer = { unsubNotif, unsubFeed };
+
+    // Fallback: se Firestore indisponível, onSnapshot retorna no-op e o badge
+    // só atualiza quando o usuário navega — fazer uma checagem inicial manual
     setTimeout(() => { updateNotifBadge(); checkFeedUpdates(); }, 5000);
-    // Then poll every 60 seconds
-    _notifPollTimer = setInterval(() => { updateNotifBadge(); checkFeedUpdates(); }, 60000);
   }
 
   async function updateNotifBadge() {
@@ -323,7 +388,7 @@ const App = (() => {
     });
     // Re-render dynamic content on lang change
     window.addEventListener('langchange', () => {
-      const user = Auth.getCurrentUser?.();
+      const user = Auth.getUserData();
       if (user) updateUserUI(user);
       if (state.currentPage === 'home') loadHomeData();
       if (state.currentPage === 'mapa') loadMap();
@@ -361,6 +426,12 @@ const App = (() => {
         setTimeout(() => Notification.requestPermission(), 3000);
       }
     } else if (event === 'logout') {
+      // Cancelar listeners de tempo real
+      if (_notifPollTimer) {
+        try { _notifPollTimer.unsubNotif?.(); } catch {}
+        try { _notifPollTimer.unsubFeed?.(); } catch {}
+        _notifPollTimer = null;
+      }
       authScreen?.classList.remove('hidden');
       showAuthForm('login');
       updateAdminMenuVisibility();
@@ -415,7 +486,6 @@ const App = (() => {
       setButtonLoading(btn, true);
       
       try {
-        Security.checkRateLimit('login', 5, 60000);
         await Auth.loginWithEmail(email, pass);
       } catch (err) {
         showAuthError('login', err.message);
@@ -446,7 +516,6 @@ const App = (() => {
       setButtonLoading(btn, true);
 
       try {
-        Security.checkRateLimit('register', 3, 300000);
         await Auth.registerWithEmail(email, pass, name);
         showToast(I18n.t('toast.account_created'), 'success');
       } catch (err) {
@@ -527,13 +596,13 @@ const App = (() => {
     if (/[0-9]/.test(password)) strength++;
     if (/[^A-Za-z0-9]/.test(password)) strength++;
 
-    const colors = ['#FF6B6B', '#FFA94D', '#FFE66D', '#51CF66', '#51CF66'];
-    const widths = ['20%', '40%', '60%', '80%', '100%'];
-    const labels = ['Muito fraca', 'Fraca', 'Razoável', 'Forte', 'Muito forte'];
+    const colors = ['#ccc', '#FF6B6B', '#FFA94D', '#FFE66D', '#51CF66', '#51CF66'];
+    const widths = ['10%', '20%', '40%', '60%', '80%', '100%'];
+    const labels = ['Muito curta', 'Muito fraca', 'Fraca', 'Razoável', 'Forte', 'Muito forte'];
     
     container.innerHTML = `
-      <div class="strength-bar" style="width:${widths[strength-1] || '0%'};background:${colors[strength-1] || '#ddd'}"></div>
-      ${password.length > 0 ? `<span class="strength-label" style="color:${colors[strength-1] || '#999'}">${labels[strength-1] || ''}</span>` : ''}
+      <div class="strength-bar" style="width:${widths[strength]};background:${colors[strength]}"></div>
+      ${password.length > 0 ? `<span class="strength-label" style="color:${colors[strength]}">${labels[strength]}</span>` : ''}
     `;
   }
 
@@ -810,6 +879,32 @@ const App = (() => {
       btn.addEventListener('click', () => navigateTo(btn.dataset.back));
     });
 
+    // Botão de voltar do navegador/Android
+    window.addEventListener('popstate', (e) => {
+      const page = (e.state && e.state.page) ? e.state.page : 'home';
+      _navigateInternal(page);
+    });
+
+    // Event delegation central — substitui todos os onclick= inline em templates
+    document.body.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const { action, phone, name: dName, id, page, msg, type: dType, target, class: dClass } = btn.dataset;
+      switch (action) {
+        case 'whatsapp': contactWhatsApp(phone, dName); break;
+        case 'call':     callPhone(phone); break;
+        case 'share':    sharePet(id, dName); break;
+        case 'details':  showPetDetails(id); break;
+        case 'navigate': navigateTo(page); break;
+        case 'toast':    showToast(msg, dType || 'info'); break;
+        case 'toggle': {
+          const el = target ? document.getElementById(target) : null;
+          if (el && dClass) el.classList.toggle(dClass);
+          break;
+        }
+      }
+    });
+
     document.getElementById('btn-perdi-pet')?.addEventListener('click', () => {
       if (!Auth.isLoggedIn()) { showToast(I18n.t('toast.login_required'), 'warning'); return; }
       navigateTo('reportar-rapido');
@@ -818,26 +913,32 @@ const App = (() => {
     document.getElementById('btn-notificacoes')?.addEventListener('click', () => navigateTo('notificacoes'));
   }
 
-  function navigateTo(page) {
+  // Navegação interna — só manipula DOM, não empurra histórico
+  function _navigateInternal(page) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     const target = document.getElementById('page-' + page);
-    if (target) {
-      target.classList.add('active');
-      state.currentPage = page;
-      window.scrollTo({ top: 0 });
+    if (!target) return;
+    target.classList.add('active');
+    state.currentPage = page;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 
-      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-      const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
-      if (navItem) navItem.classList.add('active');
-      if (page === 'home') document.querySelector('.nav-item[data-page="home"]')?.classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
+    if (navItem) navItem.classList.add('active');
+    if (page === 'home') document.querySelector('.nav-item[data-page="home"]')?.classList.add('active');
 
-      // Marcar item ativo no menu lateral
-      document.querySelectorAll('.menu-list li[data-page]').forEach(li => li.classList.remove('menu-active'));
-      const menuItem = document.querySelector(`.menu-list li[data-page="${page}"]`);
-      if (menuItem) menuItem.classList.add('menu-active');
+    // Marcar item ativo no menu lateral
+    document.querySelectorAll('.menu-list li[data-page]').forEach(li => li.classList.remove('menu-active'));
+    const menuItem = document.querySelector(`.menu-list li[data-page="${page}"]`);
+    if (menuItem) menuItem.classList.add('menu-active');
 
-      onPageLoad(page);
-    }
+    onPageLoad(page);
+  }
+
+  // Navegação pública — empurra entrada no histórico do browser
+  function navigateTo(page) {
+    history.pushState({ page }, '');
+    _navigateInternal(page);
   }
 
   function onPageLoad(page) {
@@ -898,7 +999,7 @@ const App = (() => {
       if (!tracking) return;
       const dx = e.touches[0].clientX - startX;
       const dy = Math.abs(e.touches[0].clientY - startY);
-      if (dx > 60 && dy < 40) { closeSideMenu(); tracking = false; }
+      if (dx < -60 && dy < 40) { closeSideMenu(); tracking = false; }
     }, { passive: true });
     menu.addEventListener('touchend', () => { tracking = false; }, { passive: true });
   })();
@@ -2150,18 +2251,19 @@ const App = (() => {
       const hasPublicPhone = pet.telefone_publico_ativo && pet.telefone_publico;
 
       if (isOwner) {
-        const ownerPhone = privateData?.contato_telefone || pet.contato_telefone || pet.telefone_publico || '';
+        const ownerPhone = Security.sanitizePhone(privateData?.contato_telefone || pet.contato_telefone || pet.telefone_publico || '');
         if (ownerPhone) {
-          phoneDisplay = `<div class="detalhes-section"><h4><i class="fas fa-phone"></i> ${I18n.t('details.contact_label')}</h4><p>${ownerPhone}</p></div>`;
+          phoneDisplay = `<div class="detalhes-section"><h4><i class="fas fa-phone"></i> ${I18n.t('details.contact_label')}</h4><p>${Security.sanitize(ownerPhone)}</p></div>`;
           phoneActions = `
-            <button class="btn-whatsapp" onclick="App.contactWhatsApp('${ownerPhone}','${Security.sanitize(name)}')"><i class="fab fa-whatsapp"></i> WhatsApp</button>
-            <button class="btn-phone" onclick="App.callPhone('${ownerPhone}')"><i class="fas fa-phone"></i> ${I18n.t('details.btn_call')}</button>`;
+            <button class="btn-whatsapp" data-action="whatsapp" data-phone="${Security.sanitize(ownerPhone)}" data-name="${Security.sanitize(name)}"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+            <button class="btn-phone" data-action="call" data-phone="${Security.sanitize(ownerPhone)}"><i class="fas fa-phone"></i> ${I18n.t('details.btn_call')}</button>`;
         }
       } else if (hasPublicPhone) {
-        phoneDisplay = `<div class="detalhes-section"><h4><i class="fas fa-phone"></i> ${I18n.t('details.contact_label')}</h4><p>${pet.telefone_publico}</p></div>`;
+        const safePublicPhone = Security.sanitizePhone(pet.telefone_publico);
+        phoneDisplay = `<div class="detalhes-section"><h4><i class="fas fa-phone"></i> ${I18n.t('details.contact_label')}</h4><p>${Security.sanitize(safePublicPhone)}</p></div>`;
         phoneActions = `
-          <button class="btn-whatsapp" onclick="App.contactWhatsApp('${pet.telefone_publico}','${Security.sanitize(name)}')"><i class="fab fa-whatsapp"></i> WhatsApp</button>
-          <button class="btn-phone" onclick="App.callPhone('${pet.telefone_publico}')"><i class="fas fa-phone"></i> ${I18n.t('details.btn_call')}</button>`;
+          <button class="btn-whatsapp" data-action="whatsapp" data-phone="${Security.sanitize(safePublicPhone)}" data-name="${Security.sanitize(name)}"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+          <button class="btn-phone" data-action="call" data-phone="${Security.sanitize(safePublicPhone)}"><i class="fas fa-phone"></i> ${I18n.t('details.btn_call')}</button>`;
       }
 
       const ownerEmail = isOwner
@@ -2194,8 +2296,8 @@ const App = (() => {
                 <span>${I18n.t('details.found_this_pet')}</span>
               </div>
               <div class="contact-cta-actions">
-                <button class="btn-whatsapp btn-cta-big" onclick="App.contactWhatsApp('${pet.telefone_publico}','${Security.sanitize(name)}')"><i class="fab fa-whatsapp"></i> WhatsApp</button>
-                <button class="btn-phone btn-cta-big" onclick="App.callPhone('${pet.telefone_publico}')"><i class="fas fa-phone"></i> ${I18n.t('details.btn_call')}</button>
+                <button class="btn-whatsapp btn-cta-big" data-action="whatsapp" data-phone="${Security.sanitize(pet.telefone_publico)}" data-name="${Security.sanitize(name)}"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+                <button class="btn-phone btn-cta-big" data-action="call" data-phone="${Security.sanitize(pet.telefone_publico)}"><i class="fas fa-phone"></i> ${I18n.t('details.btn_call')}</button>
               </div>
             </div>`;
         } else {
@@ -2220,7 +2322,7 @@ const App = (() => {
                   <span>${I18n.t('details.found_this_pet')}</span>
                 </div>
                 <div class="contact-cta-actions">
-                  <button class="btn-tutor-contact btn-cta-big disabled" onclick="App.showToast('${I18n.t('details.login_required')}','info')">
+                  <button class="btn-tutor-contact btn-cta-big disabled" data-action="toast" data-msg="${I18n.t('details.login_required')}" data-type="info">
                     <i class="fas fa-lock"></i> ${I18n.t('details.request_contact')}
                   </button>
                 </div>
@@ -2277,7 +2379,7 @@ const App = (() => {
         <div class="detalhes-actions">
           ${phoneActions}
           ${nonOwnerActions}
-          <button class="btn-share" onclick="App.sharePet('${displayPet.id}','${Security.sanitize(name)}')"><i class="fas fa-share-alt"></i></button>
+          <button class="btn-share" data-action="share" data-id="${displayPet.id}" data-name="${Security.sanitize(name)}"><i class="fas fa-share-alt"></i></button>
         </div>`;
 
       // Bind "Reportar avistamento deste pet" button
@@ -2304,15 +2406,18 @@ const App = (() => {
             const contactDiv = document.getElementById('tutor-contact-result');
             if (contactDiv) {
               contactDiv.classList.remove('hidden');
+              const safeName = Security.sanitize(result.nome || '');
+              const safePhone = Security.sanitizePhone(result.telefone || '');
+              const safeEmail = Security.sanitizeEmail(result.email || '');
               contactDiv.innerHTML = `
                 <h4><i class="fas fa-user"></i> ${I18n.t('details.tutor_info')}</h4>
-                ${result.nome ? `<p><strong>${result.nome}</strong></p>` : ''}
-                ${result.telefone ? `<p><i class="fas fa-phone"></i> ${result.telefone}</p>
+                ${safeName ? `<p><strong>${Security.sanitize(safeName)}</strong></p>` : ''}
+                ${safePhone ? `<p><i class="fas fa-phone"></i> ${Security.sanitize(safePhone)}</p>
                   <div class="tutor-contact-actions">
-                    <button class="btn-whatsapp btn-small" onclick="App.contactWhatsApp('${result.telefone}','${Security.sanitize(name)}')"><i class="fab fa-whatsapp"></i> WhatsApp</button>
-                    <button class="btn-phone btn-small" onclick="App.callPhone('${result.telefone}')"><i class="fas fa-phone"></i> Ligar</button>
+                    <button class="btn-whatsapp btn-small" data-action="whatsapp" data-phone="${Security.sanitize(safePhone)}" data-name="${Security.sanitize(name)}"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+                    <button class="btn-phone btn-small" data-action="call" data-phone="${Security.sanitize(safePhone)}"><i class="fas fa-phone"></i> Ligar</button>
                   </div>` : ''}
-                ${result.email ? `<p><i class="fas fa-envelope"></i> ${result.email}</p>` : ''}`;
+                ${safeEmail ? `<p><i class="fas fa-envelope"></i> ${Security.sanitize(safeEmail)}</p>` : ''}`;
             }
             btn.innerHTML = `<i class="fas fa-check-circle"></i> ${I18n.t('details.contact_revealed')}`;
             btn.disabled = true;
@@ -2423,7 +2528,7 @@ const App = (() => {
       // === ATIVOS ===
       if (ativos.length === 0) {
         containerAtivos.innerHTML = `<div class="empty-state"><i class="fas fa-clipboard-list"></i><p>${I18n.t('myreports.no_active')}</p>
-          <button class="btn-primary" style="max-width:250px;margin:16px auto" onclick="App.navigateTo('reportar-rapido')"><i class="fas fa-plus"></i> ${I18n.t('myreports.btn.create')}</button></div>`;
+          <button class="btn-primary" style="max-width:250px;margin:16px auto" data-action="navigate" data-page="reportar-rapido"><i class="fas fa-plus"></i> ${I18n.t('myreports.btn.create')}</button></div>`;
       } else {
         containerAtivos.innerHTML = ativos.map(r => renderReporteItem(r, true)).join('');
         bindReporteActions(containerAtivos);
@@ -2708,7 +2813,7 @@ const App = (() => {
                 </div>
               </div>
             </div>
-            <button class="mapa-card-expand" onclick="App.showPetDetails('${p.id}')"><i class="fas fa-expand-alt"></i> ${I18n.t('map.details')}</button>
+            <button class="mapa-card-expand" data-action="details" data-id="${p.id}"><i class="fas fa-expand-alt"></i> ${I18n.t('map.details')}</button>
           </div>`;
         }).join('');
       }
@@ -2727,7 +2832,7 @@ const App = (() => {
           const porte = Security.sanitize(a.porte || '');
           const traits = [tipoLabel, cor, porte].filter(Boolean).join(' • ');
           return `<div class="mapa-card mapa-card-avistamento" id="sighting-card-${idx}">
-            <div class="mapa-card-main" onclick="document.getElementById('sighting-card-${idx}').classList.toggle('expanded')">
+            <div class="mapa-card-main" data-action="toggle" data-target="sighting-card-${idx}" data-class="expanded">
               <div class="mapa-card-thumb">
                 ${photo ? `<img src="${photo}" alt="${I18n.t('map.sighting')}">` : `<i class="fas fa-eye"></i>`}
                 <span class="mapa-card-type avistado"></span>
@@ -2749,7 +2854,7 @@ const App = (() => {
               ${traits ? `<div class="mapa-card-detail-row"><i class="fas fa-paw"></i> ${traits}</div>` : ''}
               <div class="mapa-card-detail-row"><i class="far fa-clock"></i> ${time}</div>
             </div>
-            <button class="mapa-card-toggle" onclick="document.getElementById('sighting-card-${idx}').classList.toggle('expanded')">
+            <button class="mapa-card-toggle" data-action="toggle" data-target="sighting-card-${idx}" data-class="expanded">
               <i class="fas fa-chevron-down"></i>
               <span class="toggle-text">${I18n.t('map.details')}</span>
             </button>

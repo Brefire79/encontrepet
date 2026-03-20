@@ -2,13 +2,14 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#FF6B35">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="description" content="App gratuito para encontrar pets perdidos. Reporte rápido, alerta por proximidade e matching com IA.">
   <meta http-equiv="X-Content-Type-Options" content="nosniff">
   <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https://*.googleapis.com https://*.openstreetmap.org https://tile.openstreetmap.org; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://firestore.googleapis.com https://*.cloudfunctions.net https://nominatim.openstreetmap.org https://storage.googleapis.com wss://*.firebaseio.com; frame-src 'none'; object-src 'none'; base-uri 'self';">
   
   <title>Encontre Pet - Encontre seu melhor amigo</title>
   
@@ -23,15 +24,13 @@
   <link rel="stylesheet" href="css/style.css">
 
   <!-- Firebase SDK (apenas Firestore - SEM Auth do Firebase) -->
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" integrity="sha384-ZaR6mWzmJtrRibZ1Vm7SoHFr8OXjyAuGAXalGDKqbxFT18oi/z+oZLIRFkpeNor1" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" integrity="sha384-I1LYojsZ5RM1cOda44Z2h42Qa6YfsQ1XkXxREnhp4ueYBR/4d1pG1K+NZM537Vsj" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js" integrity="sha384-Ke0FJhH7LyRqDxZ0wt+/OXV38yfQVu7g9VPEEGjYmB4RVOY/ta04uecRhsMwT7V3" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js" integrity="sha384-XgUhjZUY/4vSJ8bUS7DFmLGK73fbJgS+nlrQDEC5X3QBpGgO+597wN8Syegw3ONj" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js" integrity="sha384-hB0JJ4rNFhrwFXdiM7+wikJ3oIxttbx7D6zdYANzqbCt8CL8nLpOgbABsh5Mp3WC" crossorigin="anonymous"></script>
 
-  <!-- TensorFlow.js + MobileNet (IA gratuita no navegador - carregamento lazy) -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js" defer></script>
+  <!-- TensorFlow.js + MobileNet: injetados dinamicamente por AIVision.loadModel() apenas quando necessário -->
 </head>
 <body>
 
@@ -49,16 +48,16 @@
         <h2 data-i18n="auth.login.title">Entrar</h2>
         <div class="form-group">
           <label><i class="fas fa-envelope"></i> <span data-i18n="auth.email">E-mail</span></label>
-          <input type="email" id="login-email" class="form-input" placeholder="seu@email.com" data-i18n-placeholder="auth.email.placeholder" autocomplete="email">
+          <input type="email" id="login-email" class="form-input" placeholder="seu@email.com" data-i18n-placeholder="auth.email.placeholder" autocomplete="email" aria-required="true" aria-describedby="login-error">
         </div>
         <div class="form-group">
           <label><i class="fas fa-lock"></i> <span data-i18n="auth.password">Senha</span></label>
           <div class="input-password">
-            <input type="password" id="login-password" class="form-input" placeholder="Sua senha" data-i18n-placeholder="auth.password.placeholder" autocomplete="current-password">
+            <input type="password" id="login-password" class="form-input" placeholder="Sua senha" data-i18n-placeholder="auth.password.placeholder" autocomplete="current-password" aria-required="true" aria-describedby="login-error">
             <button type="button" class="btn-toggle-pass" data-target="login-password"><i class="fas fa-eye"></i></button>
           </div>
         </div>
-        <div id="login-error" class="auth-error hidden"></div>
+        <div id="login-error" class="auth-error hidden" role="alert" aria-live="polite"></div>
         <button id="btn-login" class="btn-primary btn-large">
           <i class="fas fa-sign-in-alt"></i> <span data-i18n="auth.login.btn">Entrar</span>
         </button>
@@ -74,25 +73,25 @@
         <h2 data-i18n="auth.register.title">Criar Conta Gratuita</h2>
         <div class="form-group">
           <label><i class="fas fa-user"></i> <span data-i18n="auth.name">Nome</span></label>
-          <input type="text" id="register-name" class="form-input" placeholder="Seu nome" data-i18n-placeholder="auth.name.placeholder" autocomplete="name">
+          <input type="text" id="register-name" class="form-input" placeholder="Seu nome" data-i18n-placeholder="auth.name.placeholder" autocomplete="name" aria-required="true" aria-describedby="register-error">
         </div>
         <div class="form-group">
           <label><i class="fas fa-envelope"></i> <span data-i18n="auth.email">E-mail</span></label>
-          <input type="email" id="register-email" class="form-input" placeholder="seu@email.com" data-i18n-placeholder="auth.email.placeholder" autocomplete="email">
+          <input type="email" id="register-email" class="form-input" placeholder="seu@email.com" data-i18n-placeholder="auth.email.placeholder" autocomplete="email" aria-required="true" aria-describedby="register-error">
         </div>
         <div class="form-group">
           <label><i class="fas fa-lock"></i> <span data-i18n="auth.password">Senha</span></label>
           <div class="input-password">
-            <input type="password" id="register-password" class="form-input" placeholder="Mínimo 6 caracteres" data-i18n-placeholder="auth.password.min" autocomplete="new-password">
+            <input type="password" id="register-password" class="form-input" placeholder="Mínimo 6 caracteres" data-i18n-placeholder="auth.password.min" autocomplete="new-password" aria-required="true" aria-describedby="register-error password-strength">
             <button type="button" class="btn-toggle-pass" data-target="register-password"><i class="fas fa-eye"></i></button>
           </div>
           <div id="password-strength" class="password-strength"></div>
         </div>
         <div class="form-group">
           <label><i class="fas fa-lock"></i> <span data-i18n="auth.password.confirm">Confirmar Senha</span></label>
-          <input type="password" id="register-password2" class="form-input" placeholder="Repita a senha" data-i18n-placeholder="auth.password.confirm.placeholder" autocomplete="new-password">
+          <input type="password" id="register-password2" class="form-input" placeholder="Repita a senha" data-i18n-placeholder="auth.password.confirm.placeholder" autocomplete="new-password" aria-required="true" aria-describedby="register-error">
         </div>
-        <div id="register-error" class="auth-error hidden"></div>
+        <div id="register-error" class="auth-error hidden" role="alert" aria-live="polite"></div>
         <button id="btn-register" class="btn-primary btn-large">
           <i class="fas fa-user-plus"></i> <span data-i18n="auth.register.btn">Criar Conta Gratuita</span>
         </button>
@@ -499,8 +498,8 @@
         <!-- Contato Rápido -->
         <div class="form-group">
           <label><i class="fas fa-phone"></i> <span data-i18n="report.phone">Telefone para contato (opcional)</span></label>
-          <input type="tel" id="telefone-rapido" class="form-input" placeholder="(00) 00000-0000" data-i18n-placeholder="report.phone.placeholder">
-          <p id="telefone-rapido-erro" class="field-error hidden"></p>
+          <input type="tel" id="telefone-rapido" class="form-input" placeholder="(00) 00000-0000" data-i18n-placeholder="report.phone.placeholder" aria-describedby="telefone-rapido-erro">
+          <p id="telefone-rapido-erro" class="field-error hidden" role="alert" aria-live="polite"></p>
         </div>
 
         <!-- Exibir telefone publicamente -->
@@ -758,8 +757,8 @@
 
         <div class="form-group">
           <label data-i18n="sighting.contact">Seu contato (opcional)</label>
-          <input type="tel" id="contato-avistamento" class="form-input" placeholder="(00) 00000-0000" data-i18n-placeholder="report.phone.placeholder">
-          <p id="contato-avistamento-erro" class="field-error hidden"></p>
+          <input type="tel" id="contato-avistamento" class="form-input" placeholder="(00) 00000-0000" data-i18n-placeholder="report.phone.placeholder" aria-describedby="contato-avistamento-erro">
+          <p id="contato-avistamento-erro" class="field-error hidden" role="alert" aria-live="polite"></p>
         </div>
 
         <!-- Exibir telefone para o tutor -->

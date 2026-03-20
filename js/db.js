@@ -46,6 +46,10 @@ const DB = (() => {
       useFirestore = false;
     }
     console.log('[DB] Modo:', useFirestore ? '🔥 Firestore + REST fallback' : '📡 REST API');
+    // Processar fila local de operações pendentes
+    if (useFirestore) {
+      setTimeout(() => processSyncQueue(), 3000);
+    }
   }
 
   // ============================================================
@@ -337,6 +341,45 @@ const DB = (() => {
     } catch (e) { /* localStorage full */ }
   }
 
+  /**
+   * Tenta processar a fila local de operações pendentes.
+   * Chamado automaticamente quando Firestore fica disponível.
+   */
+  async function processSyncQueue() {
+    if (!useFirestore) return;
+    let queue;
+    try {
+      queue = JSON.parse(localStorage.getItem('encontrePet_syncQueue') || '[]');
+    } catch { return; }
+    if (queue.length === 0) return;
+
+    console.log(`[DB] 🔄 Processando ${queue.length} operações pendentes...`);
+    const remaining = [];
+    for (const item of queue) {
+      try {
+        if (item.action === 'create') {
+          await create(item.collection, item.data);
+        } else if (item.action === 'update' && item.data?.id) {
+          const { id, ...rest } = item.data;
+          await update(item.collection, id, rest);
+        }
+        console.log(`[DB] ✅ Sync: ${item.action} em ${item.collection}`);
+      } catch (err) {
+        console.warn(`[DB] ❌ Sync falhou: ${item.action} em ${item.collection}:`, err.message);
+        // Manter na fila apenas se o erro não for 'not-found' (dado já removido)
+        if (!err.message?.includes('not-found')) {
+          remaining.push(item);
+        }
+      }
+    }
+    localStorage.setItem('encontrePet_syncQueue', JSON.stringify(remaining));
+    if (remaining.length === 0) {
+      console.log('[DB] ✅ Fila local processada com sucesso.');
+    } else {
+      console.warn(`[DB] ${remaining.length} operações ainda pendentes.`);
+    }
+  }
+
   // ============================================================
   //  PETS PERDIDOS
   // ============================================================
@@ -383,6 +426,7 @@ const DB = (() => {
       cadastro_completo: data.cadastro_completo || false,
       raio_busca_km: raio,
       data_perda: data.data_perda || new Date().toISOString().split('T')[0],
+      data_reporte: new Date().toISOString(),
       visualizacoes: 0,
       // Hash será gerado server-side via Cloud Function — não enviar do client
       imageHashProcessed: false,
@@ -882,17 +926,44 @@ const DB = (() => {
 
   async function loadMyReportsFromLocalStorage() {
     const reports = getMyReports();
-    const results = [];
-    for (const report of reports) {
+    if (reports.length === 0) return [];
+
+    // Agrupar por tabela para batch em vez de N+1 queries individuais
+    const petIds = reports.filter(r => r.type === 'pet_perdido').map(r => r.id);
+    const avistIds = reports.filter(r => r.type !== 'pet_perdido').map(r => r.id);
+    const dataMap = new Map();
+
+    // Buscar pets em batch (usa list com cache em vez de get individual)
+    if (petIds.length > 0) {
       try {
-        const table = report.type === 'pet_perdido' ? TABLES.PETS : TABLES.AVISTAMENTOS;
-        const data = await get(table, report.id);
-        results.push({ ...data, _reportType: report.type, _reportDate: report.date });
+        const petsResult = await list(TABLES.PETS, { limit: 200 });
+        (petsResult.data || []).forEach(d => {
+          if (petIds.includes(d.id)) dataMap.set(d.id, d);
+        });
       } catch (err) {
-        console.warn('Report not found:', report.id);
+        console.warn('[DB] Batch pets falhou, fallback individual:', err.message);
+        for (const id of petIds) {
+          try { dataMap.set(id, await get(TABLES.PETS, id)); } catch {}
+        }
       }
     }
-    return results;
+    if (avistIds.length > 0) {
+      try {
+        const avistResult = await list(TABLES.AVISTAMENTOS, { limit: 200 });
+        (avistResult.data || []).forEach(d => {
+          if (avistIds.includes(d.id)) dataMap.set(d.id, d);
+        });
+      } catch (err) {
+        console.warn('[DB] Batch avistamentos falhou, fallback individual:', err.message);
+        for (const id of avistIds) {
+          try { dataMap.set(id, await get(TABLES.AVISTAMENTOS, id)); } catch {}
+        }
+      }
+    }
+
+    return reports
+      .filter(r => dataMap.has(r.id))
+      .map(r => ({ ...dataMap.get(r.id), _reportType: r.type, _reportDate: r.date }));
   }
 
   // ============================================================
@@ -1013,6 +1084,59 @@ const DB = (() => {
     };
   }
 
+  /**
+   * Escuta notificações do usuário em tempo real via Firestore onSnapshot.
+   * Fallback: retorna função no-op quando Firestore não está disponível
+   * (o polling de 60s em app.js cobre esse caso).
+   * @param {string} uid - UID do usuário
+   * @param {Function} onChange - callback(docs[])
+   * @returns {Function} unsubscribe
+   */
+  function watchNotificacoes(uid, onChange) {
+    if (!useFirestore || !uid) return () => {};
+    try {
+      const db = FirebaseConfig.getDB();
+      const unsubscribe = db.collection(TABLES.NOTIFICACOES)
+        .where('destinatario_uid', '==', uid)
+        .onSnapshot(
+          (snapshot) => {
+            const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            onChange(docs);
+          },
+          (err) => console.error('[DB] watchNotificacoes error:', err)
+        );
+      return unsubscribe;
+    } catch (err) {
+      console.error('[DB] watchNotificacoes init error:', err);
+      return () => {};
+    }
+  }
+
+  /**
+   * Escuta pets ativos em tempo real via Firestore onSnapshot.
+   * @param {Function} onChange - callback(docs[])
+   * @returns {Function} unsubscribe
+   */
+  function watchPetsAtivos(onChange) {
+    if (!useFirestore) return () => {};
+    try {
+      const db = FirebaseConfig.getDB();
+      const unsubscribe = db.collection(TABLES.PETS)
+        .where('status', '==', 'ativo')
+        .onSnapshot(
+          (snapshot) => {
+            const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            onChange(docs);
+          },
+          (err) => console.error('[DB] watchPetsAtivos error:', err)
+        );
+      return unsubscribe;
+    } catch (err) {
+      console.error('[DB] watchPetsAtivos init error:', err);
+      return () => {};
+    }
+  }
+
   // API pública
   return {
     init,
@@ -1040,7 +1164,9 @@ const DB = (() => {
     loadMyReportsFromLocalStorage,
     getStats,
     clearCache,
-    getStatus
+    getStatus,
+    watchNotificacoes,
+    watchPetsAtivos
   };
 
 })();
