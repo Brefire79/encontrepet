@@ -902,7 +902,7 @@ const App = (() => {
       document.getElementById('auth-login')?.classList.remove('hidden');
     });
 
-    // "Enviar link" → chama Cloud Function
+    // "Enviar link" → Firebase Auth sendPasswordResetEmail
     btnSend?.addEventListener('click', async () => {
       if (!emailInput) return;
       const email = emailInput.value.trim();
@@ -914,8 +914,8 @@ const App = (() => {
       btnSend.textContent = 'Enviando…';
 
       try {
-        await Auth.requestPasswordReset(email);
-        _showMsg(successDiv, 'Link enviado! Verifique sua caixa de entrada (e spam).');
+        await Auth.sendPasswordReset(email);
+        _showMsg(successDiv, 'Se este e-mail estiver cadastrado, você receberá o link em breve. Verifique também o spam.');
         emailInput.value = '';
       } catch (err) {
         _showMsg(errorDiv, err.message || 'Erro ao enviar. Tente novamente.');
@@ -927,61 +927,9 @@ const App = (() => {
   }
 
   function handlePasswordResetLink() {
-    const params = new URLSearchParams(window.location.search);
-    const token  = params.get('reset');
-    if (!token) return;
-
-    // Remove o token da URL sem recarregar a página
-    window.history.replaceState({}, '', window.location.pathname);
-
-    // Esconde outros formulários e exibe o de redefinição
-    document.getElementById('auth-login')?.classList.add('hidden');
-    document.getElementById('auth-register')?.classList.add('hidden');
-    document.getElementById('auth-forgot')?.classList.add('hidden');
-    document.getElementById('auth-reset')?.classList.remove('hidden');
-
-    const btnConfirm  = document.getElementById('btn-reset-confirm');
-    const passInput   = document.getElementById('reset-password');
-    const pass2Input  = document.getElementById('reset-password2');
-    const errorDiv    = document.getElementById('reset-error');
-    const successDiv  = document.getElementById('reset-success');
-
-    btnConfirm?.addEventListener('click', async () => {
-      if (!passInput || !pass2Input) return;
-      const newPass  = passInput.value;
-      const newPass2 = pass2Input.value;
-
-      _hideMsg(errorDiv);
-      _hideMsg(successDiv);
-
-      if (!newPass || newPass.length < 6) {
-        _showMsg(errorDiv, 'A senha deve ter ao menos 6 caracteres.');
-        return;
-      }
-      if (newPass !== newPass2) {
-        _showMsg(errorDiv, 'As senhas não coincidem.');
-        return;
-      }
-
-      btnConfirm.disabled    = true;
-      btnConfirm.textContent = 'Redefinindo…';
-
-      try {
-        await Auth.confirmPasswordReset(token, newPass);
-        _showMsg(successDiv || errorDiv, 'Senha redefinida com sucesso!');
-        passInput.value  = '';
-        pass2Input.value = '';
-        setTimeout(() => {
-          document.getElementById('auth-reset')?.classList.add('hidden');
-          document.getElementById('auth-login')?.classList.remove('hidden');
-        }, 2000);
-      } catch (err) {
-        _showMsg(errorDiv, err.message || 'Token inválido ou expirado. Solicite um novo link.');
-      } finally {
-        btnConfirm.disabled    = false;
-        btnConfirm.textContent = 'Redefinir senha';
-      }
-    });
+    // O Firebase Authentication trata o reset na própria página hospedada.
+    // Após concluir, redireciona de volta para o app (continueUrl = window.location.origin).
+    // Nenhuma ação adicional é necessária no frontend.
   }
 
   // ====== NAVEGAÇÃO ======

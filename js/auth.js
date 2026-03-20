@@ -262,7 +262,7 @@ const Auth = (() => {
     const existing = await findByEmail(email);
     if (existing) throw new Error('Este e-mail já está cadastrado. Tente fazer login.');
 
-    // Criar hash da senha
+    // Criar hash da senha (mantido para retrocompatibilidade)
     const senhaHash = await Security.createPasswordHash(password);
 
     // Gerar UID
@@ -291,6 +291,18 @@ const Auth = (() => {
     const created = await createUser(uid, userData);
     const finalUID = created.id || uid;
 
+    // Criar conta no Firebase Auth (necessário para recuperação de senha)
+    if (typeof firebase !== 'undefined' && firebase.auth) {
+      try {
+        await firebase.auth().createUserWithEmailAndPassword(
+          Security.sanitizeEmail(email), password
+        );
+      } catch (fbErr) {
+        // Não impede o cadastro; conta Firebase Auth pode ser criada futuramente
+        console.warn('[Auth] Firebase Auth account creation failed (non-critical):', fbErr.code);
+      }
+    }
+
     // Criar sessão
     const token = Security.generateSessionToken();
     Security.saveSession(finalUID, token, { nome: displayName, email, is_anonymous: false });
@@ -314,14 +326,40 @@ const Auth = (() => {
     validateEmail(email);
     if (!password) throw new Error('Senha é obrigatória.');
 
-    // Buscar usuário (Firestore ou REST)
-    const user = await findByEmail(email);
+    const normalizedEmail = email.trim().toLowerCase();
+    let fbAuthOk = false;
+
+    // 1. Tentar Firebase Auth (necessário para recuperação de senha funcionar)
+    if (typeof firebase !== 'undefined' && firebase.auth) {
+      try {
+        await firebase.auth().signInWithEmailAndPassword(normalizedEmail, password);
+        fbAuthOk = true;
+      } catch (fbErr) {
+        // Senha errada segundo Firebase Auth → rejeitar imediatamente
+        if (fbErr.code === 'auth/wrong-password' || fbErr.code === 'auth/invalid-credential') {
+          throw new Error('Senha incorreta. Tente novamente.');
+        }
+        // auth/user-not-found ou outro → fallback para SHA-256 local
+      }
+    }
+
+    // 2. Buscar perfil no Firestore/REST
+    const user = await findByEmail(normalizedEmail);
     if (!user) throw new Error('Nenhuma conta encontrada com este e-mail.');
     if (user.status === 'bloqueado') throw new Error('Esta conta foi bloqueada.');
 
-    // Verificar senha
-    const senhaCorreta = await Security.verifyPassword(password, user.senha_hash);
-    if (!senhaCorreta) throw new Error('Senha incorreta. Tente novamente.');
+    // 3. Se Firebase Auth falhou (usuário ainda não tem conta), verificar SHA-256
+    if (!fbAuthOk) {
+      const senhaCorreta = await Security.verifyPassword(password, user.senha_hash);
+      if (!senhaCorreta) throw new Error('Senha incorreta. Tente novamente.');
+
+      // Migrar: criar conta Firebase Auth para habilitar recuperação de senha futura
+      if (typeof firebase !== 'undefined' && firebase.auth) {
+        try {
+          await firebase.auth().createUserWithEmailAndPassword(normalizedEmail, password);
+        } catch {} // silencioso — pode já existir com outro estado
+      }
+    }
 
     // Atualizar último login
     try {
@@ -335,7 +373,7 @@ const Auth = (() => {
     currentUser = {
       uid: user.id,
       email: user.email,
-      displayName: user.nome || email.split('@')[0],
+      displayName: user.nome || normalizedEmail.split('@')[0],
       isAnonymous: false
     };
     userProfile = user;
@@ -438,24 +476,32 @@ const Auth = (() => {
     return await updateProfile(mapped);
   }
 
-  // ====== RECUPERACAO DE SENHA (esqueci minha senha) ======
+  // ====== RECUPERACAO DE SENHA ======
 
-  async function requestPasswordReset(email) {
-    if (!email || !validateEmail(email)) throw new Error('E-mail inválido.');
-    const fn = FirebaseConfig.getFunctions();
-    if (!fn) throw new Error('Serviço indisponível. Tente novamente.');
-    const callable = fn.httpsCallable('requestPasswordReset');
-    await callable({ email: email.trim().toLowerCase(), origin: window.location.origin });
-    return { success: true };
-  }
-
-  async function confirmPasswordReset(token, newPassword) {
-    if (!token) throw new Error('Token inválido.');
-    validatePassword(newPassword);
-    const fn = FirebaseConfig.getFunctions();
-    if (!fn) throw new Error('Serviço indisponível. Tente novamente.');
-    const callable = fn.httpsCallable('confirmPasswordReset');
-    await callable({ token, newPassword });
+  /**
+   * Envia e-mail de recuperação via Firebase Authentication (gratuito, sem Cloud Functions).
+   * Funciona para usuários que já passaram pelo login ou cadastro pelo menos uma vez
+   * após esta versão do app (conta Firebase Auth criada automaticamente).
+   */
+  async function sendPasswordReset(email) {
+    validateEmail(email);
+    if (typeof firebase === 'undefined' || !firebase.auth) {
+      throw new Error('Serviço de autenticação indisponível. Tente novamente.');
+    }
+    try {
+      await firebase.auth().sendPasswordResetEmail(email.trim().toLowerCase(), {
+        url: window.location.origin
+      });
+    } catch (fbErr) {
+      if (fbErr.code === 'auth/user-not-found') {
+        // Não revelar se o e-mail existe ou não (prevenção de enumeração)
+        return { success: true };
+      }
+      if (fbErr.code === 'auth/too-many-requests') {
+        throw new Error('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
+      }
+      throw new Error('Erro ao enviar e-mail. Verifique o endereço e tente novamente.');
+    }
     return { success: true };
   }
 
@@ -572,8 +618,7 @@ const Auth = (() => {
     logout,
     updateProfile,
     updateSecuritySettings,
-    requestPasswordReset,
-    confirmPasswordReset,
+    sendPasswordReset,
     changePassword,
     isLoggedIn,
     isAnonymous,

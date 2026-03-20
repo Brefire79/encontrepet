@@ -1,6 +1,6 @@
-// Encontre Pet - Service Worker v1.4.0
+// Encontre Pet - Service Worker v1.5.0
 // Estratégia: Cache First para assets, Network First para API e Firestore
-const CACHE_VERSION = 'encontre-pet-v1.4.0';
+const CACHE_VERSION = 'encontre-pet-v1.5.0';
 const DYNAMIC_CACHE = 'encontre-pet-dynamic-v1.0';
 const API_CACHE = 'encontre-pet-api-v1.0';
 

@@ -123,36 +123,6 @@
         </button>
       </div>
 
-      <!-- Reset Password Form (ativado por ?reset=TOKEN na URL) -->
-      <div id="auth-reset" class="auth-form hidden">
-        <h2><i class="fas fa-lock"></i> Nova Senha</h2>
-        <p style="color:#777;font-size:14px;margin:0 0 20px">
-          Escolha uma nova senha para sua conta.
-        </p>
-        <div class="form-group">
-          <label><i class="fas fa-lock"></i> Nova senha</label>
-          <div class="input-password">
-            <input type="password" id="reset-password" class="form-input" placeholder="Mínimo 6 caracteres"
-              autocomplete="new-password" aria-required="true" aria-describedby="reset-error">
-            <button type="button" class="btn-toggle-pass" data-target="reset-password"><i class="fas fa-eye"></i></button>
-          </div>
-        </div>
-        <div class="form-group">
-          <label><i class="fas fa-lock"></i> Confirmar nova senha</label>
-          <div class="input-password">
-            <input type="password" id="reset-password2" class="form-input" placeholder="Repita a senha"
-              autocomplete="new-password" aria-required="true" aria-describedby="reset-error">
-            <button type="button" class="btn-toggle-pass" data-target="reset-password2"><i class="fas fa-eye"></i></button>
-          </div>
-        </div>
-        <div id="reset-error" class="auth-error hidden" role="alert" aria-live="polite"></div>
-        <div id="reset-success" class="auth-error hidden" role="status" aria-live="polite"
-          style="background:#e8f5e9;color:#2e7d32;border-left-color:#4caf50"></div>
-        <button id="btn-reset-confirm" class="btn-primary btn-large">
-          <i class="fas fa-check-circle"></i> Redefinir senha
-        </button>
-      </div>
-
       <div class="auth-footer">
         <p><i class="fas fa-shield-alt"></i> <span data-i18n="auth.footer.protected">Seus dados estão protegidos</span></p>
         <p data-i18n="auth.footer.location">Localização nunca é exibida com precisão</p>

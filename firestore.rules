@@ -109,16 +109,6 @@ service cloud.firestore {
     }
 
     // ========================================
-    //  RECUPERACAO DE SENHA
-    //  Apenas Cloud Functions (admin SDK) podem ler/escrever.
-    //  Clientes nao tem acesso direto — seguranca do token.
-    // ========================================
-
-    match /password_resets/{token} {
-      allow read, write: if false;
-    }
-
-    // ========================================
     //  FALLBACK GLOBAL — negar tudo
     // ========================================
 
