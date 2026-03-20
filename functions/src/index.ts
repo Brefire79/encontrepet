@@ -1,12 +1,55 @@
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
 import * as admin from 'firebase-admin';
 import sharp from 'sharp';
+import * as nodemailer from 'nodemailer';
+import { randomUUID, createHash, randomBytes } from 'crypto';
 
 const blockhashCore = require('blockhash-core');
 
 admin.initializeApp();
+
+// ============================================================
+//  SECRETS — Gmail SMTP (configurar via: firebase functions:secrets:set GMAIL_USER)
+// ============================================================
+const GMAIL_USER = defineSecret('GMAIL_USER');
+const GMAIL_PASS = defineSecret('GMAIL_PASS');
+
+const CORS_ORIGINS = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5000',
+  'http://127.0.0.1:5000',
+  'https://encontre-pet-137d2.web.app',
+  'https://encontre-pet-137d2.firebaseapp.com',
+];
+
+// Rate limit para requisicoes de reset (3 por email a cada 5 min)
+const resetRateLimitMap = new Map<string, number[]>();
+function checkResetRateLimit(email: string): void {
+  const now = Date.now();
+  const windowMs = 5 * 60 * 1000;
+  const maxRequests = 3;
+  const timestamps = (resetRateLimitMap.get(email) || []).filter(t => now - t < windowMs);
+  if (timestamps.length >= maxRequests) {
+    throw new HttpsError('resource-exhausted', 'Muitas solicitacoes. Aguarde alguns minutos.');
+  }
+  timestamps.push(now);
+  resetRateLimitMap.set(email, timestamps);
+}
+
+// Replica exatamente o hash SHA-256 duplo de security.js:
+// sha256(sha256(salt+password+salt)) — salt: 16 bytes em hex
+function buildPasswordHash(password: string): string {
+  const saltBytes = randomBytes(16);
+  const salt = Array.from(saltBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  const input = Buffer.from(salt + password + salt, 'utf8');
+  const hash1 = createHash('sha256').update(input).digest();
+  const hash2 = createHash('sha256').update(hash1).digest('hex');
+  return `${salt}:${hash2}`;
+}
 
 const ALERTS_PREFIX = 'alerts/';
 const IGNORE_SEGMENTS = ['/derived/', '/thumbnails/', '/thumbs/'];
@@ -325,5 +368,175 @@ export const getTutorContact = onCall(
       });
       throw new HttpsError('internal', 'Erro ao buscar contato do tutor.');
     }
+  }
+);
+
+// ============================================================
+//  requestPasswordReset — envia e-mail de recuperacao de senha
+//  Nao requer autenticacao (usuario esqueceu a senha)
+// ============================================================
+export const requestPasswordReset = onCall(
+  {
+    region: 'southamerica-east1',
+    maxInstances: 10,
+    cors: CORS_ORIGINS,
+    secrets: [GMAIL_USER, GMAIL_PASS],
+  },
+  async (request) => {
+    const { email, origin } = request.data;
+
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      throw new HttpsError('invalid-argument', 'E-mail invalido.');
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    checkResetRateLimit(normalizedEmail);
+
+    const db = admin.firestore();
+
+    // Verificar se usuario existe
+    const snapshot = await db.collection('usuarios')
+      .where('email', '==', normalizedEmail)
+      .limit(1)
+      .get();
+
+    // Retornar sucesso mesmo se nao existir (evita enumeracao de e-mails)
+    if (snapshot.empty) {
+      logger.info('Password reset: email not found', { email: normalizedEmail });
+      return { success: true };
+    }
+
+    // Gerar token UUID e salvar no Firestore (validade: 1 hora)
+    const token = randomUUID();
+    const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + 60 * 60 * 1000);
+
+    await db.collection('password_resets').doc(token).set({
+      email: normalizedEmail,
+      expiresAt,
+      used: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Montar URL de reset (usa origin do cliente se for confiavel)
+    const appUrl = typeof origin === 'string' && CORS_ORIGINS.includes(origin)
+      ? origin
+      : 'https://encontre-pet-137d2.web.app';
+    const resetLink = `${appUrl}/?reset=${token}`;
+
+    // Enviar e-mail via Gmail SMTP
+    const gmailUser = GMAIL_USER.value();
+    const gmailPass = GMAIL_PASS.value();
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: gmailUser, pass: gmailPass },
+    });
+
+    await transporter.sendMail({
+      from: `"Encontre Pet" <${gmailUser}>`,
+      to: normalizedEmail,
+      subject: 'Recuperacao de senha — Encontre Pet',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;background:#f9f9f9;border-radius:12px;overflow:hidden">
+          <div style="background:#FF6B35;padding:32px 24px;text-align:center">
+            <div style="font-size:48px;margin-bottom:8px">🐾</div>
+            <h1 style="color:#fff;margin:0;font-size:24px">Encontre Pet</h1>
+            <p style="color:rgba(255,255,255,0.85);margin:4px 0 0">Recuperacao de senha</p>
+          </div>
+          <div style="padding:32px 24px;background:#fff">
+            <p style="color:#333;font-size:16px;margin:0 0 16px">Ola!</p>
+            <p style="color:#555;font-size:15px;margin:0 0 24px">
+              Recebemos uma solicitacao para redefinir a senha da sua conta no Encontre Pet.
+              Clique no botao abaixo para criar uma nova senha:
+            </p>
+            <div style="text-align:center;margin:28px 0">
+              <a href="${resetLink}"
+                 style="background:#FF6B35;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:bold;display:inline-block">
+                Redefinir minha senha
+              </a>
+            </div>
+            <p style="color:#888;font-size:13px;margin:24px 0 0">
+              Este link expira em <strong>1 hora</strong>.<br>
+              Se voce nao solicitou a recuperacao, ignore este e-mail — sua senha permanece a mesma.
+            </p>
+          </div>
+          <div style="background:#f0f0f0;padding:16px 24px;text-align:center">
+            <p style="color:#aaa;font-size:12px;margin:0">Encontre Pet — Ajudando a reunir familias</p>
+          </div>
+        </div>
+      `,
+    });
+
+    logger.info('Password reset email sent', { email: normalizedEmail });
+    return { success: true };
+  }
+);
+
+// ============================================================
+//  confirmPasswordReset — valida token e salva nova senha
+// ============================================================
+export const confirmPasswordReset = onCall(
+  {
+    region: 'southamerica-east1',
+    maxInstances: 10,
+    cors: CORS_ORIGINS,
+  },
+  async (request) => {
+    const { token, newPassword } = request.data;
+
+    if (!token || typeof token !== 'string') {
+      throw new HttpsError('invalid-argument', 'Token invalido.');
+    }
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+      throw new HttpsError('invalid-argument', 'A nova senha deve ter pelo menos 6 caracteres.');
+    }
+    if (newPassword.length > 128) {
+      throw new HttpsError('invalid-argument', 'Senha muito longa.');
+    }
+
+    const db = admin.firestore();
+    const tokenRef = db.collection('password_resets').doc(token);
+    const tokenSnap = await tokenRef.get();
+
+    if (!tokenSnap.exists) {
+      throw new HttpsError('not-found', 'Link de recuperacao invalido ou ja utilizado.');
+    }
+
+    const tokenData = tokenSnap.data()!;
+
+    if (tokenData.used) {
+      throw new HttpsError('already-exists', 'Este link ja foi utilizado. Solicite um novo.');
+    }
+
+    const now = admin.firestore.Timestamp.now();
+    if (tokenData.expiresAt.toMillis() < now.toMillis()) {
+      await tokenRef.delete();
+      throw new HttpsError('deadline-exceeded', 'Link expirado. Solicite um novo.');
+    }
+
+    // Buscar usuario pelo e-mail
+    const snapshot = await db.collection('usuarios')
+      .where('email', '==', tokenData.email)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      throw new HttpsError('not-found', 'Usuario nao encontrado.');
+    }
+
+    // Gerar novo hash (mesmo algoritmo de security.js)
+    const userDoc = snapshot.docs[0];
+    const newHash = buildPasswordHash(newPassword);
+
+    await userDoc.ref.update({
+      senha_hash: newHash,
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Deletar token apos uso
+    await tokenRef.delete();
+
+    logger.info('Password reset successful', { email: tokenData.email, uid: userDoc.id });
+    return { success: true };
   }
 );

@@ -438,6 +438,27 @@ const Auth = (() => {
     return await updateProfile(mapped);
   }
 
+  // ====== RECUPERACAO DE SENHA (esqueci minha senha) ======
+
+  async function requestPasswordReset(email) {
+    if (!email || !validateEmail(email)) throw new Error('E-mail inválido.');
+    const fn = FirebaseConfig.getFunctions();
+    if (!fn) throw new Error('Serviço indisponível. Tente novamente.');
+    const callable = fn.httpsCallable('requestPasswordReset');
+    await callable({ email: email.trim().toLowerCase(), origin: window.location.origin });
+    return { success: true };
+  }
+
+  async function confirmPasswordReset(token, newPassword) {
+    if (!token) throw new Error('Token inválido.');
+    validatePassword(newPassword);
+    const fn = FirebaseConfig.getFunctions();
+    if (!fn) throw new Error('Serviço indisponível. Tente novamente.');
+    const callable = fn.httpsCallable('confirmPasswordReset');
+    await callable({ token, newPassword });
+    return { success: true };
+  }
+
   // ====== ALTERAR SENHA ======
 
   async function changePassword(currentPassword, newPassword) {
@@ -551,6 +572,8 @@ const Auth = (() => {
     logout,
     updateProfile,
     updateSecuritySettings,
+    requestPasswordReset,
+    confirmPasswordReset,
     changePassword,
     isLoggedIn,
     isAnonymous,

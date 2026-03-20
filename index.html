@@ -57,6 +57,9 @@
             <button type="button" class="btn-toggle-pass" data-target="login-password"><i class="fas fa-eye"></i></button>
           </div>
         </div>
+        <div style="text-align:right;margin-top:-4px;margin-bottom:8px">
+          <a href="#" id="link-forgot-password" style="font-size:13px;color:#FF6B35;text-decoration:none">Esqueceu a senha?</a>
+        </div>
         <div id="login-error" class="auth-error hidden" role="alert" aria-live="polite"></div>
         <button id="btn-login" class="btn-primary btn-large">
           <i class="fas fa-sign-in-alt"></i> <span data-i18n="auth.login.btn">Entrar</span>
@@ -96,6 +99,58 @@
           <i class="fas fa-user-plus"></i> <span data-i18n="auth.register.btn">Criar Conta Gratuita</span>
         </button>
         <p class="auth-switch"><span data-i18n="auth.has_account">Já tem conta?</span> <a href="#" id="link-to-login" data-i18n="auth.login_link">Faça login</a></p>
+      </div>
+
+      <!-- Forgot Password Form -->
+      <div id="auth-forgot" class="auth-form hidden">
+        <button id="btn-forgot-back" class="btn-ghost" style="margin-bottom:12px;padding:6px 0;font-size:14px">
+          <i class="fas fa-arrow-left"></i> Voltar ao login
+        </button>
+        <h2><i class="fas fa-key"></i> Recuperar Senha</h2>
+        <p style="color:#777;font-size:14px;margin:0 0 20px">
+          Informe seu e-mail e enviaremos um link para criar uma nova senha.
+        </p>
+        <div class="form-group">
+          <label><i class="fas fa-envelope"></i> E-mail</label>
+          <input type="email" id="forgot-email" class="form-input" placeholder="seu@email.com"
+            autocomplete="email" aria-required="true" aria-describedby="forgot-error">
+        </div>
+        <div id="forgot-error" class="auth-error hidden" role="alert" aria-live="polite"></div>
+        <div id="forgot-success" class="auth-error hidden" role="status" aria-live="polite"
+          style="background:#e8f5e9;color:#2e7d32;border-left-color:#4caf50"></div>
+        <button id="btn-forgot-send" class="btn-primary btn-large">
+          <i class="fas fa-paper-plane"></i> Enviar link de recuperação
+        </button>
+      </div>
+
+      <!-- Reset Password Form (ativado por ?reset=TOKEN na URL) -->
+      <div id="auth-reset" class="auth-form hidden">
+        <h2><i class="fas fa-lock"></i> Nova Senha</h2>
+        <p style="color:#777;font-size:14px;margin:0 0 20px">
+          Escolha uma nova senha para sua conta.
+        </p>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Nova senha</label>
+          <div class="input-password">
+            <input type="password" id="reset-password" class="form-input" placeholder="Mínimo 6 caracteres"
+              autocomplete="new-password" aria-required="true" aria-describedby="reset-error">
+            <button type="button" class="btn-toggle-pass" data-target="reset-password"><i class="fas fa-eye"></i></button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Confirmar nova senha</label>
+          <div class="input-password">
+            <input type="password" id="reset-password2" class="form-input" placeholder="Repita a senha"
+              autocomplete="new-password" aria-required="true" aria-describedby="reset-error">
+            <button type="button" class="btn-toggle-pass" data-target="reset-password2"><i class="fas fa-eye"></i></button>
+          </div>
+        </div>
+        <div id="reset-error" class="auth-error hidden" role="alert" aria-live="polite"></div>
+        <div id="reset-success" class="auth-error hidden" role="status" aria-live="polite"
+          style="background:#e8f5e9;color:#2e7d32;border-left-color:#4caf50"></div>
+        <button id="btn-reset-confirm" class="btn-primary btn-large">
+          <i class="fas fa-check-circle"></i> Redefinir senha
+        </button>
       </div>
 
       <div class="auth-footer">
