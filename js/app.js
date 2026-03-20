@@ -173,8 +173,8 @@ const App = (() => {
       if (splash) { splash.classList.add('fade-out'); setTimeout(() => splash.style.display = 'none', 500); }
     }, 2000);
 
-    // 7. IA em background
-    loadAIModel();
+    // 7. IA em background (apenas após login — TF.js não deve carregar na tela de login)
+    if (Auth.isLoggedIn()) loadAIModel();
 
     // 8. Deep links (share URLs)
     handleDeepLink();
