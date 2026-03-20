@@ -330,16 +330,15 @@ const Auth = (() => {
     let fbAuthOk = false;
 
     // 1. Tentar Firebase Auth (necessário para recuperação de senha funcionar)
+    // Firebase v10+ retorna auth/invalid-credential tanto para senha errada
+    // quanto para usuário inexistente, por isso sempre caímos no fallback SHA-256.
     if (typeof firebase !== 'undefined' && firebase.auth) {
       try {
         await firebase.auth().signInWithEmailAndPassword(normalizedEmail, password);
         fbAuthOk = true;
       } catch (fbErr) {
-        // Senha errada segundo Firebase Auth → rejeitar imediatamente
-        if (fbErr.code === 'auth/wrong-password' || fbErr.code === 'auth/invalid-credential') {
-          throw new Error('Senha incorreta. Tente novamente.');
-        }
-        // auth/user-not-found ou outro → fallback para SHA-256 local
+        // Qualquer falha do Firebase Auth → fallback para SHA-256 local
+        console.warn('[Auth] Firebase Auth login failed, using SHA-256 fallback:', fbErr.code);
       }
     }
 
