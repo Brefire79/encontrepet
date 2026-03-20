@@ -86,11 +86,15 @@ service cloud.firestore {
     }
 
     // ========================================
-    //  USUÁRIOS — apenas o próprio pode ler/editar
+    //  USUÁRIOS
+    //  - list (query por email no login): qualquer auth anônima/logada
+    //  - get (leitura direta por ID): apenas o próprio dono
+    //  - create/update: apenas o próprio dono
     // ========================================
 
     match /usuarios/{uid} {
-      allow read: if isSignedIn() && uid == request.auth.uid;
+      allow list: if isSignedIn();
+      allow get: if isSignedIn() && uid == request.auth.uid;
       allow create: if isSignedIn() && uid == request.auth.uid;
       allow update: if isSignedIn() && uid == request.auth.uid;
       allow delete: if false;

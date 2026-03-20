@@ -194,6 +194,25 @@ export const generateImageHash = onObjectFinalized(
  * 
  * Requer: Firebase Auth (anônimo ou logado)
  */
+
+// Rate limit: máximo de requisições por usuário em janela de tempo
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minuto
+const RATE_LIMIT_MAX_REQUESTS = 5;
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(uid: string): void {
+  const now = Date.now();
+  const entry = rateLimitMap.get(uid);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(uid, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return;
+  }
+  entry.count++;
+  if (entry.count > RATE_LIMIT_MAX_REQUESTS) {
+    throw new HttpsError('resource-exhausted', 'Muitas solicitações. Aguarde 1 minuto.');
+  }
+}
+
 export const getTutorContact = onCall(
   {
     region: 'southamerica-east1',
@@ -220,6 +239,9 @@ export const getTutorContact = onCall(
     const db = admin.firestore();
     const requesterUid = request.auth.uid;
 
+    // Rate limit por usuário
+    checkRateLimit(requesterUid);
+
     try {
       // 2. Verificar se o pet existe
       const petRef = db.collection('pets_perdidos').doc(petId);
@@ -244,7 +266,9 @@ export const getTutorContact = onCall(
       const privateData = privateSnap.exists ? privateSnap.data() : null;
 
       const telefone = privateData?.contato_telefone || petData.contato_telefone || '';
-      const email = privateData?.contato_email || petData.contato_email || '';
+      // Respeitar flag de email público — só expor email se explicitamente ativado
+      const emailPublicoAtivo = petData.email_publico_ativo === true || petData.contato_email_publico_ativo === true;
+      const email = emailPublicoAtivo ? (privateData?.contato_email || petData.contato_email || '') : '';
       const nome = petData.contato_nome || petData.nome_pet || '';
 
       if (!telefone && !email) {

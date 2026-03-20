@@ -148,17 +148,35 @@ const GeoUtils = (() => {
     return distanceKm.toFixed(1) + ' km';
   }
 
+  // Rate limiter para Nominatim (máximo 1 req/s conforme ToS)
+  let _lastNominatimCall = 0;
+  const _geocodeCache = new Map();
+
+  async function nominatimThrottle() {
+    const now = Date.now();
+    const elapsed = now - _lastNominatimCall;
+    if (elapsed < 1100) {
+      await new Promise(r => setTimeout(r, 1100 - elapsed));
+    }
+    _lastNominatimCall = Date.now();
+  }
+
   /**
    * Geocoding reverso usando API gratuita (Nominatim/OSM)
    * Retorna endereço aproximado a partir de coordenadas
    */
   async function reverseGeocode(lat, lng) {
+    const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    if (_geocodeCache.has(cacheKey)) return _geocodeCache.get(cacheKey);
+
     try {
+      await nominatimThrottle();
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`,
         {
           headers: {
-            'Accept-Language': 'pt-BR'
+            'Accept-Language': 'pt-BR',
+            'User-Agent': 'EncontrePet/1.0 (https://encontre-pet-137d2.web.app)'
           }
         }
       );
@@ -178,10 +196,14 @@ const GeoUtils = (() => {
         }
         if (addr.state) parts.push(addr.state);
         
-        return parts.join(', ') || data.display_name;
+        const result = parts.join(', ') || data.display_name;
+        _geocodeCache.set(cacheKey, result);
+        return result;
       }
       
-      return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      const fallback = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      _geocodeCache.set(cacheKey, fallback);
+      return fallback;
     } catch (err) {
       console.warn('Geocoding reverso falhou:', err);
       return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
@@ -201,10 +223,11 @@ const GeoUtils = (() => {
    */
   async function forwardGeocode(address) {
     try {
+      await nominatimThrottle();
       const q = encodeURIComponent(address);
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=1&addressdetails=1`,
-        { headers: { 'Accept-Language': 'pt-BR' } }
+        { headers: { 'Accept-Language': 'pt-BR', 'User-Agent': 'EncontrePet/1.0 (https://encontre-pet-137d2.web.app)' } }
       );
       if (!response.ok) return null;
       const results = await response.json();
