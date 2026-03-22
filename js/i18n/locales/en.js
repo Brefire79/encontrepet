@@ -244,6 +244,9 @@ window.I18nLocales.en = {
   'details.contact_revealed': 'Contact revealed',
   'details.no_contact': 'Tutor contact not available',
   'details.contact_error': 'Error loading tutor contact',
+  'details.email_tutor': 'Send Email to Owner',
+  'details.tutor_no_phone': 'Owner found but no phone registered.',
+  'details.whatsapp_msg': 'Hi! I saw the Encontre Pet alert about "{name}". I have information!',
 
   // — Notifications —
   'notif.title': 'Notifications',

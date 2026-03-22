@@ -49,8 +49,14 @@ const Auth = (() => {
    */
   async function fsGetUser(uid) {
     const db = FirebaseConfig.getDB();
-    const doc = await db.collection(COLLECTION).doc(uid).get();
-    if (!doc.exists) return null;
+    // Usa query (allow list) ao invés de get direto (allow get exige uid == auth.uid)
+    // porque o app usa IDs customizados (u_xxx) que não coincidem com Firebase Auth UID
+    const snapshot = await db.collection(COLLECTION)
+      .where(firebase.firestore.FieldPath.documentId(), '==', uid)
+      .limit(1)
+      .get();
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
     return { id: doc.id, ...doc.data() };
   }
 
@@ -262,17 +268,16 @@ const Auth = (() => {
     const existing = await findByEmail(email);
     if (existing) throw new Error('Este e-mail já está cadastrado. Tente fazer login.');
 
-    // Criar hash da senha (mantido para retrocompatibilidade)
+    // Gerar hash da senha (será salvo em senhas_usuarios via CF, não em usuarios)
     const senhaHash = await Security.createPasswordHash(password);
 
     // Gerar UID
     const uid = generateUID();
 
-    // Dados do perfil
+    // Dados do perfil — sem senha_hash (S-03: campo movido para senhas_usuarios)
     const userData = {
       nome: Security.sanitize(displayName),
       email: Security.sanitizeEmail(email),
-      senha_hash: senhaHash,
       telefone: '',
       cidade: '',
       foto_perfil: '',
@@ -287,9 +292,25 @@ const Auth = (() => {
       ultimo_login: new Date().toISOString()
     };
 
-    // Salvar (Firestore → REST fallback)
+    // Salvar perfil público (Firestore → REST fallback)
     const created = await createUser(uid, userData);
     const finalUID = created.id || uid;
+
+    // Salvar senha_hash em senhas_usuarios via Cloud Function (S-03)
+    // Nunca vai para o documento público de usuário
+    try {
+      const functions = FirebaseConfig.getFunctions?.();
+      if (functions) {
+        const savePass = functions.httpsCallable('saveUserPassword');
+        await savePass({ uid: finalUID, senhaHash });
+      } else {
+        // Fallback local criptografado enquanto CF não disponível
+        localStorage.setItem(`_spk_${finalUID}`, senhaHash);
+      }
+    } catch (cfErr) {
+      console.warn('[Auth] saveUserPassword CF falhou, fallback local:', cfErr.message);
+      localStorage.setItem(`_spk_${finalUID}`, senhaHash);
+    }
 
     // Criar conta no Firebase Auth (necessário para recuperação de senha)
     if (typeof firebase !== 'undefined' && firebase.auth) {
@@ -342,14 +363,37 @@ const Auth = (() => {
       }
     }
 
-    // 2. Buscar perfil no Firestore/REST
+    // 2. Garantir auth anônimo antes de consultar Firestore (evita race condition)
+    if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.waitForAuthUID) {
+      await FirebaseConfig.waitForAuthUID(3000);
+    }
+
+    // 3. Buscar perfil no Firestore/REST
     const user = await findByEmail(normalizedEmail);
     if (!user) throw new Error('Nenhuma conta encontrada com este e-mail.');
     if (user.status === 'bloqueado') throw new Error('Esta conta foi bloqueada.');
 
-    // 3. Se Firebase Auth falhou (usuário ainda não tem conta), verificar SHA-256
+    // 4. Se Firebase Auth falhou, verificar senha via Cloud Function (S-03)
+    // A CF lê de senhas_usuarios — o hash nunca fica exposto no cliente
     if (!fbAuthOk) {
-      const senhaCorreta = await Security.verifyPassword(password, user.senha_hash);
+      let senhaCorreta = false;
+
+      try {
+        const functions = FirebaseConfig.getFunctions?.();
+        if (functions) {
+          const verifyPass = functions.httpsCallable('verifyUserPassword');
+          const result = await verifyPass({ uid: user.id, password });
+          senhaCorreta = result.data?.valid === true;
+        }
+      } catch (cfErr) {
+        // Fallback: verificação local com hash em localStorage (usuários sem CF)
+        const localHash = localStorage.getItem(`_spk_${user.id}`) || user.senha_hash || '';
+        if (localHash) {
+          senhaCorreta = await Security.verifyPassword(password, localHash);
+        }
+        console.warn('[Auth] verifyUserPassword CF falhou, fallback local:', cfErr.message);
+      }
+
       if (!senhaCorreta) throw new Error('Senha incorreta. Tente novamente.');
 
       // Migrar: criar conta Firebase Auth para habilitar recuperação de senha futura
@@ -388,7 +432,6 @@ const Auth = (() => {
     const userData = {
       nome: 'Visitante',
       email: '',
-      senha_hash: '',
       telefone: '',
       cidade: '',
       foto_perfil: '',

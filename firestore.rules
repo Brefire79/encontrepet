@@ -63,14 +63,20 @@ service cloud.firestore {
 
     // ========================================
     //  COLLECTION PRIVADA (LGPD)
-    //  Apenas o owner pode ler e escrever
+    //  Apenas o owner pode ler e escrever diretamente.
+    //  Não-donos DEVEM usar a Cloud Function getTutorContact,
+    //  que garante log LGPD e verificação de avistamento vinculado.
+    //  Auditoria: S-01 (2026-03-21)
     // ========================================
 
     match /alert_privado/{docId} {
-      allow read: if isSignedIn() && (
+      // Apenas o dono pode ler seus próprios dados privados
+      allow get: if isSignedIn() && (
         resource.data.owner_firebase_uid == request.auth.uid ||
         resource.data.owner_uid == request.auth.uid
       );
+      // list sempre bloqueado — nenhum cliente deve varrer esta coleção
+      allow list: if false;
       allow create: if isSignedIn() && (
         request.resource.data.owner_firebase_uid == request.auth.uid ||
         request.resource.data.owner_uid == request.auth.uid
@@ -87,25 +93,68 @@ service cloud.firestore {
 
     // ========================================
     //  USUÁRIOS
-    //  - list (query por email no login): qualquer auth anônima/logada
-    //  - get (leitura direta por ID): apenas o próprio dono
-    //  - create/update: apenas o próprio dono
+    //  O app usa IDs customizados (u_xxx) gerados pelo cliente,
+    //  que não coincidem com Firebase Auth UIDs (anonymous ou email).
+    //  Por isso as regras usam request.auth.token.email para ownership
+    //  após migração, ou permitem create para qualquer auth válida
+    //  (unicidade de email é garantida pela camada de aplicação).
     // ========================================
 
+    function isUserOwner(storedEmail) {
+      return request.auth.token.email != null
+        && request.auth.token.email == storedEmail;
+    }
+
     match /usuarios/{uid} {
+      // Qualquer auth (anônima/logada) pode listar/buscar por email
       allow list: if isSignedIn();
-      allow get: if isSignedIn() && uid == request.auth.uid;
-      allow create: if isSignedIn() && uid == request.auth.uid;
-      allow update: if isSignedIn() && uid == request.auth.uid;
+      // get direto por ID: próprio UID ou email do Firebase Auth bate com o doc
+      allow get: if isSignedIn() && (
+        uid == request.auth.uid ||
+        isUserOwner(resource.data.email)
+      );
+      // create: qualquer auth válida (app garante unicidade de email)
+      allow create: if isSignedIn();
+      // update: apenas o dono via email do Firebase Auth ou UID
+      allow update: if isSignedIn() && (
+        uid == request.auth.uid ||
+        isUserOwner(resource.data.email)
+      );
       allow delete: if false;
     }
 
     // ========================================
     //  NOTIFICAÇÕES
+    //  Leitura restrita ao destinatário ou dono do alerta.
+    //  Escrita aberta para autenticados (sistema gera notificações).
+    //  Auditoria: S-02 (2026-03-21)
     // ========================================
 
     match /notificacoes/{docId} {
-      allow read, write: if isSignedIn();
+      // Leitura por Firebase Auth UID (campo destinatario_firebase_uid, injetado em criarNotificacao)
+      // Legado: destinatario_uid usa u_xxx, não compatível com request.auth.uid
+      allow read: if isSignedIn() && (
+        resource.data.destinatario_firebase_uid == request.auth.uid ||
+        resource.data.owner_firebase_uid == request.auth.uid
+      );
+      // Qualquer autenticado pode criar notificações (sistema de match/avistamento)
+      allow create: if isSignedIn();
+      // Marcar lida ou deletar: apenas o destinatário
+      allow update, delete: if isSignedIn() && (
+        resource.data.destinatario_firebase_uid == request.auth.uid ||
+        resource.data.owner_firebase_uid == request.auth.uid
+      );
+    }
+
+    // ========================================
+    //  SENHAS (S-03)
+    //  senha_hash movido de usuarios para aqui.
+    //  Clientes nunca acessam — apenas admin SDK
+    //  via Cloud Functions saveUserPassword e verifyUserPassword.
+    // ========================================
+
+    match /senhas_usuarios/{uid} {
+      allow read, write: if false;
     }
 
     // ========================================

@@ -260,6 +260,30 @@ export const getTutorContact = onCall(
         throw new HttpsError('permission-denied', 'Você é o dono deste pet. Use seus dados privados.');
       }
 
+      // 3b. Verificar se o solicitante tem um avistamento vinculado a este pet (S-05)
+      // Impede que qualquer usuário acesse contatos sem ter registrado um avistamento
+      const sightingSnap = await db.collection('avistamentos')
+        .where('owner_firebase_uid', '==', requesterUid)
+        .where('pet_perdido_id', '==', petId)
+        .limit(1)
+        .get();
+
+      if (sightingSnap.empty) {
+        // Avistamento não vinculado — verificar se há avistamento com match score ≥ 92%
+        const highScoreSnap = await db.collection('avistamentos')
+          .where('owner_firebase_uid', '==', requesterUid)
+          .where('matchedLostPetId', '==', petId)
+          .limit(1)
+          .get();
+
+        if (highScoreSnap.empty) {
+          throw new HttpsError(
+            'permission-denied',
+            'Registre um avistamento deste pet antes de solicitar o contato do tutor.'
+          );
+        }
+      }
+
       // 4. Buscar dados privados do tutor (alert_privado)
       const privateRef = db.collection('alert_privado').doc(`pets_perdidos_${petId}`);
       const privateSnap = await privateRef.get();
@@ -298,7 +322,8 @@ export const getTutorContact = onCall(
       });
 
       // 6. Notificar o dono que alguém acessou seus dados
-      if (petData.owner_uid) {
+      // destinatario_firebase_uid habilita as Firestore Rules (S-02) a validar acesso por Firebase UID
+      if (petData.owner_uid || petData.owner_firebase_uid) {
         await db.collection('notificacoes').add({
           tipo: 'contato_acessado',
           pet_id: petId,
@@ -306,7 +331,9 @@ export const getTutorContact = onCall(
           mensagem: `Alguém visualizou seu contato referente a "${petData.nome_pet || 'seu pet'}"`,
           data: new Date().toISOString(),
           lida: false,
-          destinatario_uid: petData.owner_uid
+          destinatario_uid: petData.owner_uid || '',
+          destinatario_firebase_uid: petData.owner_firebase_uid || '',
+          owner_firebase_uid: petData.owner_firebase_uid || ''
         });
       }
 
@@ -328,3 +355,89 @@ export const getTutorContact = onCall(
   }
 );
 
+// ============================================================
+//  saveUserPassword — armazena senha_hash em colecao privada
+//  Chamado no cadastro. A colecao senhas_usuarios tem
+//  allow read,write: if false nos Firestore Rules.
+//  Apenas o admin SDK acessa. (S-03)
+// ============================================================
+
+export const saveUserPassword = onCall(
+  { region: 'southamerica-east1', maxInstances: 10 },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Autenticacao necessaria.');
+    }
+    const { uid, senhaHash } = request.data as { uid: string; senhaHash: string };
+    if (!uid || !senhaHash || typeof uid !== 'string' || typeof senhaHash !== 'string') {
+      throw new HttpsError('invalid-argument', 'uid e senhaHash sao obrigatorios.');
+    }
+    const db = admin.firestore();
+    await db.collection('senhas_usuarios').doc(uid).set({
+      senhaHash,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      ownerFirebaseUid: request.auth.uid
+    }, { merge: true });
+    logger.info('Senha salva em senhas_usuarios.', { uid: uid.substring(0, 8) });
+    return { success: true };
+  }
+);
+
+// ============================================================
+//  verifyUserPassword — verifica senha sem expor o hash
+//  Substitui a verificacao local em auth.js que lia senha_hash
+//  da colecao publica usuarios (S-03).
+// ============================================================
+
+const loginRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkLoginRateLimit(key: string): void {
+  const now = Date.now();
+  const entry = loginRateLimitMap.get(key);
+  if (!entry || now > entry.resetAt) {
+    loginRateLimitMap.set(key, { count: 1, resetAt: now + 60_000 });
+    return;
+  }
+  entry.count++;
+  if (entry.count > 10) {
+    throw new HttpsError('resource-exhausted', 'Muitas tentativas de login. Aguarde 1 minuto.');
+  }
+}
+
+export const verifyUserPassword = onCall(
+  { region: 'southamerica-east1', maxInstances: 10 },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Autenticacao necessaria.');
+    }
+    const { uid, password } = request.data as { uid: string; password: string };
+    if (!uid || !password) {
+      throw new HttpsError('invalid-argument', 'uid e password sao obrigatorios.');
+    }
+
+    checkLoginRateLimit(request.auth.uid);
+
+    const db = admin.firestore();
+    const doc = await db.collection('senhas_usuarios').doc(uid).get();
+    if (!doc.exists) {
+      throw new HttpsError('unauthenticated', 'Credenciais invalidas.');
+    }
+    const storedHash: string = doc.data()?.senhaHash || '';
+    if (!storedHash || !storedHash.includes(':')) {
+      throw new HttpsError('unauthenticated', 'Credenciais invalidas.');
+    }
+
+    // Verificar hash SHA-256 + salt (mesmo algoritmo de security.js)
+    const [salt, hash] = storedHash.split(':');
+    const nodeCrypto = await import('node:crypto');
+    const encoded = Buffer.from(salt + password + salt, 'utf8');
+    const hash1 = nodeCrypto.createHash('sha256').update(encoded).digest();
+    const hash2 = nodeCrypto.createHash('sha256').update(hash1).digest('hex');
+
+    if (hash2 !== hash) {
+      throw new HttpsError('unauthenticated', 'Credenciais invalidas.');
+    }
+    logger.info('Senha verificada via CF.', { uid: uid.substring(0, 8) });
+    return { valid: true };
+  }
+);

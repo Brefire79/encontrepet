@@ -447,7 +447,8 @@ const DB = (() => {
     if (result?.id) {
       await savePrivateAlertData('pets_perdidos', result.id, {
         contato_telefone: Security.sanitizePhone(data.contato_telefone || ''),
-        contato_email: Security.sanitizeEmail(data.contato_email || ''),
+        // Email nunca vem no payload público — lê do Auth como fonte primária (S-06)
+        contato_email: Security.sanitizeEmail(data.contato_email || Auth.getUserData?.()?.email || ''),
         endereco_privado: Security.sanitize(data.endereco || ''),
         latitude_privada: data.latitude || 0,
         longitude_privada: data.longitude || 0
@@ -852,7 +853,16 @@ const DB = (() => {
   // ============================================================
 
   async function criarNotificacao(data) {
-    return await create(TABLES.NOTIFICACOES, Security.sanitizeObject(data));
+    // Injetar destinatario_firebase_uid para que as Firestore Rules (S-02)
+    // possam validar o acesso sem depender do ID customizado u_xxx
+    const enriched = { ...data };
+    if (!enriched.destinatario_firebase_uid) {
+      // Notificação para o próprio usuário
+      if (!enriched.destinatario_uid || enriched.destinatario_uid === Auth.getUID()) {
+        enriched.destinatario_firebase_uid = FirebaseConfig.getFirebaseUID?.() || '';
+      }
+    }
+    return await create(TABLES.NOTIFICACOES, Security.sanitizeObject(enriched));
   }
 
   async function listarNotificacoes(page = 1) {
@@ -1096,8 +1106,13 @@ const DB = (() => {
     if (!useFirestore || !uid) return () => {};
     try {
       const db = FirebaseConfig.getDB();
+      // Usar destinatario_firebase_uid (Firebase Auth UID) como campo primário (S-02)
+      // Firestore Rules validam por Firebase UID; u_xxx é campo legado
+      const firebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+      const queryField = firebaseUid ? 'destinatario_firebase_uid' : 'destinatario_uid';
+      const queryValue = firebaseUid || uid;
       const unsubscribe = db.collection(TABLES.NOTIFICACOES)
-        .where('destinatario_uid', '==', uid)
+        .where(queryField, '==', queryValue)
         .onSnapshot(
           (snapshot) => {
             const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));

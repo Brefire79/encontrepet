@@ -381,18 +381,22 @@ const Security = (() => {
   }
 
   // ====== RATE LIMITING ======
-
-  const rateLimits = {};
+  // Persistido no localStorage para sobreviver reloads de página (S-07)
 
   function checkRateLimit(action, maxAttempts = 5, windowMs = 60000) {
     const now = Date.now();
-    if (!rateLimits[action]) rateLimits[action] = [];
-    rateLimits[action] = rateLimits[action].filter(t => now - t < windowMs);
-    if (rateLimits[action].length >= maxAttempts) {
-      const waitTime = Math.ceil((windowMs - (now - rateLimits[action][0])) / 1000);
+    const key = `_rl_${action}`;
+    let attempts = [];
+    try {
+      attempts = JSON.parse(localStorage.getItem(key) || '[]');
+    } catch { attempts = []; }
+    attempts = attempts.filter(t => now - t < windowMs);
+    if (attempts.length >= maxAttempts) {
+      const waitTime = Math.ceil((windowMs - (now - attempts[0])) / 1000);
       throw new Error(`Muitas tentativas. Aguarde ${waitTime} segundos.`);
     }
-    rateLimits[action].push(now);
+    attempts.push(now);
+    try { localStorage.setItem(key, JSON.stringify(attempts)); } catch {}
     return true;
   }
 
