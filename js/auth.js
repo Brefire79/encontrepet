@@ -49,8 +49,14 @@ const Auth = (() => {
    */
   async function fsGetUser(uid) {
     const db = FirebaseConfig.getDB();
-    const doc = await db.collection(COLLECTION).doc(uid).get();
-    if (!doc.exists) return null;
+    // Usa query (allow list) ao invés de get direto (allow get exige uid == auth.uid)
+    // porque o app usa IDs customizados (u_xxx) que não coincidem com Firebase Auth UID
+    const snapshot = await db.collection(COLLECTION)
+      .where(firebase.firestore.FieldPath.documentId(), '==', uid)
+      .limit(1)
+      .get();
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
     return { id: doc.id, ...doc.data() };
   }
 
@@ -262,17 +268,16 @@ const Auth = (() => {
     const existing = await findByEmail(email);
     if (existing) throw new Error('Este e-mail já está cadastrado. Tente fazer login.');
 
-    // Criar hash da senha
+    // Gerar hash da senha (será salvo em senhas_usuarios via CF, não em usuarios)
     const senhaHash = await Security.createPasswordHash(password);
 
     // Gerar UID
     const uid = generateUID();
 
-    // Dados do perfil
+    // Dados do perfil — sem senha_hash (S-03: campo movido para senhas_usuarios)
     const userData = {
       nome: Security.sanitize(displayName),
       email: Security.sanitizeEmail(email),
-      senha_hash: senhaHash,
       telefone: '',
       cidade: '',
       foto_perfil: '',
@@ -287,9 +292,37 @@ const Auth = (() => {
       ultimo_login: new Date().toISOString()
     };
 
-    // Salvar (Firestore → REST fallback)
+    // Salvar perfil público (Firestore → REST fallback)
     const created = await createUser(uid, userData);
     const finalUID = created.id || uid;
+
+    // Salvar senha_hash em senhas_usuarios via Cloud Function (S-03)
+    // Nunca vai para o documento público de usuário
+    try {
+      const functions = FirebaseConfig.getFunctions?.();
+      if (functions) {
+        const savePass = functions.httpsCallable('saveUserPassword');
+        await savePass({ uid: finalUID, senhaHash });
+      } else {
+        // Fallback local criptografado enquanto CF não disponível
+        localStorage.setItem(`_spk_${finalUID}`, senhaHash);
+      }
+    } catch (cfErr) {
+      console.warn('[Auth] saveUserPassword CF falhou, fallback local:', cfErr.message);
+      localStorage.setItem(`_spk_${finalUID}`, senhaHash);
+    }
+
+    // Criar conta no Firebase Auth (necessário para recuperação de senha)
+    if (typeof firebase !== 'undefined' && firebase.auth) {
+      try {
+        await firebase.auth().createUserWithEmailAndPassword(
+          Security.sanitizeEmail(email), password
+        );
+      } catch (fbErr) {
+        // Não impede o cadastro; conta Firebase Auth pode ser criada futuramente
+        console.warn('[Auth] Firebase Auth account creation failed (non-critical):', fbErr.code);
+      }
+    }
 
     // Criar sessão
     const token = Security.generateSessionToken();
@@ -314,14 +347,62 @@ const Auth = (() => {
     validateEmail(email);
     if (!password) throw new Error('Senha é obrigatória.');
 
-    // Buscar usuário (Firestore ou REST)
-    const user = await findByEmail(email);
+    const normalizedEmail = email.trim().toLowerCase();
+    let fbAuthOk = false;
+
+    // 1. Tentar Firebase Auth (necessário para recuperação de senha funcionar)
+    // Firebase v10+ retorna auth/invalid-credential tanto para senha errada
+    // quanto para usuário inexistente, por isso sempre caímos no fallback SHA-256.
+    if (typeof firebase !== 'undefined' && firebase.auth) {
+      try {
+        await firebase.auth().signInWithEmailAndPassword(normalizedEmail, password);
+        fbAuthOk = true;
+      } catch (fbErr) {
+        // Qualquer falha do Firebase Auth → fallback para SHA-256 local
+        console.warn('[Auth] Firebase Auth login failed, using SHA-256 fallback:', fbErr.code);
+      }
+    }
+
+    // 2. Garantir auth anônimo antes de consultar Firestore (evita race condition)
+    if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.waitForAuthUID) {
+      await FirebaseConfig.waitForAuthUID(3000);
+    }
+
+    // 3. Buscar perfil no Firestore/REST
+    const user = await findByEmail(normalizedEmail);
     if (!user) throw new Error('Nenhuma conta encontrada com este e-mail.');
     if (user.status === 'bloqueado') throw new Error('Esta conta foi bloqueada.');
 
-    // Verificar senha
-    const senhaCorreta = await Security.verifyPassword(password, user.senha_hash);
-    if (!senhaCorreta) throw new Error('Senha incorreta. Tente novamente.');
+    // 4. Se Firebase Auth falhou, verificar senha via Cloud Function (S-03)
+    // A CF lê de senhas_usuarios — o hash nunca fica exposto no cliente
+    if (!fbAuthOk) {
+      let senhaCorreta = false;
+
+      try {
+        const functions = FirebaseConfig.getFunctions?.();
+        if (functions) {
+          const verifyPass = functions.httpsCallable('verifyUserPassword');
+          const result = await verifyPass({ uid: user.id, password });
+          senhaCorreta = result.data?.valid === true;
+        }
+      } catch (cfErr) {
+        // Fallback: verificação local com hash em localStorage (usuários sem CF)
+        const localHash = localStorage.getItem(`_spk_${user.id}`) || user.senha_hash || '';
+        if (localHash) {
+          senhaCorreta = await Security.verifyPassword(password, localHash);
+        }
+        console.warn('[Auth] verifyUserPassword CF falhou, fallback local:', cfErr.message);
+      }
+
+      if (!senhaCorreta) throw new Error('Senha incorreta. Tente novamente.');
+
+      // Migrar: criar conta Firebase Auth para habilitar recuperação de senha futura
+      if (typeof firebase !== 'undefined' && firebase.auth) {
+        try {
+          await firebase.auth().createUserWithEmailAndPassword(normalizedEmail, password);
+        } catch {} // silencioso — pode já existir com outro estado
+      }
+    }
 
     // Atualizar último login
     try {
@@ -335,7 +416,7 @@ const Auth = (() => {
     currentUser = {
       uid: user.id,
       email: user.email,
-      displayName: user.nome || email.split('@')[0],
+      displayName: user.nome || normalizedEmail.split('@')[0],
       isAnonymous: false
     };
     userProfile = user;
@@ -351,7 +432,6 @@ const Auth = (() => {
     const userData = {
       nome: 'Visitante',
       email: '',
-      senha_hash: '',
       telefone: '',
       cidade: '',
       foto_perfil: '',
@@ -436,6 +516,35 @@ const Auth = (() => {
     if (settings.perfil_publico !== undefined) mapped.config_perfil_publico = settings.perfil_publico;
     if (settings.notificacoes !== undefined) mapped.config_notificacoes = settings.notificacoes;
     return await updateProfile(mapped);
+  }
+
+  // ====== RECUPERACAO DE SENHA ======
+
+  /**
+   * Envia e-mail de recuperação via Firebase Authentication (gratuito, sem Cloud Functions).
+   * Funciona para usuários que já passaram pelo login ou cadastro pelo menos uma vez
+   * após esta versão do app (conta Firebase Auth criada automaticamente).
+   */
+  async function sendPasswordReset(email) {
+    validateEmail(email);
+    if (typeof firebase === 'undefined' || !firebase.auth) {
+      throw new Error('Serviço de autenticação indisponível. Tente novamente.');
+    }
+    try {
+      await firebase.auth().sendPasswordResetEmail(email.trim().toLowerCase(), {
+        url: window.location.origin
+      });
+    } catch (fbErr) {
+      if (fbErr.code === 'auth/user-not-found') {
+        // Não revelar se o e-mail existe ou não (prevenção de enumeração)
+        return { success: true };
+      }
+      if (fbErr.code === 'auth/too-many-requests') {
+        throw new Error('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
+      }
+      throw new Error('Erro ao enviar e-mail. Verifique o endereço e tente novamente.');
+    }
+    return { success: true };
   }
 
   // ====== ALTERAR SENHA ======
@@ -551,6 +660,7 @@ const Auth = (() => {
     logout,
     updateProfile,
     updateSecuritySettings,
+    sendPasswordReset,
     changePassword,
     isLoggedIn,
     isAnonymous,

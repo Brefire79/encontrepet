@@ -156,6 +156,8 @@ const App = (() => {
 
     // 5. Setup UI
     setupAuthForms();
+    setupForgotPassword();
+    handlePasswordResetLink();
     setupNavigation();
     setupReportForm();
     setupSightingForm();
@@ -859,6 +861,75 @@ const App = (() => {
     try {
       state.userLocation = await GeoUtils.getCurrentPosition();
     } catch { state.userLocation = GeoUtils.getLastLocation(); }
+  }
+
+  // ====== ESQUECI MINHA SENHA ======
+
+  function _showMsg(el, msg) {
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+  function _hideMsg(el) {
+    if (!el) return;
+    el.textContent = '';
+    el.classList.add('hidden');
+  }
+
+  function setupForgotPassword() {
+    const linkForgot   = document.getElementById('link-forgot-password');
+    const btnBack      = document.getElementById('btn-forgot-back');
+    const btnSend      = document.getElementById('btn-forgot-send');
+    const emailInput   = document.getElementById('forgot-email');
+    const errorDiv     = document.getElementById('forgot-error');
+    const successDiv   = document.getElementById('forgot-success');
+
+    if (!linkForgot) return;
+
+    // "Esqueceu a senha?" → exibe formulário de recuperação
+    linkForgot.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('auth-login')?.classList.add('hidden');
+      document.getElementById('auth-forgot')?.classList.remove('hidden');
+      if (emailInput) emailInput.value = '';
+      _hideMsg(errorDiv);
+      _hideMsg(successDiv);
+    });
+
+    // "Voltar" → volta para o login
+    btnBack?.addEventListener('click', () => {
+      document.getElementById('auth-forgot')?.classList.add('hidden');
+      document.getElementById('auth-login')?.classList.remove('hidden');
+    });
+
+    // "Enviar link" → Firebase Auth sendPasswordResetEmail
+    btnSend?.addEventListener('click', async () => {
+      if (!emailInput) return;
+      const email = emailInput.value.trim();
+      if (!email) { _showMsg(errorDiv, 'Informe seu e-mail.'); return; }
+
+      _hideMsg(errorDiv);
+      _hideMsg(successDiv);
+      btnSend.disabled    = true;
+      btnSend.textContent = 'Enviando…';
+
+      try {
+        await Auth.sendPasswordReset(email);
+        _showMsg(successDiv, 'Se este e-mail estiver cadastrado, você receberá o link em breve. Verifique também o spam.');
+        emailInput.value = '';
+      } catch (err) {
+        _showMsg(errorDiv, err.message || 'Erro ao enviar. Tente novamente.');
+      } finally {
+        btnSend.disabled    = false;
+        btnSend.textContent = 'Enviar link';
+      }
+    });
+  }
+
+  function handlePasswordResetLink() {
+    // O Firebase Authentication trata o reset na própria página hospedada.
+    // Após concluir, redireciona de volta para o app (continueUrl = window.location.origin).
+    // Nenhuma ação adicional é necessária no frontend.
   }
 
   // ====== NAVEGAÇÃO ======
@@ -1757,7 +1828,7 @@ const App = (() => {
         contato_telefone: phoneResult.normalized || rawPhone,
         telefone_publico_ativo: telefonePublicoAtivo,
         email_publico_ativo: document.getElementById('check-email-publico')?.checked || false,
-        contato_email: Auth.getUserData()?.email || '',
+        // contato_email NÃO vai no payload público — db.js lê direto do Auth (S-06)
         cadastro_completo: false
       };
 
@@ -2335,12 +2406,12 @@ const App = (() => {
             <div class="contact-cta-banner">
               <div class="contact-cta-header">
                 <i class="fas fa-hands-helping"></i>
-                <span>Encontrou este pet? Entre em contato com o tutor!</span>
+                <span>${I18n.t('details.found_this_pet')}</span>
               </div>
               <div class="contact-cta-actions">
                 <a href="mailto:${pet.contato_email_publico}?subject=Encontrei%20seu%20pet%20-%20${encodeURIComponent(Security.sanitize(name))}&body=Ol%C3%A1!%20Vi%20o%20alerta%20no%20Encontre%20Pet%20e%20tenho%20informa%C3%A7%C3%B5es%20sobre%20${encodeURIComponent(Security.sanitize(name))}."
                    class="btn-email btn-cta-big" target="_blank">
-                  <i class="fas fa-envelope"></i> Enviar E-mail ao Tutor
+                  <i class="fas fa-envelope"></i> ${I18n.t('details.email_tutor')}
                 </a>
               </div>
             </div>`;
@@ -2402,22 +2473,25 @@ const App = (() => {
         btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18n.t('details.loading_contact')}`;
         try {
           const result = await getTutorContact(petId);
-          if (result?.telefone || result?.email || result?.nome) {
-            const contactDiv = document.getElementById('tutor-contact-result');
+          const safeName  = Security.sanitize(result?.nome || '');
+          const safePhone = Security.sanitizePhone(result?.telefone || '');
+          const safeEmail = Security.sanitizeEmail(result?.email || '');
+
+          const contactDiv = document.getElementById('tutor-contact-result');
+
+          if (safePhone || safeEmail) {
+            // Tem contato real → exibir e desabilitar botão
             if (contactDiv) {
               contactDiv.classList.remove('hidden');
-              const safeName = Security.sanitize(result.nome || '');
-              const safePhone = Security.sanitizePhone(result.telefone || '');
-              const safeEmail = Security.sanitizeEmail(result.email || '');
               contactDiv.innerHTML = `
                 <h4><i class="fas fa-user"></i> ${I18n.t('details.tutor_info')}</h4>
-                ${safeName ? `<p><strong>${Security.sanitize(safeName)}</strong></p>` : ''}
-                ${safePhone ? `<p><i class="fas fa-phone"></i> ${Security.sanitize(safePhone)}</p>
+                ${safeName ? `<p><strong>${safeName}</strong></p>` : ''}
+                ${safePhone ? `<p><i class="fas fa-phone"></i> ${safePhone}</p>
                   <div class="tutor-contact-actions">
-                    <button class="btn-whatsapp btn-small" data-action="whatsapp" data-phone="${Security.sanitize(safePhone)}" data-name="${Security.sanitize(name)}"><i class="fab fa-whatsapp"></i> WhatsApp</button>
-                    <button class="btn-phone btn-small" data-action="call" data-phone="${Security.sanitize(safePhone)}"><i class="fas fa-phone"></i> Ligar</button>
+                    <button class="btn-whatsapp btn-small" data-action="whatsapp" data-phone="${safePhone}" data-name="${Security.sanitize(name)}"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+                    <button class="btn-phone btn-small" data-action="call" data-phone="${safePhone}"><i class="fas fa-phone"></i> Ligar</button>
                   </div>` : ''}
-                ${safeEmail ? `<p><i class="fas fa-envelope"></i> ${Security.sanitize(safeEmail)}</p>` : ''}`;
+                ${safeEmail ? `<p><i class="fas fa-envelope"></i> ${safeEmail}</p>` : ''}`;
             }
             btn.innerHTML = `<i class="fas fa-check-circle"></i> ${I18n.t('details.contact_revealed')}`;
             btn.disabled = true;
@@ -2435,6 +2509,21 @@ const App = (() => {
                 destinatario_uid: pet.owner_uid || ''
               });
             } catch (e) { /* silencioso */ }
+
+          } else if (safeName) {
+            // Só tem nome, sem telefone/email — mostrar aviso e não desabilitar
+            if (contactDiv) {
+              contactDiv.classList.remove('hidden');
+              contactDiv.innerHTML = `
+                <h4><i class="fas fa-user"></i> ${I18n.t('details.tutor_info')}</h4>
+                <p><strong>${safeName}</strong></p>
+                <p style="color:var(--text-muted);font-size:0.85rem;margin-top:4px;">
+                  <i class="fas fa-info-circle"></i> Nenhum telefone cadastrado neste alerta.
+                </p>`;
+            }
+            showToast(I18n.t('details.tutor_no_phone'), 'warning');
+            btn.innerHTML = `<i class="fas fa-envelope"></i> ${I18n.t('details.contact_tutor')}`;
+
           } else {
             showToast(I18n.t('details.no_contact'), 'warning');
             btn.innerHTML = `<i class="fas fa-envelope"></i> ${I18n.t('details.contact_tutor')}`;
@@ -2480,21 +2569,53 @@ const App = (() => {
       console.warn('[App] Cloud Function getTutorContact falhou, usando fallback Firestore:', err.message);
     }
 
-    // 2. Fallback: leitura direta da coleção alert_privado (funciona em dev + quando CF indisponível)
+    // 2. Fallback: leitura direta da coleção alert_privado
+    // Nota: só funciona se o usuário for o próprio dono (regra S-01 corrigida).
+    // Não-donos chegarão aqui apenas se a Cloud Function falhou E eles são donos.
     const privateData = await DB.getPrivateAlertData('pets_perdidos', petId);
-    if (!privateData) throw new Error('Dados de contato não encontrados');
+    if (privateData) {
+      // Log LGPD do acesso via fallback (S-04)
+      try {
+        await DB.criarNotificacao({
+          tipo: 'contato_acesso_fallback',
+          pet_id: petId,
+          solicitante_uid: Auth.getUID(),
+          solicitante_firebase_uid: Auth.getFirebaseUID?.() || '',
+          via: 'firestore_direto',
+          timestamp: new Date().toISOString(),
+          destinatario_uid: Auth.getUID()
+        });
+      } catch (_) { /* log nunca deve bloquear o fluxo */ }
 
-    return {
-      nome:     privateData.contato_nome     || '',
-      telefone: privateData.contato_telefone || '',
-      email:    privateData.contato_email    || ''
-    };
+      return {
+        nome:     privateData.contato_nome     || '',
+        telefone: privateData.contato_telefone || '',
+        email:    privateData.contato_email    || ''
+      };
+    }
+
+    // 3. Último recurso: dados públicos do documento principal
+    // (cobre alertas criados antes do sistema alert_privado)
+    try {
+      const petDoc = await DB.get('pets_perdidos', petId);
+      if (petDoc) {
+        const nome     = petDoc.contato_nome || '';
+        const telefone = petDoc.telefone_publico || petDoc.contato_telefone || '';
+        // contato_email não deve existir em documentos públicos (S-06) — usar apenas contato_email_publico
+        const email    = petDoc.contato_email_publico || '';
+        if (nome || telefone || email) {
+          return { nome, telefone, email };
+        }
+      }
+    } catch (_) {}
+
+    throw new Error('Dados de contato não encontrados');
   }
 
   function contactWhatsApp(phone, name) {
     const clean = phone.replace(/\D/g, '');
     const br = clean.startsWith('55') ? clean : '55' + clean;
-    window.open(`https://wa.me/${br}?text=${encodeURIComponent(`Olá! Vi no Encontre Pet sobre "${name}". Tenho informações!`)}`, '_blank');
+    window.open(`https://wa.me/${br}?text=${encodeURIComponent(I18n.t('details.whatsapp_msg', { name }))}`, '_blank');
   }
 
   function callPhone(phone) { window.location.href = `tel:${phone}`; }

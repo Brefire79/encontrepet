@@ -244,6 +244,9 @@ window.I18nLocales.es = {
   'details.contact_revealed': 'Contacto revelado',
   'details.no_contact': 'Contacto del tutor no disponible',
   'details.contact_error': 'Error al buscar contacto del tutor',
+  'details.email_tutor': 'Enviar Email al Dueño',
+  'details.tutor_no_phone': 'Dueño encontrado pero sin teléfono registrado.',
+  'details.whatsapp_msg': '¡Hola! Vi la alerta de Encontre Pet sobre "{name}". ¡Tengo información!',
 
   // — Notifications —
   'notif.title': 'Notificaciones',

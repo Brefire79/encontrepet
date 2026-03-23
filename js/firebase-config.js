@@ -81,7 +81,8 @@ const FirebaseConfig = (() => {
       // Inicializar Functions (opcional, para Cloud Functions)
       if (firebase.functions) {
         // A Cloud Function getTutorContact está em southamerica-east1
-        functions = firebase.functions('southamerica-east1');
+        // firebase.app().functions() é a API correta do SDK compat v9+
+        functions = firebase.app().functions('southamerica-east1');
         // Para usar emulador local: functions.useEmulator('localhost', 5001);
       }
 
