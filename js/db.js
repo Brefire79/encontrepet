@@ -634,13 +634,34 @@ const DB = (() => {
 
     // Salvar dados PRIVADOS em collection separada (LGPD)
     if (result?.id) {
+      // Se o avistamento está vinculado a um pet, buscar o dono do pet
+      // para permitir acesso cruzado via Firestore Rules (sem Cloud Function)
+      const linkedPetId = record.pet_perdido_id || record.matchedLostPetId || '';
+      let linkedPetOwnerFirebaseUid = '';
+      if (linkedPetId && useFirestore) {
+        try {
+          const db = FirebaseConfig.getDB();
+          const petDoc = await db.collection(TABLES.PETS).doc(linkedPetId).get();
+          if (petDoc.exists) {
+            linkedPetOwnerFirebaseUid = petDoc.data().owner_firebase_uid || '';
+          }
+        } catch (e) { /* não bloqueia o salvamento */ }
+      }
+
       await savePrivateAlertData('avistamentos', result.id, {
         contato_telefone: Security.sanitizePhone(data.contato || ''),
         contato_email: '',
         endereco_privado: Security.sanitize(data.endereco || ''),
         latitude_privada: data.latitude || 0,
-        longitude_privada: data.longitude || 0
+        longitude_privada: data.longitude || 0,
+        linked_pet_owner_firebase_uid: linkedPetOwnerFirebaseUid
       });
+
+      // Criar autorização imutável para que o avistador possa ler
+      // os dados privados do pet (Firestore Rules verificam este doc)
+      if (linkedPetId && linkedPetOwnerFirebaseUid) {
+        await createSighterAuthorization(linkedPetId, linkedPetOwnerFirebaseUid, result.id).catch(() => {});
+      }
     }
 
     // Upload Storage em background (fire-and-forget) — não bloqueia o retorno
@@ -1133,6 +1154,38 @@ const DB = (() => {
    * @returns {Function} unsubscribe
    */
   /**
+   * Cria documento de autorização imutável para que o avistador possa
+   * ler os dados privados (alert_privado) do pet vinculado.
+   * Documento ID: {sighterFirebaseUid}_{petId} — determinístico, sem duplicatas.
+   * As Firestore Rules verificam a existência deste documento.
+   * @param {string} petId - ID do pet perdido
+   * @param {string} petOwnerFirebaseUid - Firebase UID do tutor
+   * @param {string} sightingId - ID do avistamento que originou a autorização
+   */
+  async function createSighterAuthorization(petId, petOwnerFirebaseUid, sightingId) {
+    if (!useFirestore || !petId) return;
+    const sighterFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+    if (!sighterFirebaseUid) return;
+    const docId = `${sighterFirebaseUid}_${petId}`;
+    try {
+      const db = FirebaseConfig.getDB();
+      const ref = db.collection('sighter_authorizations').doc(docId);
+      const snap = await ref.get();
+      if (!snap.exists) {
+        await ref.set({
+          sighter_firebase_uid: sighterFirebaseUid,
+          pet_id: petId,
+          pet_owner_firebase_uid: petOwnerFirebaseUid || '',
+          sighting_id: sightingId || '',
+          created_at: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    } catch (err) {
+      console.warn('[DB] createSighterAuthorization error:', err.message);
+    }
+  }
+
+  /**
    * Busca avistamentos vinculados a um pet perdido (para o tutor ver quem avistou).
    * Combina sightings linkados por pet_perdido_id e por matchedLostPetId (AI ≥92%).
    * @param {string} petId - ID do pet perdido
@@ -1226,7 +1279,8 @@ const DB = (() => {
     getStatus,
     watchNotificacoes,
     watchPetsAtivos,
-    getLinkedSightings
+    getLinkedSightings,
+    createSighterAuthorization
   };
 
 })();

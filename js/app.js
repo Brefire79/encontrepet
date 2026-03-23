@@ -2694,75 +2694,131 @@ const App = (() => {
   }
 
   /**
-   * Buscar contato do avistador via Cloud Function (LGPD-safe).
-   * Apenas o tutor (dono do pet) pode chamar esta função.
+   * Buscar contato do avistador via Firestore direto (sem Cloud Function).
+   * Acesso autorizado pelas Firestore Rules:
+   *   alert_privado do avistamento permite leitura se
+   *   linked_pet_owner_firebase_uid == request.auth.uid (tutor do pet).
    */
   async function getSighterContact(sightingId, petId) {
-    const functions = FirebaseConfig.getFunctions?.();
-    if (!functions) throw new Error('Firebase Functions nao disponivel.');
-    const callable = functions.httpsCallable('getSighterContact');
-    const result = await callable({ sightingId, petId });
-    return result?.data || null;
-  }
+    if (!sightingId) throw new Error('sightingId obrigatorio.');
 
-  /**
-   * Buscar contato do tutor via Cloud Function (LGPD-safe).
-   * Loga o acesso server-side para auditoria.
-   */
-  async function getTutorContact(petId) {
-    // 1. Tentar via Cloud Function (produção)
+    // Log LGPD client-side (create-only — rules permitem)
     try {
-      const functions = FirebaseConfig.getFunctions?.();
-      if (functions) {
-        const callable = functions.httpsCallable('getTutorContact');
-        const result = await callable({ petId });
-        if (result?.data) return result.data;
-      }
-    } catch (err) {
-      console.warn('[App] Cloud Function getTutorContact falhou, usando fallback Firestore:', err.message);
-    }
-
-    // 2. Fallback: leitura direta da coleção alert_privado
-    // Nota: só funciona se o usuário for o próprio dono (regra S-01 corrigida).
-    // Não-donos chegarão aqui apenas se a Cloud Function falhou E eles são donos.
-    const privateData = await DB.getPrivateAlertData('pets_perdidos', petId);
-    if (privateData) {
-      // Log LGPD do acesso via fallback (S-04)
-      try {
-        await DB.criarNotificacao({
-          tipo: 'contato_acesso_fallback',
-          pet_id: petId,
-          solicitante_uid: Auth.getUID(),
-          solicitante_firebase_uid: Auth.getFirebaseUID?.() || '',
+      const db = FirebaseConfig.getDB?.();
+      if (db) {
+        await db.collection('lgpd_access_log').add({
+          tipo: 'contato_avistador_acesso',
+          petId: petId || '',
+          sightingId,
+          tutorFirebaseUid: FirebaseConfig.getFirebaseUID?.() || '',
           via: 'firestore_direto',
-          timestamp: new Date().toISOString(),
-          destinatario_uid: Auth.getUID()
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
-      } catch (_) { /* log nunca deve bloquear o fluxo */ }
-
-      return {
-        nome:     privateData.contato_nome     || '',
-        telefone: privateData.contato_telefone || '',
-        email:    privateData.contato_email    || ''
-      };
-    }
-
-    // 3. Último recurso: dados públicos do documento principal
-    // (cobre alertas criados antes do sistema alert_privado)
-    try {
-      const petDoc = await DB.get('pets_perdidos', petId);
-      if (petDoc) {
-        const nome     = petDoc.contato_nome || '';
-        const telefone = petDoc.telefone_publico || petDoc.contato_telefone || '';
-        // contato_email não deve existir em documentos públicos (S-06) — usar apenas contato_email_publico
-        const email    = petDoc.contato_email_publico || '';
-        if (nome || telefone || email) {
-          return { nome, telefone, email };
-        }
       }
     } catch (_) {}
 
-    throw new Error('Dados de contato não encontrados');
+    // Ler dados privados do avistador (rule verifica linked_pet_owner_firebase_uid)
+    const privateData = await DB.getPrivateAlertData('avistamentos', sightingId);
+    if (!privateData) throw new Error('Dados privados do avistamento não encontrados.');
+
+    // Notificar avistador que tutor acessou seu contato
+    try {
+      const sightingDoc = await DB.get('avistamentos', sightingId);
+      if (sightingDoc?.owner_uid || sightingDoc?.owner_firebase_uid) {
+        await DB.criarNotificacao({
+          tipo: 'contato_acessado_pelo_tutor',
+          pet_id: petId || '',
+          avistamento_id: sightingId,
+          mensagem: 'O tutor do pet acessou seu contato referente ao avistamento',
+          data: new Date().toISOString(),
+          lida: false,
+          destinatario_uid: sightingDoc.owner_uid || '',
+          destinatario_firebase_uid: sightingDoc.owner_firebase_uid || ''
+        });
+      }
+    } catch (_) {}
+
+    const telefone = privateData.contato_telefone || '';
+    const email    = privateData.contato_email    || '';
+    const nome     = privateData.reportado_por    || '';
+    return { telefone, email, nome, available: !!(telefone || email) };
+  }
+
+  /**
+   * Buscar contato do tutor via Firestore direto (sem Cloud Function).
+   * Fluxo:
+   *  1. Criar autorização sighter→pet se ainda não existe
+   *  2. Ler alert_privado do pet (rule verifica sighter_authorizations/{uid}_{petId})
+   *  3. Log LGPD client-side
+   *  4. Notificar tutor
+   */
+  async function getTutorContact(petId) {
+    const myFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+
+    // 1. Garantir que a autorização existe (permite a regra Firestore liberar a leitura)
+    try {
+      const pet = await DB.get('pets_perdidos', petId);
+      if (pet?.owner_firebase_uid) {
+        await DB.createSighterAuthorization(petId, pet.owner_firebase_uid, null);
+      }
+    } catch (_) {}
+
+    // 2. Ler dados privados do tutor (rule verifica sighter_authorizations)
+    let privateData = null;
+    try {
+      privateData = await DB.getPrivateAlertData('pets_perdidos', petId);
+    } catch (_) {}
+
+    if (!privateData) {
+      // Fallback: dados públicos do documento principal
+      try {
+        const petDoc = await DB.get('pets_perdidos', petId);
+        if (petDoc) {
+          const nome     = petDoc.contato_nome || '';
+          const telefone = petDoc.telefone_publico || '';
+          const email    = petDoc.contato_email_publico || '';
+          if (nome || telefone || email) return { nome, telefone, email, available: !!(telefone || email) };
+        }
+      } catch (_) {}
+      throw new Error('Dados de contato não encontrados');
+    }
+
+    // 3. Log LGPD client-side
+    try {
+      const db = FirebaseConfig.getDB?.();
+      if (db) {
+        await db.collection('lgpd_access_log').add({
+          tipo: 'contato_tutor_acesso',
+          petId,
+          requesterFirebaseUid: myFirebaseUid,
+          via: 'firestore_direto',
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    } catch (_) {}
+
+    // 4. Notificar tutor
+    try {
+      const pet = await DB.get('pets_perdidos', petId);
+      if (pet?.owner_uid || pet?.owner_firebase_uid) {
+        await DB.criarNotificacao({
+          tipo: 'contato_acessado',
+          pet_id: petId,
+          pet_nome: pet.nome_pet || 'Pet',
+          mensagem: `Alguém visualizou seu contato referente a "${pet.nome_pet || 'seu pet'}"`,
+          data: new Date().toISOString(),
+          lida: false,
+          destinatario_uid: pet.owner_uid || '',
+          destinatario_firebase_uid: pet.owner_firebase_uid || ''
+        });
+      }
+    } catch (_) {}
+
+    const telefone = privateData.contato_telefone || '';
+    const emailPublicoAtivo = true; // se está em alert_privado e o avistador tem autorização, exibir
+    const email    = emailPublicoAtivo ? (privateData.contato_email || '') : '';
+    const nome     = privateData.contato_nome || '';
+    return { telefone, email, nome, available: !!(telefone || email) };
   }
 
   function contactWhatsApp(phone, name) {

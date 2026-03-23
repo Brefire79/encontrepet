@@ -63,19 +63,27 @@ service cloud.firestore {
 
     // ========================================
     //  COLLECTION PRIVADA (LGPD)
-    //  Apenas o owner pode ler e escrever diretamente.
-    //  Não-donos DEVEM usar a Cloud Function getTutorContact,
-    //  que garante log LGPD e verificação de avistamento vinculado.
-    //  Auditoria: S-01 (2026-03-21)
+    //  Acesso direto: owner lê seus próprios dados.
+    //  Acesso cruzado (sem Cloud Function):
+    //    • Tutor lê alert_privado do avistamento se
+    //      linked_pet_owner_firebase_uid == request.auth.uid
+    //    • Avistador lê alert_privado do pet se existir
+    //      sighter_authorizations/{uid}_{petId}
+    //  Auditoria: S-01 (2026-03-21), revisado plano Spark
     // ========================================
 
     match /alert_privado/{docId} {
-      // Apenas o dono pode ler seus próprios dados privados
+      // Dono sempre pode ler seus próprios dados privados
+      // Tutor pode ler alert_privado do avistamento (tutor→avistador)
+      // Avistador pode ler alert_privado do pet se autorizado (avistador→tutor)
       allow get: if isSignedIn() && (
         resource.data.owner_firebase_uid == request.auth.uid ||
-        resource.data.owner_uid == request.auth.uid
+        resource.data.owner_uid == request.auth.uid ||
+        resource.data.linked_pet_owner_firebase_uid == request.auth.uid ||
+        (docId.matches('pets_perdidos_.*') &&
+          exists(/databases/$(database)/documents/sighter_authorizations/$(request.auth.uid + '_' + docId.split('pets_perdidos_')[1])))
       );
-      // list sempre bloqueado — nenhum cliente deve varrer esta coleção
+      // list sempre bloqueado
       allow list: if false;
       allow create: if isSignedIn() && (
         request.resource.data.owner_firebase_uid == request.auth.uid ||
@@ -89,6 +97,34 @@ service cloud.firestore {
         resource.data.owner_firebase_uid == request.auth.uid ||
         resource.data.owner_uid == request.auth.uid
       );
+    }
+
+    // ========================================
+    //  AUTORIZAÇÕES AVISTADOR→PET
+    //  Criadas pelo avistador ao vincular um avistamento a um pet.
+    //  Documento ID: {sighterFirebaseUid}_{petId}
+    //  Imutável após criação — apenas criação é permitida.
+    // ========================================
+
+    match /sighter_authorizations/{authId} {
+      allow create: if isSignedIn() &&
+        request.resource.data.sighter_firebase_uid == request.auth.uid;
+      allow get: if isSignedIn() && (
+        resource.data.sighter_firebase_uid == request.auth.uid ||
+        resource.data.pet_owner_firebase_uid == request.auth.uid
+      );
+      allow list: if false;
+      allow update, delete: if false;
+    }
+
+    // ========================================
+    //  LOG DE AUDITORIA LGPD
+    //  Apenas create — nenhum cliente lê ou altera logs.
+    // ========================================
+
+    match /lgpd_access_log/{docId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if false;
     }
 
     // ========================================
