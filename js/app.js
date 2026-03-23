@@ -2558,10 +2558,151 @@ const App = (() => {
 
       hideLoading();
       navigateTo('detalhes');
+
+      // Se for o tutor, carregar avistamentos vinculados ao pet
+      if (isOwner) {
+        renderLinkedSightings(petId, name, container);
+      }
     } catch (err) {
       hideLoading();
       showToast(I18n.t('toast.details_error'), 'error');
     }
+  }
+
+  /**
+   * Renderiza a seção de avistamentos vinculados para o tutor (dono do pet).
+   * Carrega assincronamente e exibe botão "Ver contato do avistador" para cada sighting.
+   */
+  async function renderLinkedSightings(petId, petName, container) {
+    const body = container.querySelector('.detalhes-body');
+    if (!body) return;
+
+    const section = document.createElement('div');
+    section.className = 'detalhes-section linked-sightings-section';
+    section.innerHTML = `
+      <h4><i class="fas fa-eye"></i> ${I18n.t('details.linked_sightings_title')}</h4>
+      <div id="linked-sightings-list" class="linked-sightings-list">
+        <p class="linked-sightings-loading"><i class="fas fa-spinner fa-spin"></i></p>
+      </div>`;
+    body.appendChild(section);
+
+    try {
+      const sightings = await DB.getLinkedSightings(petId);
+      const list = document.getElementById('linked-sightings-list');
+      if (!list) return;
+
+      if (!sightings.length) {
+        list.innerHTML = `<p class="empty-linked"><i class="fas fa-info-circle"></i> ${I18n.t('details.no_linked_sightings')}</p>`;
+        return;
+      }
+
+      list.innerHTML = sightings.map(s => {
+        const rawDate = s.data_avistamento || (s.created_at?.toDate ? s.created_at.toDate().toISOString() : '');
+        const date = rawDate ? new Date(rawDate).toLocaleDateString('pt-BR') : '';
+        const loc = Security.sanitize(s.endereco_publico || '');
+        const score = s.matchedScore ? `${Math.round(s.matchedScore)}%` : '';
+        const linkType = s.pet_perdido_id === petId ? 'manual' : 'ia';
+        const photoHtml = s.foto_comprimida && s.foto_comprimida.startsWith('data:image/')
+          ? `<img class="sighting-thumb" src="${s.foto_comprimida}" alt="">`
+          : `<div class="sighting-thumb-placeholder"><i class="fas fa-paw"></i></div>`;
+        return `
+          <div class="sighting-card" data-id="${s.id}">
+            ${photoHtml}
+            <div class="sighting-info">
+              ${date ? `<p class="sighting-meta"><i class="fas fa-calendar-alt"></i> ${date}</p>` : ''}
+              ${loc  ? `<p class="sighting-meta"><i class="fas fa-map-marker-alt"></i> ${loc}</p>` : ''}
+              ${score ? `<p class="sighting-meta sighting-score"><i class="fas fa-percent"></i> ${I18n.t('details.match_score')}: <strong>${score}</strong></p>` : ''}
+              ${linkType === 'manual' ? `<span class="sighting-badge badge-manual"><i class="fas fa-link"></i> Vinculado</span>` : `<span class="sighting-badge badge-ia"><i class="fas fa-robot"></i> AI Match</span>`}
+            </div>
+            <div class="sighting-contact-area">
+              <button class="btn-sighter-contact" data-sighting-id="${s.id}" data-pet-id="${petId}">
+                <i class="fas fa-comment-dots"></i> ${I18n.t('details.contact_sighter')}
+              </button>
+              <div class="sighter-contact-result hidden"></div>
+            </div>
+          </div>`;
+      }).join('');
+
+      // Bind botões de contato
+      list.querySelectorAll('.btn-sighter-contact').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          await handleContactSighter(btn, btn.dataset.sightingId, btn.dataset.petId, petName);
+        });
+      });
+    } catch (err) {
+      console.error('[App] renderLinkedSightings error:', err);
+      const list = document.getElementById('linked-sightings-list');
+      if (list) list.innerHTML = `<p class="empty-linked"><i class="fas fa-exclamation-circle"></i> ${I18n.t('details.contact_error')}</p>`;
+    }
+  }
+
+  /**
+   * Handler: tutor clica "Ver contato do avistador".
+   * Chama CF getSighterContact (LGPD-safe) e exibe o resultado.
+   */
+  async function handleContactSighter(btn, sightingId, petId, petName) {
+    if (!btn || btn.classList.contains('loading')) return;
+    btn.classList.add('loading');
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18n.t('details.loading_contact')}`;
+    try {
+      const result = await getSighterContact(sightingId, petId);
+      const safeName  = Security.sanitize(result?.nome || '');
+      const safePhone = Security.sanitizePhone(result?.telefone || '');
+      const safeEmail = Security.sanitizeEmail(result?.email || '');
+
+      const card = btn.closest('.sighting-card');
+      const resultDiv = card?.querySelector('.sighter-contact-result');
+      if (resultDiv) resultDiv.classList.remove('hidden');
+
+      if (safePhone || safeEmail) {
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="contact-revealed-box">
+              <p class="contact-revealed-label"><i class="fas fa-user"></i> ${I18n.t('details.sighter_info')}</p>
+              ${safeName ? `<p><strong>${safeName}</strong></p>` : ''}
+              ${safePhone ? `
+                <p><i class="fas fa-phone"></i> ${safePhone}</p>
+                <div class="tutor-contact-actions">
+                  <button class="btn-whatsapp btn-small" data-action="whatsapp" data-phone="${safePhone}" data-name="${Security.sanitize(petName)}">
+                    <i class="fab fa-whatsapp"></i> WhatsApp
+                  </button>
+                  <button class="btn-phone btn-small" data-action="call" data-phone="${safePhone}">
+                    <i class="fas fa-phone"></i> ${I18n.t('details.btn_call')}
+                  </button>
+                </div>` : ''}
+              ${safeEmail ? `<p><i class="fas fa-envelope"></i> ${safeEmail}</p>` : ''}
+            </div>`;
+        }
+        btn.innerHTML = `<i class="fas fa-check-circle"></i> ${I18n.t('details.contact_revealed')}`;
+        btn.disabled = true;
+      } else {
+        const msg = result?.emailSent
+          ? I18n.t('details.email_sent_to_sighter')
+          : I18n.t('details.sighter_no_contact');
+        if (resultDiv) {
+          resultDiv.innerHTML = `<p class="contact-fallback-msg"><i class="fas fa-info-circle"></i> ${msg}</p>`;
+        }
+        showToast(msg, result?.emailSent ? 'success' : 'warning');
+        btn.innerHTML = `<i class="fas fa-comment-dots"></i> ${I18n.t('details.contact_sighter')}`;
+      }
+    } catch (err) {
+      console.error('[App] getSighterContact error:', err);
+      showToast(I18n.t('details.contact_error'), 'error');
+      btn.innerHTML = `<i class="fas fa-comment-dots"></i> ${I18n.t('details.contact_sighter')}`;
+    }
+    btn.classList.remove('loading');
+  }
+
+  /**
+   * Buscar contato do avistador via Cloud Function (LGPD-safe).
+   * Apenas o tutor (dono do pet) pode chamar esta função.
+   */
+  async function getSighterContact(sightingId, petId) {
+    const functions = FirebaseConfig.getFunctions?.();
+    if (!functions) throw new Error('Firebase Functions nao disponivel.');
+    const callable = functions.httpsCallable('getSighterContact');
+    const result = await callable({ sightingId, petId });
+    return result?.data || null;
   }
 
   /**

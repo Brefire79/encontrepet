@@ -1132,6 +1132,50 @@ const DB = (() => {
    * @param {Function} onChange - callback(docs[])
    * @returns {Function} unsubscribe
    */
+  /**
+   * Busca avistamentos vinculados a um pet perdido (para o tutor ver quem avistou).
+   * Combina sightings linkados por pet_perdido_id e por matchedLostPetId (AI ≥92%).
+   * @param {string} petId - ID do pet perdido
+   * @returns {Promise<Array>} Lista de avistamentos vinculados, ordenados por data desc
+   */
+  async function getLinkedSightings(petId) {
+    if (!useFirestore || !petId) return [];
+    try {
+      const db = FirebaseConfig.getDB();
+      // Query 1: vinculados manualmente (pet_perdido_id)
+      const snap1 = await db.collection(TABLES.AVISTAMENTOS)
+        .where('pet_perdido_id', '==', petId)
+        .limit(20)
+        .get();
+      // Query 2: vinculados por AI match (matchedLostPetId)
+      const snap2 = await db.collection(TABLES.AVISTAMENTOS)
+        .where('matchedLostPetId', '==', petId)
+        .limit(20)
+        .get();
+      // Merge sem duplicatas
+      const seen = new Set();
+      const results = [];
+      for (const snap of [snap1, snap2]) {
+        for (const doc of snap.docs) {
+          if (!seen.has(doc.id)) {
+            seen.add(doc.id);
+            results.push({ id: doc.id, ...doc.data() });
+          }
+        }
+      }
+      // Ordenar por data desc
+      results.sort((a, b) => {
+        const tA = a.created_at?.toMillis?.() || new Date(a.data_avistamento || 0).getTime();
+        const tB = b.created_at?.toMillis?.() || new Date(b.data_avistamento || 0).getTime();
+        return tB - tA;
+      });
+      return results;
+    } catch (err) {
+      console.error('[DB] getLinkedSightings error:', err);
+      return [];
+    }
+  }
+
   function watchPetsAtivos(onChange) {
     if (!useFirestore) return () => {};
     try {
@@ -1181,7 +1225,8 @@ const DB = (() => {
     clearCache,
     getStatus,
     watchNotificacoes,
-    watchPetsAtivos
+    watchPetsAtivos,
+    getLinkedSightings
   };
 
 })();

@@ -248,6 +248,14 @@ window.I18nLocales.es = {
   'details.tutor_no_phone': 'Dueño encontrado pero sin teléfono registrado.',
   'details.email_sent_to_tutor': 'Sin contacto disponible. ¡Notificamos al dueño por correo!',
   'details.whatsapp_msg': '¡Hola! Vi la alerta de Encontre Pet sobre "{name}". ¡Tengo información!',
+  'details.linked_sightings_title': 'Avistamientos de Tu Mascota',
+  'details.no_linked_sightings': 'Aún no hay avistamientos vinculados a esta mascota.',
+  'details.contact_sighter': 'Ver contacto del avistador',
+  'details.sighter_info': 'Contacto del Avistador',
+  'details.sighter_no_contact': 'Avistador sin contacto registrado.',
+  'details.email_sent_to_sighter': 'Sin contacto disponible. ¡Notificamos al avistador por correo!',
+  'details.match_score': 'Compatibilidad',
+  'details.sighting_date': 'Fecha del avistamiento',
 
   // — Notifications —
   'notif.title': 'Notificaciones',

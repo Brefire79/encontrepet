@@ -29,6 +29,50 @@ function createMailTransporter() {
   });
 }
 
+async function sendSighterNotificationEmail(opts: {
+  to: string;
+  sighterNome: string;
+  petNome: string;
+}): Promise<boolean> {
+  const transporter = createMailTransporter();
+  if (!transporter) {
+    logger.warn('SMTP não configurado — email ao avistador não enviado.', { to: opts.to });
+    return false;
+  }
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const subject = `O tutor de "${opts.petNome}" quer falar com você!`;
+  const html = `
+    <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;">
+      <h2 style="color:#2563eb;">🐾 Encontre Pet</h2>
+      <p>Olá, <strong>${opts.sighterNome || 'avistador'}</strong>!</p>
+      <p>
+        O tutor do pet <strong>"${opts.petNome}"</strong> viu seu avistamento
+        no Encontre Pet e tentou entrar em contato, mas não havia telefone ou e-mail
+        cadastrado no seu perfil.
+      </p>
+      <p>
+        Acesse o app, veja suas notificações e atualize seus dados de contato
+        para facilitar a comunicação com o tutor!
+      </p>
+      <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;"/>
+      <p style="font-size:0.85rem;color:#6b7280;">
+        Esta é uma notificação automática do Encontre Pet.<br/>
+        Não responda este e-mail.
+      </p>
+    </div>`;
+  try {
+    await transporter.sendMail({ from, to: opts.to, subject, html });
+    logger.info('E-mail de notificação enviado ao avistador.', { to: opts.to, petNome: opts.petNome });
+    return true;
+  } catch (err) {
+    logger.error('Falha ao enviar e-mail ao avistador.', {
+      error: err instanceof Error ? err.message : String(err),
+      to: opts.to
+    });
+    return false;
+  }
+}
+
 async function sendTutorNotificationEmail(opts: {
   to: string;
   tutorNome: string;
@@ -554,5 +598,177 @@ export const verifyUserPassword = onCall(
     }
     logger.info('Senha verificada via CF.', { uid: uid.substring(0, 8) });
     return { valid: true };
+  }
+);
+
+// ============================================================
+//  getSighterContact — retorna contato do avistador para o tutor
+//  Fluxo bidirecional: tutor pode contatar quem avistou seu pet
+//  Requer: Firebase Auth + ser dono do pet + avistamento vinculado
+// ============================================================
+
+export const getSighterContact = onCall(
+  {
+    region: 'southamerica-east1',
+    maxInstances: 10,
+    cors: [
+      'http://localhost:5000',
+      'http://127.0.0.1:5000',
+      'http://localhost:3000',
+      'https://encontre-pet-137d2.web.app',
+      'https://encontre-pet-137d2.firebaseapp.com',
+    ],
+  },
+  async (request) => {
+    // 1. Autenticacao obrigatoria
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Autenticacao necessaria para acessar contato do avistador.');
+    }
+
+    const { sightingId, petId } = request.data as { sightingId: string; petId: string };
+    if (!sightingId || !petId || typeof sightingId !== 'string' || typeof petId !== 'string') {
+      throw new HttpsError('invalid-argument', 'sightingId e petId sao obrigatorios.');
+    }
+
+    const db = admin.firestore();
+    const tutorUid = request.auth.uid;
+
+    // Rate limit por tutor
+    checkRateLimit(tutorUid);
+
+    try {
+      // 2. Verificar pet e confirmar que o chamador e o dono
+      const petSnap = await db.collection('pets_perdidos').doc(petId).get();
+      if (!petSnap.exists) {
+        throw new HttpsError('not-found', 'Pet nao encontrado.');
+      }
+      const petData = petSnap.data()!;
+      if (petData.owner_firebase_uid !== tutorUid) {
+        throw new HttpsError('permission-denied', 'Apenas o tutor deste pet pode acessar o contato do avistador.');
+      }
+
+      // 3. Verificar avistamento e confirmar vinculo com o pet
+      const sightingSnap = await db.collection('avistamentos').doc(sightingId).get();
+      if (!sightingSnap.exists) {
+        throw new HttpsError('not-found', 'Avistamento nao encontrado.');
+      }
+      const sightingData = sightingSnap.data()!;
+      if (sightingData.pet_perdido_id !== petId && sightingData.matchedLostPetId !== petId) {
+        throw new HttpsError('permission-denied', 'Este avistamento nao esta vinculado ao seu pet.');
+      }
+
+      // 4. Buscar dados privados do avistador (alert_privado)
+      const privadoSnap = await db.collection('alert_privado').doc(`avistamentos_${sightingId}`).get();
+      const privadoData = privadoSnap.exists ? privadoSnap.data() : null;
+
+      const nome = sightingData.reportado_por || '';
+      const telefonePublicoAtivo = sightingData.telefone_publico_ativo === true;
+      const telefone = telefonePublicoAtivo
+        ? (privadoData?.contato_telefone || sightingData.telefone_publico || '')
+        : '';
+      const email = privadoData?.contato_email || '';
+
+      if (!telefone && !email) {
+        // Sem contato — buscar e-mail do perfil do avistador em usuarios e notifica-lo
+        let sighterEmail = '';
+        let sighterNome = nome;
+        try {
+          if (sightingData.owner_uid) {
+            const usuarioDoc = await db.collection('usuarios').doc(sightingData.owner_uid).get();
+            if (usuarioDoc.exists) {
+              const u = usuarioDoc.data()!;
+              sighterEmail = u.email || '';
+              sighterNome = u.nome || sighterNome;
+            }
+          }
+          if (!sighterEmail && sightingData.owner_firebase_uid) {
+            const snap = await db.collection('usuarios')
+              .where('owner_firebase_uid', '==', sightingData.owner_firebase_uid)
+              .limit(1).get();
+            if (!snap.empty) {
+              const u = snap.docs[0].data();
+              sighterEmail = u.email || '';
+              sighterNome = u.nome || sighterNome;
+            }
+          }
+        } catch (lookupErr) {
+          logger.warn('Falha ao buscar email do avistador em usuarios.', {
+            error: lookupErr instanceof Error ? lookupErr.message : String(lookupErr)
+          });
+        }
+
+        let emailSent = false;
+        if (sighterEmail) {
+          emailSent = await sendSighterNotificationEmail({
+            to: sighterEmail,
+            sighterNome,
+            petNome: petData.nome_pet || 'um pet'
+          });
+          await db.collection('lgpd_access_log').add({
+            tipo: 'contato_avistador_email_notificacao',
+            petId,
+            sightingId,
+            petNome: petData.nome_pet || '',
+            tutorFirebaseUid: tutorUid,
+            sighterEmail: sighterEmail.replace(/(.{2}).+(@.+)/, '$1***$2'),
+            emailSent,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            ip: request.rawRequest?.ip || ''
+          });
+        }
+
+        return { telefone: '', email: '', nome: sighterNome, available: false, emailSent };
+      }
+
+      // 5. Log LGPD
+      await db.collection('lgpd_access_log').add({
+        tipo: 'contato_avistador_acesso',
+        petId,
+        sightingId,
+        petNome: petData.nome_pet || '',
+        tutorFirebaseUid: tutorUid,
+        dadosAcessados: ['telefone', 'email', 'nome'].filter(k => {
+          if (k === 'telefone') return !!telefone;
+          if (k === 'email') return !!email;
+          if (k === 'nome') return !!nome;
+          return false;
+        }),
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        ip: request.rawRequest?.ip || ''
+      });
+
+      logger.info('Contato do avistador acessado pelo tutor.', { petId, sightingId, tutorUid });
+
+      // 6. Notificar o avistador que o tutor acessou seu contato
+      if (sightingData.owner_uid || sightingData.owner_firebase_uid) {
+        await db.collection('notificacoes').add({
+          tipo: 'contato_acessado_pelo_tutor',
+          pet_id: petId,
+          avistamento_id: sightingId,
+          pet_nome: petData.nome_pet || 'Pet',
+          mensagem: `O tutor de "${petData.nome_pet || 'um pet'}" acessou seu contato referente ao avistamento`,
+          data: new Date().toISOString(),
+          lida: false,
+          destinatario_uid: sightingData.owner_uid || '',
+          destinatario_firebase_uid: sightingData.owner_firebase_uid || '',
+          owner_firebase_uid: sightingData.owner_firebase_uid || ''
+        });
+      }
+
+      return {
+        telefone: telefone || '',
+        email: email || '',
+        nome: nome || '',
+        available: true
+      };
+    } catch (error) {
+      if (error instanceof HttpsError) throw error;
+      logger.error('Erro ao buscar contato do avistador.', {
+        error: error instanceof Error ? error.message : String(error),
+        sightingId,
+        petId
+      });
+      throw new HttpsError('internal', 'Erro ao buscar contato do avistador.');
+    }
   }
 );
