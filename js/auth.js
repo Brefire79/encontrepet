@@ -446,19 +446,17 @@ const Auth = (() => {
       ultimo_login: new Date().toISOString()
     };
 
-    const created = await createUser(uid, userData);
-    const finalUID = created.id || uid;
-
+    // Visitante não é salvo no banco — apenas sessão local (evita acúmulo de registros)
     const token = Security.generateSessionToken();
-    Security.saveSession(finalUID, token, { nome: 'Visitante', email: '', is_anonymous: true });
+    Security.saveSession(uid, token, { nome: 'Visitante', email: '', is_anonymous: true });
 
     currentUser = {
-      uid: finalUID,
+      uid,
       email: '',
       displayName: 'Visitante',
       isAnonymous: true
     };
-    userProfile = { ...userData, id: finalUID };
+    userProfile = { ...userData, id: uid };
     notifyListeners('login', getUserData());
 
     return { success: true, user: currentUser };

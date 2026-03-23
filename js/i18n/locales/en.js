@@ -246,6 +246,7 @@ window.I18nLocales.en = {
   'details.contact_error': 'Error loading tutor contact',
   'details.email_tutor': 'Send Email to Owner',
   'details.tutor_no_phone': 'Owner found but no phone registered.',
+  'details.email_sent_to_tutor': 'No contact available. We notified the owner by email!',
   'details.whatsapp_msg': 'Hi! I saw the Encontre Pet alert about "{name}". I have information!',
 
   // — Notifications —

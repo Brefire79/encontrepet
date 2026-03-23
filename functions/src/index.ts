@@ -3,10 +3,75 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as logger from 'firebase-functions/logger';
 import * as admin from 'firebase-admin';
 import sharp from 'sharp';
+import * as nodemailer from 'nodemailer';
 
 const blockhashCore = require('blockhash-core');
 
 admin.initializeApp();
+
+// ============================================================
+//  EMAIL — Nodemailer SMTP
+//  Configure via Firebase Functions env vars:
+//    firebase functions:secrets:set SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASS SMTP_FROM
+//  Or via .env file (Functions v2): SMTP_HOST=... SMTP_USER=... etc.
+// ============================================================
+
+function createMailTransporter() {
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (!host || !user || !pass) return null;
+  return nodemailer.createTransport({
+    host,
+    port: Number(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_PORT === '465',
+    auth: { user, pass }
+  });
+}
+
+async function sendTutorNotificationEmail(opts: {
+  to: string;
+  tutorNome: string;
+  petNome: string;
+}): Promise<boolean> {
+  const transporter = createMailTransporter();
+  if (!transporter) {
+    logger.warn('SMTP não configurado — email de notificação não enviado.', { to: opts.to });
+    return false;
+  }
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const subject = `Alguém quer entrar em contato sobre "${opts.petNome}"`;
+  const html = `
+    <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;">
+      <h2 style="color:#2563eb;">🐾 Encontre Pet</h2>
+      <p>Olá, <strong>${opts.tutorNome || 'tutor'}</strong>!</p>
+      <p>
+        Alguém encontrou o alerta do seu pet <strong>"${opts.petNome}"</strong>
+        no Encontre Pet e tentou entrar em contato, mas não havia telefone ou e-mail
+        público cadastrado no alerta.
+      </p>
+      <p>
+        Para facilitar o contato, acesse o app e atualize os dados de contato do seu alerta.<br/>
+        Quanto mais informações você fornecer, maior a chance de encontrar seu pet!
+      </p>
+      <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;"/>
+      <p style="font-size:0.85rem;color:#6b7280;">
+        Esta é uma notificação automática do Encontre Pet.<br/>
+        Não responda este e-mail.
+      </p>
+    </div>`;
+  try {
+    await transporter.sendMail({ from, to: opts.to, subject, html });
+    logger.info('E-mail de notificação enviado ao tutor.', { to: opts.to, petNome: opts.petNome });
+    return true;
+  } catch (err) {
+    logger.error('Falha ao enviar e-mail de notificação.', {
+      error: err instanceof Error ? err.message : String(err),
+      to: opts.to
+    });
+    return false;
+  }
+}
 
 const ALERTS_PREFIX = 'alerts/';
 const IGNORE_SEGMENTS = ['/derived/', '/thumbnails/', '/thumbs/'];
@@ -296,7 +361,57 @@ export const getTutorContact = onCall(
       const nome = petData.contato_nome || petData.nome_pet || '';
 
       if (!telefone && !email) {
-        return { telefone: '', email: '', nome: '', available: false };
+        // Sem contato público — buscar e-mail do perfil do tutor e notificá-lo
+        let tutorEmail = '';
+        let tutorNome = nome;
+        try {
+          // Buscar pelo owner_firebase_uid primeiro, depois pelo owner_uid (u_xxx)
+          if (petData.owner_firebase_uid) {
+            const userSnap = await db.collection('usuarios')
+              .where('owner_firebase_uid', '==', petData.owner_firebase_uid)
+              .limit(1).get();
+            if (!userSnap.empty) {
+              const u = userSnap.docs[0].data();
+              tutorEmail = u.email || '';
+              tutorNome = u.nome || tutorNome;
+            }
+          }
+          // Fallback: buscar pelo id do documento (owner_uid é o doc id)
+          if (!tutorEmail && petData.owner_uid) {
+            const ownerDoc = await db.collection('usuarios').doc(petData.owner_uid).get();
+            if (ownerDoc.exists) {
+              const u = ownerDoc.data()!;
+              tutorEmail = u.email || '';
+              tutorNome = u.nome || tutorNome;
+            }
+          }
+        } catch (lookupErr) {
+          logger.warn('Falha ao buscar email do tutor em usuarios.', {
+            error: lookupErr instanceof Error ? lookupErr.message : String(lookupErr)
+          });
+        }
+
+        let emailSent = false;
+        if (tutorEmail) {
+          emailSent = await sendTutorNotificationEmail({
+            to: tutorEmail,
+            tutorNome,
+            petNome: petData.nome_pet || 'seu pet'
+          });
+          // Log LGPD do envio de e-mail
+          await db.collection('lgpd_access_log').add({
+            tipo: 'contato_email_notificacao',
+            petId,
+            petNome: petData.nome_pet || '',
+            requesterFirebaseUid: requesterUid,
+            tutorEmail: tutorEmail.replace(/(.{2}).+(@.+)/, '$1***$2'), // mascarado
+            emailSent,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            ip: request.rawRequest?.ip || ''
+          });
+        }
+
+        return { telefone: '', email: '', nome: tutorNome, available: false, emailSent };
       }
 
       // 5. Log de auditoria LGPD

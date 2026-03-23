@@ -2511,21 +2511,33 @@ const App = (() => {
             } catch (e) { /* silencioso */ }
 
           } else if (safeName) {
-            // Só tem nome, sem telefone/email — mostrar aviso e não desabilitar
+            // Só tem nome, sem telefone/email
             if (contactDiv) {
               contactDiv.classList.remove('hidden');
               contactDiv.innerHTML = `
                 <h4><i class="fas fa-user"></i> ${I18n.t('details.tutor_info')}</h4>
                 <p><strong>${safeName}</strong></p>
                 <p style="color:var(--text-muted);font-size:0.85rem;margin-top:4px;">
-                  <i class="fas fa-info-circle"></i> Nenhum telefone cadastrado neste alerta.
+                  <i class="fas fa-info-circle"></i> ${
+                    result?.emailSent
+                      ? I18n.t('details.email_sent_to_tutor')
+                      : I18n.t('details.tutor_no_phone')
+                  }
                 </p>`;
             }
-            showToast(I18n.t('details.tutor_no_phone'), 'warning');
+            showToast(
+              result?.emailSent ? I18n.t('details.email_sent_to_tutor') : I18n.t('details.tutor_no_phone'),
+              result?.emailSent ? 'success' : 'warning'
+            );
             btn.innerHTML = `<i class="fas fa-envelope"></i> ${I18n.t('details.contact_tutor')}`;
 
           } else {
-            showToast(I18n.t('details.no_contact'), 'warning');
+            // Sem nome nem contato — verificar se email foi enviado ao tutor
+            if (result?.emailSent) {
+              showToast(I18n.t('details.email_sent_to_tutor'), 'success');
+            } else {
+              showToast(I18n.t('details.no_contact'), 'warning');
+            }
             btn.innerHTML = `<i class="fas fa-envelope"></i> ${I18n.t('details.contact_tutor')}`;
           }
         } catch (err) {
