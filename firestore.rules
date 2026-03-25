@@ -37,6 +37,18 @@ service cloud.firestore {
         && !changed.hasAny(hashFields());
     }
 
+    // Admin identificado por documento em admin_roles/{firebaseAuthUID}
+    // (criado manualmente via Firebase Console — clientes não podem escrever)
+    function isFirestoreAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/admin_roles/$(request.auth.uid));
+    }
+
+    // Campos protegidos que usuários comuns nunca podem alterar em si mesmos
+    function protectedUserFields() {
+      return ['role', 'status'];
+    }
+
     // ========================================
     //  COLLECTIONS PÚBLICAS — leitura aberta
     //  Campos públicos permitidos:
@@ -50,15 +62,15 @@ service cloud.firestore {
     match /pets_perdidos/{alertId} {
       allow read: if true;
       allow create: if canCreateAlert();
-      allow update: if canUpdateOwnAlert();
-      allow delete: if isOwner(resource.data);
+      allow update: if canUpdateOwnAlert() || isFirestoreAdmin();
+      allow delete: if isOwner(resource.data) || isFirestoreAdmin();
     }
 
     match /avistamentos/{alertId} {
       allow read: if true;
       allow create: if canCreateAlert();
-      allow update: if canUpdateOwnAlert();
-      allow delete: if isOwner(resource.data);
+      allow update: if canUpdateOwnAlert() || isFirestoreAdmin();
+      allow delete: if isOwner(resource.data) || isFirestoreAdmin();
     }
 
     // ========================================
@@ -141,20 +153,38 @@ service cloud.firestore {
         && request.auth.token.email == storedEmail;
     }
 
+    // ========================================
+    //  ADMIN ROLES
+    //  Documentos criados manualmente via Firebase Console.
+    //  Chave: Firebase Auth UID do admin (não u_xxx).
+    //  Imutável pelo cliente — apenas leitura pelo próprio admin.
+    //  Exemplo: /admin_roles/{firebaseUid} → { email: 'admin@...' }
+    // ========================================
+
+    match /admin_roles/{adminUid} {
+      allow get: if adminUid == request.auth.uid;
+      allow list, create, update, delete: if false;
+    }
+
     match /usuarios/{uid} {
       // Qualquer auth (anônima/logada) pode listar/buscar por email
       allow list: if isSignedIn();
       // get direto por ID: próprio UID ou email do Firebase Auth bate com o doc
       allow get: if isSignedIn() && (
         uid == request.auth.uid ||
-        isUserOwner(resource.data.email)
+        isUserOwner(resource.data.email) ||
+        isFirestoreAdmin()
       );
       // create: qualquer auth válida (app garante unicidade de email)
       allow create: if isSignedIn();
-      // update: apenas o dono via email do Firebase Auth ou UID
+      // update: dono pode atualizar, mas NÃO pode alterar role/status
+      // Admin pode alterar qualquer campo incluindo role/status
       allow update: if isSignedIn() && (
-        uid == request.auth.uid ||
-        isUserOwner(resource.data.email)
+        isFirestoreAdmin() ||
+        (
+          (uid == request.auth.uid || isUserOwner(resource.data.email)) &&
+          !request.resource.data.diff(resource.data).changedKeys().hasAny(protectedUserFields())
+        )
       );
       allow delete: if false;
     }

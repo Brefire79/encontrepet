@@ -1212,7 +1212,12 @@ const App = (() => {
         DB.list(DB.TABLES.AVISTAMENTOS, { limit: 500 })
       ]);
 
-      adminData.users = (usersRes.data || []).sort((a, b) => {
+      adminData.users = (usersRes.data || []).map(u => {
+        // Nunca manter senha_hash em memória no contexto do painel admin
+        const clean = { ...u };
+        delete clean.senha_hash;
+        return clean;
+      }).sort((a, b) => {
         const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
         const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
         return tB - tA;

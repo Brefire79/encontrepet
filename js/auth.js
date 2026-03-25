@@ -475,16 +475,25 @@ const Auth = (() => {
     currentUser = null;
     userProfile = null;
     notifyListeners('logout', null);
+    // Invalidar token Firebase Auth para que onAuthStateChanged reflita o logout
+    if (typeof firebase !== 'undefined' && firebase.auth) {
+      firebase.auth().signOut().catch(() => {});
+    }
     console.log('[Auth] Usuário deslogado');
   }
 
   // ====== PERFIL ======
+
+  // Campos protegidos — usuários comuns nunca podem alterar (espelho do Firestore)
+  const PROTECTED_FIELDS = new Set(['role', 'status']);
 
   async function updateProfile(data) {
     if (!currentUser) throw new Error('Usuário não logado');
 
     const sanitized = {};
     for (const [key, value] of Object.entries(data)) {
+      // Impedir escalada de privilégio via role/status (Firestore também bloqueia)
+      if (!isAdmin() && PROTECTED_FIELDS.has(key)) continue;
       if (typeof value === 'string') {
         sanitized[key] = Security.sanitize(value);
       } else {
@@ -566,7 +575,11 @@ const Auth = (() => {
     }
 
     const novoHash = await Security.createPasswordHash(newPassword);
-    await updateProfile({ senha_hash: novoHash });
+    // Atualizar diretamente no Firestore (bypass do filtro de PROTECTED_FIELDS)
+    await updateUser(currentUser.uid, { senha_hash: novoHash });
+    userProfile = { ...userProfile, senha_hash: novoHash };
+    // Sincronizar localStorage para fallback cross-origin
+    localStorage.setItem(`_spk_${currentUser.uid}`, novoHash);
     return { success: true };
   }
 
@@ -582,13 +595,16 @@ const Auth = (() => {
 
   function getUserData() {
     if (!currentUser) return null;
+    const profile = userProfile ? { ...userProfile } : null;
+    // Nunca expor senha_hash pela API pública — campo interno de verificação
+    if (profile) delete profile.senha_hash;
     return {
       uid: currentUser.uid,
       email: currentUser.email || '',
       displayName: currentUser.displayName || 'Visitante',
-      photoURL: userProfile?.foto_perfil || '',
+      photoURL: profile?.foto_perfil || '',
       isAnonymous: isAnonymous(),
-      profile: userProfile
+      profile
     };
   }
 
@@ -614,10 +630,13 @@ const Auth = (() => {
   }
 
   /**
-   * Retorna o perfil completo do usuário (incluindo role)
+   * Retorna o perfil completo do usuário (incluindo role), sem dados sensíveis
    */
   function getProfile() {
-    return userProfile || null;
+    if (!userProfile) return null;
+    const profile = { ...userProfile };
+    delete profile.senha_hash; // nunca expor hash pela API pública
+    return profile;
   }
 
   // ====== VALIDAÇÕES ======
