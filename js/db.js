@@ -447,8 +447,8 @@ const DB = (() => {
     if (result?.id) {
       await savePrivateAlertData('pets_perdidos', result.id, {
         contato_telefone: Security.sanitizePhone(data.contato_telefone || ''),
-        // Email nunca vem no payload público — lê do Auth como fonte primária (S-06)
         contato_email: Security.sanitizeEmail(data.contato_email || Auth.getUserData?.()?.email || ''),
+        contato_nome: Security.sanitize(data.contato_nome || ''),
         endereco_privado: Security.sanitize(data.endereco || ''),
         latitude_privada: data.latitude || 0,
         longitude_privada: data.longitude || 0
@@ -650,7 +650,8 @@ const DB = (() => {
 
       await savePrivateAlertData('avistamentos', result.id, {
         contato_telefone: Security.sanitizePhone(data.contato || ''),
-        contato_email: '',
+        contato_email: Security.sanitizeEmail(Auth.getUserData?.()?.email || ''),
+        reportado_por: Security.sanitize(data.reportado_por || Auth.getUserData?.()?.nome || ''),
         endereco_privado: Security.sanitize(data.endereco || ''),
         latitude_privada: data.latitude || 0,
         longitude_privada: data.longitude || 0,
@@ -815,6 +816,8 @@ const DB = (() => {
       owner_uid: Auth.getUID(),
       contato_telefone: privateData.contato_telefone || '',
       contato_email: privateData.contato_email || '',
+      contato_nome: privateData.contato_nome || '',
+      reportado_por: privateData.reportado_por || '',
       endereco_privado: privateData.endereco_privado || '',
       latitude_privada: privateData.latitude_privada || 0,
       longitude_privada: privateData.longitude_privada || 0,
@@ -822,6 +825,10 @@ const DB = (() => {
       alert_id: alertId,
       createdAt: new Date().toISOString()
     };
+    // Campo necessário para a Firestore Rule permitir ao tutor ler alert_privado do avistamento
+    if (privateData.linked_pet_owner_firebase_uid !== undefined) {
+      payload.linked_pet_owner_firebase_uid = privateData.linked_pet_owner_firebase_uid || '';
+    }
 
     if (useFirestore) {
       try {

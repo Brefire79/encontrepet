@@ -2702,6 +2702,10 @@ const App = (() => {
   async function getSighterContact(sightingId, petId) {
     if (!sightingId) throw new Error('sightingId obrigatorio.');
 
+    // Buscar avistamento público para notificação e fallback de nome
+    let sightingDoc = null;
+    try { sightingDoc = await DB.get('avistamentos', sightingId); } catch (_) {}
+
     // Log LGPD client-side (create-only — rules permitem)
     try {
       const db = FirebaseConfig.getDB?.();
@@ -2722,9 +2726,8 @@ const App = (() => {
     if (!privateData) throw new Error('Dados privados do avistamento não encontrados.');
 
     // Notificar avistador que tutor acessou seu contato
-    try {
-      const sightingDoc = await DB.get('avistamentos', sightingId);
-      if (sightingDoc?.owner_uid || sightingDoc?.owner_firebase_uid) {
+    if (sightingDoc?.owner_uid || sightingDoc?.owner_firebase_uid) {
+      try {
         await DB.criarNotificacao({
           tipo: 'contato_acessado_pelo_tutor',
           pet_id: petId || '',
@@ -2735,12 +2738,13 @@ const App = (() => {
           destinatario_uid: sightingDoc.owner_uid || '',
           destinatario_firebase_uid: sightingDoc.owner_firebase_uid || ''
         });
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     const telefone = privateData.contato_telefone || '';
     const email    = privateData.contato_email    || '';
-    const nome     = privateData.reportado_por    || '';
+    // Nome: primeiro do alert_privado (salvo no cadastro), depois do documento público
+    const nome     = privateData.reportado_por || sightingDoc?.reportado_por || '';
     return { telefone, email, nome, available: !!(telefone || email) };
   }
 
@@ -2755,31 +2759,27 @@ const App = (() => {
   async function getTutorContact(petId) {
     const myFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
 
+    // Buscar pet uma única vez (reutilizado em todas as etapas)
+    let pet = null;
+    try { pet = await DB.get('pets_perdidos', petId); } catch (_) {}
+
     // 1. Garantir que a autorização existe (permite a regra Firestore liberar a leitura)
-    try {
-      const pet = await DB.get('pets_perdidos', petId);
-      if (pet?.owner_firebase_uid) {
-        await DB.createSighterAuthorization(petId, pet.owner_firebase_uid, null);
-      }
-    } catch (_) {}
+    if (pet?.owner_firebase_uid) {
+      try { await DB.createSighterAuthorization(petId, pet.owner_firebase_uid, null); } catch (_) {}
+    }
 
     // 2. Ler dados privados do tutor (rule verifica sighter_authorizations)
     let privateData = null;
-    try {
-      privateData = await DB.getPrivateAlertData('pets_perdidos', petId);
-    } catch (_) {}
+    try { privateData = await DB.getPrivateAlertData('pets_perdidos', petId); } catch (_) {}
 
     if (!privateData) {
       // Fallback: dados públicos do documento principal
-      try {
-        const petDoc = await DB.get('pets_perdidos', petId);
-        if (petDoc) {
-          const nome     = petDoc.contato_nome || '';
-          const telefone = petDoc.telefone_publico || '';
-          const email    = petDoc.contato_email_publico || '';
-          if (nome || telefone || email) return { nome, telefone, email, available: !!(telefone || email) };
-        }
-      } catch (_) {}
+      if (pet) {
+        const nome     = pet.contato_nome || '';
+        const telefone = pet.telefone_publico || '';
+        const email    = pet.contato_email_publico || '';
+        if (nome || telefone || email) return { nome, telefone, email, available: !!(telefone || email) };
+      }
       throw new Error('Dados de contato não encontrados');
     }
 
@@ -2798,9 +2798,8 @@ const App = (() => {
     } catch (_) {}
 
     // 4. Notificar tutor
-    try {
-      const pet = await DB.get('pets_perdidos', petId);
-      if (pet?.owner_uid || pet?.owner_firebase_uid) {
+    if (pet?.owner_uid || pet?.owner_firebase_uid) {
+      try {
         await DB.criarNotificacao({
           tipo: 'contato_acessado',
           pet_id: petId,
@@ -2811,13 +2810,13 @@ const App = (() => {
           destinatario_uid: pet.owner_uid || '',
           destinatario_firebase_uid: pet.owner_firebase_uid || ''
         });
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     const telefone = privateData.contato_telefone || '';
-    const emailPublicoAtivo = true; // se está em alert_privado e o avistador tem autorização, exibir
-    const email    = emailPublicoAtivo ? (privateData.contato_email || '') : '';
-    const nome     = privateData.contato_nome || '';
+    const email    = privateData.contato_email || '';
+    // Nome: primeiro do alert_privado, depois do documento público do pet
+    const nome     = privateData.contato_nome || pet?.contato_nome || '';
     return { telefone, email, nome, available: !!(telefone || email) };
   }
 
