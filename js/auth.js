@@ -268,16 +268,20 @@ const Auth = (() => {
     const existing = await findByEmail(email);
     if (existing) throw new Error('Este e-mail já está cadastrado. Tente fazer login.');
 
-    // Gerar hash da senha (será salvo em senhas_usuarios via CF, não em usuarios)
+    // Gerar hash da senha
     const senhaHash = await Security.createPasswordHash(password);
 
     // Gerar UID
     const uid = generateUID();
 
-    // Dados do perfil — sem senha_hash (S-03: campo movido para senhas_usuarios)
+    // Dados do perfil
+    // senha_hash incluído como fallback para login cross-origin (hash SHA-256+salt).
+    // Idealmente ficaria em senhas_usuarios via CF (S-03), mas CF não está disponível
+    // no Spark plan, então vai no documento onde só usuários autenticados podem ler.
     const userData = {
       nome: Security.sanitize(displayName),
       email: Security.sanitizeEmail(email),
+      senha_hash: senhaHash,
       telefone: '',
       cidade: '',
       foto_perfil: '',
@@ -292,24 +296,20 @@ const Auth = (() => {
       ultimo_login: new Date().toISOString()
     };
 
-    // Salvar perfil público (Firestore → REST fallback)
+    // Salvar perfil (Firestore → REST fallback)
     const created = await createUser(uid, userData);
     const finalUID = created.id || uid;
 
-    // Salvar senha_hash em senhas_usuarios via Cloud Function (S-03)
-    // Nunca vai para o documento público de usuário
+    // Também salvar hash em localStorage para a sessão atual e tentar CF
+    localStorage.setItem(`_spk_${finalUID}`, senhaHash);
     try {
       const functions = FirebaseConfig.getFunctions?.();
       if (functions) {
         const savePass = functions.httpsCallable('saveUserPassword');
         await savePass({ uid: finalUID, senhaHash });
-      } else {
-        // Fallback local criptografado enquanto CF não disponível
-        localStorage.setItem(`_spk_${finalUID}`, senhaHash);
       }
     } catch (cfErr) {
-      console.warn('[Auth] saveUserPassword CF falhou, fallback local:', cfErr.message);
-      localStorage.setItem(`_spk_${finalUID}`, senhaHash);
+      console.warn('[Auth] saveUserPassword CF indisponível (Spark plan):', cfErr.message);
     }
 
     // Criar conta no Firebase Auth (necessário para recuperação de senha)
@@ -404,9 +404,15 @@ const Auth = (() => {
       }
     }
 
-    // Atualizar último login
+    // Atualizar último login + garantir senha_hash no Firestore (fallback cross-origin)
     try {
-      await updateUser(user.id, { ultimo_login: new Date().toISOString() });
+      const updates = { ultimo_login: new Date().toISOString() };
+      // Se Firebase Auth autenticou mas o doc não tem senha_hash, salvar agora
+      // Isso corrige contas antigas criadas antes deste fix
+      if (fbAuthOk && !user.senha_hash) {
+        updates.senha_hash = await Security.createPasswordHash(password);
+      }
+      await updateUser(user.id, updates);
     } catch {}
 
     // Criar sessão
