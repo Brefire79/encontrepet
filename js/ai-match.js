@@ -227,7 +227,12 @@ const AIMatch = (() => {
         : `👀 Um animal parecido com ${pet.nome_pet || 'seu pet'} foi avistado (${score}% de similaridade).`,
       similaridade: score,
       lida: false,
-      destinatario: pet.contato_telefone || pet.contato_email
+      // Campos obrigatórios para as regras do Firestore conseguirem entregar ao tutor
+      owner_firebase_uid: pet.owner_firebase_uid || '',
+      owner_uid: pet.owner_uid || '',
+      destinatario_firebase_uid: pet.owner_firebase_uid || '',
+      destinatario_uid: pet.owner_uid || '',
+      data: new Date().toISOString()
     };
   }
 
