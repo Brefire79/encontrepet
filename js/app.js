@@ -626,10 +626,18 @@ const App = (() => {
   function setupProfilePage() {
     document.getElementById('btn-save-profile')?.addEventListener('click', async () => {
       try {
+        const telefone = document.getElementById('profile-edit-phone').value.trim();
+        if (telefone) {
+          const phoneResult = Security.validatePhoneBR(telefone);
+          if (!phoneResult.valid) {
+            showToast(I18n.t('validation.phone_invalid'), 'error');
+            return;
+          }
+        }
         showLoading('Salvando perfil...');
         await Auth.updateProfile({
           nome: document.getElementById('profile-edit-name').value.trim(),
-          telefone: document.getElementById('profile-edit-phone').value.trim(),
+          telefone,
           cidade: document.getElementById('profile-edit-city').value.trim()
         });
         hideLoading();
@@ -907,6 +915,7 @@ const App = (() => {
       if (!emailInput) return;
       const email = emailInput.value.trim();
       if (!email) { _showMsg(errorDiv, 'Informe seu e-mail.'); return; }
+      try { Auth.validateEmail(email); } catch (e) { _showMsg(errorDiv, e.message); return; }
 
       _hideMsg(errorDiv);
       _hideMsg(successDiv);
@@ -1799,6 +1808,12 @@ const App = (() => {
     try {
       const tipo = document.querySelector('input[name="tipo-animal"]:checked')?.value || 'cao';
       const subtipo = tipo === 'outro' ? getSubtipoAnimal('perdido') : '';
+      if (tipo === 'outro' && !subtipo) {
+        hideLoading();
+        state.isLoading = false;
+        showToast('Informe qual tipo de animal.', 'error');
+        return;
+      }
       const cor = document.querySelector('input[name="cor-pet"]:checked')?.value || '';
       const porte = document.querySelector('input[name="porte-pet"]:checked')?.value || '';
 
@@ -1895,6 +1910,25 @@ const App = (() => {
     const lastReport = reports[reports.length - 1];
     if (!lastReport) { navigateTo('home'); return; }
 
+    // Validações antes de enviar
+    const emailTutor = document.getElementById('email-tutor')?.value.trim() || '';
+    if (emailTutor) {
+      try { Auth.validateEmail(emailTutor); } catch (e) {
+        showToast('E-mail de contato inválido.', 'error');
+        return;
+      }
+    }
+    const dataPerda = document.getElementById('data-perda')?.value || '';
+    if (dataPerda && new Date(dataPerda) > new Date()) {
+      showToast('A data de perda não pode ser no futuro.', 'error');
+      return;
+    }
+    const descricaoCompleta = document.getElementById('descricao-completa')?.value.trim() || '';
+    if (descricaoCompleta.length > 1000) {
+      showToast('Descrição muito longa (máximo 1000 caracteres).', 'error');
+      return;
+    }
+
     showLoading('Salvando...');
     try {
       const sexo = document.querySelector('input[name="sexo-pet"]:checked')?.value || '';
@@ -1902,10 +1936,10 @@ const App = (() => {
         nome_pet: document.getElementById('nome-pet-completo')?.value.trim(),
         raca: document.getElementById('raca-completo')?.value.trim(),
         sexo,
-        data_perda: document.getElementById('data-perda')?.value,
-        descricao: document.getElementById('descricao-completa')?.value.trim(),
+        data_perda: dataPerda,
+        descricao: descricaoCompleta,
         contato_nome: document.getElementById('nome-tutor')?.value.trim(),
-        contato_email: document.getElementById('email-tutor')?.value.trim()
+        contato_email: emailTutor
       });
       hideLoading();
       showToast(I18n.t('toast.complete_done'), 'success');
@@ -2245,9 +2279,18 @@ const App = (() => {
 
       const telefonePublicoAtivoAv = document.getElementById('check-telefone-publico-avistamento')?.checked || false;
 
+      const tipoAv = document.querySelector('input[name="tipo-avistamento"]:checked')?.value || 'cao';
+      const subtipoAv = tipoAv === 'outro' ? getSubtipoAnimal('avistamento') : '';
+      if (tipoAv === 'outro' && !subtipoAv) {
+        hideLoading();
+        state.isLoading = false;
+        showToast('Informe qual tipo de animal.', 'error');
+        return;
+      }
+
       const payload = {
-        tipo_animal: document.querySelector('input[name="tipo-avistamento"]:checked')?.value || 'cao',
-        subtipo_animal: (document.querySelector('input[name="tipo-avistamento"]:checked')?.value === 'outro') ? getSubtipoAnimal('avistamento') : '',
+        tipo_animal: tipoAv,
+        subtipo_animal: subtipoAv,
         foto_comprimida: state.avistamentoPhotoData?.dataUrl || '',
         foto_hash: state.avistamentoPhotoData?.hash || '',
         embedding: state.avistamentoPhotoData?.embedding || null,

@@ -643,7 +643,8 @@ const Auth = (() => {
 
   function validateEmail(email) {
     if (!email || typeof email !== 'string') throw new Error('E-mail é obrigatório.');
-    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // RFC 5321 simplificado: exige TLD com pelo menos 2 letras (rejeita "test@a.b")
+    const regex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
     if (!regex.test(email.trim())) throw new Error('E-mail inválido.');
   }
 
