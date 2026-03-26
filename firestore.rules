@@ -22,11 +22,7 @@ service cloud.firestore {
       ];
     }
 
-    function suspiciousAdminFields() {
-      return ['suspiciousFlag', 'suspiciousReason', 'flaggedByUid'];
-    }
-
-    function canCreateAlert() {
+function canCreateAlert() {
       return isOwner(request.resource.data)
         && !request.resource.data.keys().hasAny(hashFields());
     }
