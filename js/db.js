@@ -24,7 +24,7 @@ const DB = (() => {
   const COLLECTIONS = TABLES;
 
   const CACHE_PREFIX = 'encontrePet_cache_';
-  const CACHE_TTL = 5 * 60 * 1000;
+  const CACHE_TTL = 24 * 60 * 60 * 1000; // 24h — permite uso offline significativo
 
   let useFirestore = false;
   const isLocalDevHost = (() => {
@@ -1287,7 +1287,8 @@ const DB = (() => {
     watchNotificacoes,
     watchPetsAtivos,
     getLinkedSightings,
-    createSighterAuthorization
+    createSighterAuthorization,
+    processSyncQueue
   };
 
 })();

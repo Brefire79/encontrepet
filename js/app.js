@@ -185,6 +185,15 @@ const App = (() => {
     // 9. Notification badge polling (every 60s)
     startNotifPolling();
 
+    // 10. Feedback de conectividade
+    window.addEventListener('online', () => {
+      showToast('Conexão restaurada. Sincronizando...', 'success');
+      if (typeof DB !== 'undefined' && DB.processSyncQueue) DB.processSyncQueue();
+    });
+    window.addEventListener('offline', () => {
+      showToast('Você está offline. Alterações serão salvas localmente.', 'warning');
+    });
+
     // Registrar estado inicial no histórico para que popstate funcione ao voltar para home
     history.replaceState({ page: 'home' }, '');
 
@@ -1899,7 +1908,11 @@ const App = (() => {
       });
 
       incrementarContadorPerfil('pets_reportados');
-      showToast('✅ Alerta salvo!', 'success');
+      if (createdAlert?._localOnly) {
+        showToast('⚠️ Sem conexão. Alerta salvo localmente e enviado quando voltar online.', 'warning');
+      } else {
+        showToast('✅ Alerta salvo!', 'success');
+      }
       navigateTo('cadastro-completo');
       // Revogar objectURL antes de limpar (evita leak)
       if (state.photoData?._objectUrl) URL.revokeObjectURL(state.photoData._objectUrl);
@@ -2343,7 +2356,11 @@ const App = (() => {
         startPostSubmitDuplicatePipeline('avistamento', createdAlert.id, state.avistamentoPhotoData);
       }
 
-      showToast(I18n.t('toast.sighting_thanks'), 'success');
+      if (createdAlert?._localOnly) {
+        showToast('⚠️ Sem conexão. Avistamento salvo localmente e enviado quando voltar online.', 'warning');
+      } else {
+        showToast(I18n.t('toast.sighting_thanks'), 'success');
+      }
       incrementarContadorPerfil('avistamentos_count');
       clearPhoto('avistamento');
       navigateTo('home');
