@@ -661,6 +661,16 @@ const App = (() => {
         });
         hideLoading();
         showToast(I18n.t('toast.profile_saved'), 'success');
+
+        // Propagar telefone novo para todos os alert_privado do usuário (em background)
+        if (telefone) {
+          const normalized = Security.validatePhoneBR(telefone)?.normalized || telefone;
+          const myReports = DB.getMyReports();
+          for (const r of myReports) {
+            const col = (r._reportType || r.type) === 'pet_perdido' ? 'pets_perdidos' : 'avistamentos';
+            DB.patchPrivateAlertPhone(col, r.id, normalized).catch(() => {});
+          }
+        }
       } catch (err) {
         hideLoading();
         showToast(err.message, 'error');

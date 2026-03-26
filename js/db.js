@@ -445,8 +445,9 @@ const DB = (() => {
 
     // Salvar dados PRIVADOS em collection separada (LGPD)
     if (result?.id) {
+      const profilePhone = Auth.getUserData?.()?.profile?.telefone || '';
       await savePrivateAlertData('pets_perdidos', result.id, {
-        contato_telefone: Security.sanitizePhone(data.contato_telefone || ''),
+        contato_telefone: Security.sanitizePhone(data.contato_telefone || profilePhone),
         contato_email: Security.sanitizeEmail(data.contato_email || Auth.getUserData?.()?.email || ''),
         contato_nome: Security.sanitize(data.contato_nome || ''),
         endereco_privado: Security.sanitize(data.endereco || ''),
@@ -648,8 +649,9 @@ const DB = (() => {
         } catch (e) { /* não bloqueia o salvamento */ }
       }
 
+      const sighterProfilePhone = Auth.getUserData?.()?.profile?.telefone || '';
       await savePrivateAlertData('avistamentos', result.id, {
-        contato_telefone: Security.sanitizePhone(data.contato || ''),
+        contato_telefone: Security.sanitizePhone(data.contato || sighterProfilePhone),
         contato_email: Security.sanitizeEmail(Auth.getUserData?.()?.email || ''),
         reportado_por: Security.sanitize(data.reportado_por || Auth.getUserData?.()?.nome || ''),
         endereco_privado: Security.sanitize(data.endereco || ''),
@@ -850,6 +852,26 @@ const DB = (() => {
       localStorage.setItem('encontrePet_privateData', JSON.stringify(queue));
       console.log('[DB] Dados privados salvos localmente (LGPD):', docId);
     } catch (e) { /* localStorage full */ }
+  }
+
+  /**
+   * Atualiza apenas o telefone de contato em alert_privado sem sobrescrever outros campos.
+   * Chamado quando o usuário salva um novo telefone no perfil.
+   * @param {string} colecao - 'pets_perdidos' ou 'avistamentos'
+   * @param {string} alertId - ID do documento público
+   * @param {string} telefone - número normalizado
+   */
+  async function patchPrivateAlertPhone(colecao, alertId, telefone) {
+    const docId = `${colecao}_${alertId}`;
+    if (!useFirestore) return;
+    try {
+      const db = FirebaseConfig.getDB();
+      await db.collection(TABLES.ALERT_PRIVADO).doc(docId).update({
+        contato_telefone: Security.sanitizePhone(telefone)
+      });
+    } catch (e) {
+      console.warn('[DB] patchPrivateAlertPhone falhou:', docId, e.message);
+    }
   }
 
   /**
@@ -1288,7 +1310,8 @@ const DB = (() => {
     watchPetsAtivos,
     getLinkedSightings,
     createSighterAuthorization,
-    processSyncQueue
+    processSyncQueue,
+    patchPrivateAlertPhone
   };
 
 })();
