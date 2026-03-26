@@ -549,7 +549,14 @@ const App = (() => {
     document.getElementById('menu-logout')?.addEventListener('click', async () => {
       closeSideMenu();
       if (confirm('Deseja sair da sua conta?')) {
-        Auth.logout();
+        try {
+          Auth.logout();
+        } catch (err) {
+          console.error('[App] Erro no logout:', err);
+          // Forçar limpeza local mesmo se logout falhar
+          Security.clearSession();
+          window.location.reload();
+        }
       }
     });
 
@@ -624,16 +631,18 @@ const App = (() => {
   // ====== PROFILE ======
 
   function setupProfilePage() {
-    document.getElementById('btn-save-profile')?.addEventListener('click', async () => {
-      try {
-        const telefone = document.getElementById('profile-edit-phone').value.trim();
-        if (telefone) {
-          const phoneResult = Security.validatePhoneBR(telefone);
-          if (!phoneResult.valid) {
-            showToast(I18n.t('validation.phone_invalid'), 'error');
-            return;
-          }
+    document.getElementById('btn-save-profile')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const telefone = document.getElementById('profile-edit-phone').value.trim();
+      if (telefone) {
+        const phoneResult = Security.validatePhoneBR(telefone);
+        if (!phoneResult.valid) {
+          showToast(I18n.t('validation.phone_invalid'), 'error');
+          return;
         }
+      }
+      setButtonLoading(btn, true);
+      try {
         showLoading('Salvando perfil...');
         await Auth.updateProfile({
           nome: document.getElementById('profile-edit-name').value.trim(),
@@ -645,17 +654,21 @@ const App = (() => {
       } catch (err) {
         hideLoading();
         showToast(err.message, 'error');
+      } finally {
+        setButtonLoading(btn, false);
       }
     });
 
     // Alterar senha
-    document.getElementById('btn-change-password')?.addEventListener('click', async () => {
+    document.getElementById('btn-change-password')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
       const current = document.getElementById('current-password')?.value;
       const newPass = document.getElementById('new-password')?.value;
       const newPass2 = document.getElementById('new-password2')?.value;
 
       if (newPass !== newPass2) { showToast(I18n.t('toast.passwords_mismatch'), 'error'); return; }
 
+      setButtonLoading(btn, true);
       try {
         showLoading('Alterando senha...');
         await Auth.changePassword(current, newPass);
@@ -667,6 +680,8 @@ const App = (() => {
       } catch (err) {
         hideLoading();
         showToast(err.message, 'error');
+      } finally {
+        setButtonLoading(btn, false);
       }
     });
   }
@@ -769,7 +784,9 @@ const App = (() => {
       radiusLabel.textContent = radiusSlider.value + 'm';
     });
 
-    document.getElementById('btn-save-privacy')?.addEventListener('click', async () => {
+    document.getElementById('btn-save-privacy')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setButtonLoading(btn, true);
       try {
         showLoading('Salvando...');
         await Auth.updateSecuritySettings({
@@ -783,6 +800,8 @@ const App = (() => {
       } catch (err) {
         hideLoading();
         showToast(err.message, 'error');
+      } finally {
+        setButtonLoading(btn, false);
       }
     });
   }
@@ -1929,6 +1948,8 @@ const App = (() => {
       return;
     }
 
+    const btn = document.getElementById('btn-salvar-completo');
+    setButtonLoading(btn, true);
     showLoading('Salvando...');
     try {
       const sexo = document.querySelector('input[name="sexo-pet"]:checked')?.value || '';
@@ -1947,6 +1968,8 @@ const App = (() => {
     } catch (err) {
       hideLoading();
       showToast(I18n.t('toast.save_error'), 'error');
+    } finally {
+      setButtonLoading(btn, false);
     }
   }
 
