@@ -1,5 +1,5 @@
 /**
- * Encontre Pet - Database Layer v1.0.0
+ * Encontre Pet - Database Layer v1.1.0
  * Modo DUAL: Firebase Firestore (principal) + REST API (fallback)
  * 
  * Estratégia:
