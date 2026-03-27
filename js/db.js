@@ -915,8 +915,29 @@ const DB = (() => {
     return await create(TABLES.NOTIFICACOES, Security.sanitizeObject(enriched));
   }
 
-  async function listarNotificacoes(page = 1) {
-    return await list(TABLES.NOTIFICACOES, { limit: 200 });
+  async function listarNotificacoes() {
+    // Firestore rules exigem where por firebase_uid — sem filtro o list é negado
+    const firebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+    const uid = Auth.getUID();
+    if (useFirestore && (firebaseUid || uid)) {
+      try {
+        const db = FirebaseConfig.getDB();
+        const field = firebaseUid ? 'destinatario_firebase_uid' : 'destinatario_uid';
+        const value = firebaseUid || uid;
+        const snapshot = await db.collection(TABLES.NOTIFICACOES)
+          .where(field, '==', value)
+          .limit(200)
+          .get();
+        const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        return { data, total: data.length };
+      } catch (err) {
+        console.warn('[DB] listarNotificacoes Firestore falhou:', err.message);
+      }
+    }
+    const restResult = await apiList(TABLES.NOTIFICACOES, { limit: 200 });
+    if (restResult) return restResult;
+    console.warn('[DB] Sem dados disponíveis para notificacoes');
+    return { data: [], total: 0 };
   }
 
   async function marcarNotificacaoLida(notifId) {
