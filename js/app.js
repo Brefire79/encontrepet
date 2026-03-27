@@ -183,8 +183,12 @@ const App = (() => {
     handleDeepLink();
     window.addEventListener('hashchange', handleDeepLink);
 
-    // 9. Notification badge polling (every 60s)
-    startNotifPolling();
+    // 9. Notification badge polling — aguarda auth Firebase antes de abrir listener
+    if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.waitForAuthUID) {
+      FirebaseConfig.waitForAuthUID(5000).then(() => startNotifPolling());
+    } else {
+      startNotifPolling();
+    }
 
     // 10. Feedback de conectividade
     window.addEventListener('online', () => {
