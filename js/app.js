@@ -2505,6 +2505,7 @@ const App = (() => {
             </div>`;
         } else {
           if (isLoggedIn) {
+            const jaEnviou = localStorage.getItem(`sc_${petId}_${Auth.getUID()}`);
             contactBanner = `
               <div class="contact-cta-banner">
                 <div class="contact-cta-header">
@@ -2512,8 +2513,9 @@ const App = (() => {
                   <span>${I18n.t('details.found_this_pet')}</span>
                 </div>
                 <div class="contact-cta-actions">
-                  <button class="btn-tutor-contact btn-cta-big" id="btn-tutor-contact">
-                    <i class="fas fa-envelope"></i> ${I18n.t('details.request_contact')}
+                  <button class="btn-tutor-contact btn-cta-big" id="btn-tutor-contact" ${jaEnviou ? 'disabled' : ''}>
+                    <i class="fas ${jaEnviou ? 'fa-check-circle' : 'fa-mobile-alt'}"></i>
+                    ${jaEnviou ? 'Número enviado ao tutor ✓' : 'Avisar o tutor (informar meu número)'}
                   </button>
                 </div>
               </div>`;
@@ -2598,87 +2600,9 @@ const App = (() => {
         setTimeout(() => showMatchedPetBanner(name, '-'), 100);
       });
 
-      // Bind "Ver contato do tutor" button
-      document.getElementById('btn-tutor-contact')?.addEventListener('click', async () => {
-        const btn = document.getElementById('btn-tutor-contact');
-        if (!btn || btn.classList.contains('loading')) return;
-        btn.classList.add('loading');
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18n.t('details.loading_contact')}`;
-        try {
-          const result = await getTutorContact(petId);
-          const safeName  = Security.sanitize(result?.nome || '');
-          const safePhone = Security.sanitizePhone(result?.telefone || '');
-          const safeEmail = Security.sanitizeEmail(result?.email || '');
-
-          const contactDiv = document.getElementById('tutor-contact-result');
-
-          if (safePhone || safeEmail) {
-            // Tem contato real → exibir e desabilitar botão
-            if (contactDiv) {
-              contactDiv.classList.remove('hidden');
-              contactDiv.innerHTML = `
-                <h4><i class="fas fa-user"></i> ${I18n.t('details.tutor_info')}</h4>
-                ${safeName ? `<p><strong>${safeName}</strong></p>` : ''}
-                ${safePhone ? `<p><i class="fas fa-phone"></i> ${safePhone}</p>
-                  <div class="tutor-contact-actions">
-                    <button class="btn-whatsapp btn-small" data-action="whatsapp" data-phone="${safePhone}" data-name="${Security.sanitize(name)}"><i class="fab fa-whatsapp"></i> WhatsApp</button>
-                    <button class="btn-phone btn-small" data-action="call" data-phone="${safePhone}"><i class="fas fa-phone"></i> Ligar</button>
-                  </div>` : ''}
-                ${safeEmail ? `<p><i class="fas fa-envelope"></i> ${safeEmail}</p>` : ''}`;
-            }
-            btn.innerHTML = `<i class="fas fa-check-circle"></i> ${I18n.t('details.contact_revealed')}`;
-            btn.disabled = true;
-
-            // LGPD: Log do acesso ao contato
-            try {
-              await DB.criarNotificacao({
-                tipo: 'contato_solicitado',
-                pet_id: petId,
-                pet_nome: name,
-                solicitante_uid: Auth.getUID(),
-                mensagem: `Contato do tutor de "${name}" foi visualizado`,
-                data: new Date().toISOString(),
-                lida: false,
-                destinatario_uid: pet.owner_uid || ''
-              });
-            } catch (e) { /* silencioso */ }
-
-          } else if (safeName) {
-            // Só tem nome, sem telefone/email
-            if (contactDiv) {
-              contactDiv.classList.remove('hidden');
-              contactDiv.innerHTML = `
-                <h4><i class="fas fa-user"></i> ${I18n.t('details.tutor_info')}</h4>
-                <p><strong>${safeName}</strong></p>
-                <p style="color:var(--text-muted);font-size:0.85rem;margin-top:4px;">
-                  <i class="fas fa-info-circle"></i> ${
-                    result?.emailSent
-                      ? I18n.t('details.email_sent_to_tutor')
-                      : I18n.t('details.tutor_no_phone')
-                  }
-                </p>`;
-            }
-            showToast(
-              result?.emailSent ? I18n.t('details.email_sent_to_tutor') : I18n.t('details.tutor_no_phone'),
-              result?.emailSent ? 'success' : 'warning'
-            );
-            btn.innerHTML = `<i class="fas fa-envelope"></i> ${I18n.t('details.contact_tutor')}`;
-
-          } else {
-            // Sem nome nem contato — verificar se email foi enviado ao tutor
-            if (result?.emailSent) {
-              showToast(I18n.t('details.email_sent_to_tutor'), 'success');
-            } else {
-              showToast(I18n.t('details.no_contact'), 'warning');
-            }
-            btn.innerHTML = `<i class="fas fa-envelope"></i> ${I18n.t('details.contact_tutor')}`;
-          }
-        } catch (err) {
-          console.error('[App] getTutorContact error:', err);
-          showToast(I18n.t('details.contact_error'), 'error');
-          btn.innerHTML = `<i class="fas fa-envelope"></i> ${I18n.t('details.contact_tutor')}`;
-        }
-        btn.classList.remove('loading');
+      // Bind "Avisar o tutor" button — abre modal para o avistador digitar seu número
+      document.getElementById('btn-tutor-contact')?.addEventListener('click', () => {
+        showSighterContactModal(petId, pet, name);
       });
 
       // Set back button to return to originating page
@@ -2889,6 +2813,120 @@ const App = (() => {
    *  3. Log LGPD client-side
    *  4. Notificar tutor
    */
+  /**
+   * Abre modal para o avistador informar seu celular ao tutor.
+   * O número é enviado via notificação — sem precisar ler alert_privado do tutor.
+   * O tutor recebe o número + link direto para WhatsApp.
+   * A ação fica gravada em localStorage para evitar duplicatas.
+   */
+  function showSighterContactModal(petId, pet, petNome) {
+    // Checar se já enviou
+    const uid = Auth.getUID();
+    const storageKey = `sc_${petId}_${uid}`;
+    if (localStorage.getItem(storageKey)) {
+      showToast('Você já enviou seu número para este tutor.', 'info');
+      return;
+    }
+
+    // Pre-preencher com telefone do perfil se disponível
+    const profilePhone = Auth.getUserData()?.profile?.telefone || '';
+
+    const modal = document.createElement('div');
+    modal.id = 'sighter-contact-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,0.5)';
+    modal.innerHTML = `
+      <div style="width:100%;max-width:480px;background:#fff;border-radius:16px 16px 0 0;padding:24px;animation:slideUp 0.3s ease">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h3 style="margin:0;font-size:1.1rem"><i class="fas fa-mobile-alt" style="color:var(--primary)"></i> Avisar o tutor</h3>
+          <button id="sighter-modal-close" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#888">&times;</button>
+        </div>
+        <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:16px">
+          Informe seu celular. O tutor de <strong>${Security.sanitize(petNome)}</strong> receberá uma notificação com seu número para entrar em contato.
+        </p>
+        <div class="form-group">
+          <label class="form-label"><i class="fas fa-phone"></i> Seu celular (WhatsApp)</label>
+          <input type="tel" id="sighter-phone-input" class="form-control" placeholder="(11) 99999-9999"
+            value="${Security.sanitize(profilePhone)}" maxlength="20" inputmode="tel" autocomplete="tel">
+          <div id="sighter-phone-error" style="color:var(--error);font-size:0.82rem;margin-top:4px;display:none"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:20px">
+          <button id="sighter-modal-cancel" class="btn-secondary" style="flex:1">Cancelar</button>
+          <button id="sighter-modal-submit" class="btn-primary" style="flex:2">
+            <i class="fas fa-paper-plane"></i> Enviar meu número
+          </button>
+        </div>
+        <p style="font-size:0.75rem;color:var(--text-muted);margin-top:12px;text-align:center">
+          <i class="fas fa-shield-alt"></i> Seu número só será visível ao tutor deste pet.
+        </p>
+      </div>`;
+
+    document.body.appendChild(modal);
+
+    const close = () => modal.remove();
+    document.getElementById('sighter-modal-close').onclick = close;
+    document.getElementById('sighter-modal-cancel').onclick = close;
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+    document.getElementById('sighter-modal-submit').addEventListener('click', async () => {
+      const input = document.getElementById('sighter-phone-input');
+      const errEl = document.getElementById('sighter-phone-error');
+      const rawPhone = input.value.trim();
+      const phoneResult = Security.validatePhoneBR(rawPhone);
+
+      if (!phoneResult.valid) {
+        errEl.textContent = 'Número inválido. Use o formato (11) 99999-9999.';
+        errEl.style.display = 'block';
+        input.focus();
+        return;
+      }
+      errEl.style.display = 'none';
+
+      const submitBtn = document.getElementById('sighter-modal-submit');
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+
+      try {
+        const sighterNome = Security.sanitize(Auth.getUserData()?.displayName || 'Avistador');
+        const phone = phoneResult.normalized || rawPhone;
+        const cleanPhone = phone.replace(/\D/g, '');
+        const waMsg = encodeURIComponent(`Olá! Vi o alerta do pet "${petNome}" no Encontre Pet e quero ajudar. Pode entrar em contato comigo.`);
+        const waLink = `https://wa.me/55${cleanPhone}?text=${waMsg}`;
+
+        await DB.criarNotificacao({
+          tipo: 'avistamento_contato',
+          pet_id: petId,
+          pet_nome: Security.sanitize(petNome),
+          sighter_nome: sighterNome,
+          sighter_phone: phone,
+          sighter_wa_link: waLink,
+          mensagem: `${sighterNome} viu "${Security.sanitize(petNome)}" e quer entrar em contato: ${phone}`,
+          data: new Date().toISOString(),
+          lida: false,
+          destinatario_uid: pet.owner_uid || '',
+          destinatario_firebase_uid: pet.owner_firebase_uid || ''
+        });
+
+        // Guardar no localStorage para não duplicar
+        localStorage.setItem(storageKey, new Date().toISOString());
+
+        // Atualizar botão na tela de detalhes
+        const btn = document.getElementById('btn-tutor-contact');
+        if (btn) {
+          btn.innerHTML = '<i class="fas fa-check-circle"></i> Número enviado ao tutor ✓';
+          btn.disabled = true;
+        }
+
+        close();
+        showToast('Seu número foi enviado! O tutor entrará em contato.', 'success');
+      } catch (err) {
+        console.error('[App] showSighterContactModal error:', err);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar meu número';
+        showToast('Erro ao enviar. Tente novamente.', 'error');
+      }
+    });
+  }
+
   async function getTutorContact(petId) {
     const myFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
 
@@ -3161,9 +3199,10 @@ const App = (() => {
 
       container.innerHTML = notifs.map(n => {
         const tipoConfig = {
-          match_ia:          { icon: 'fa-robot',         cls: 'match',   titulo: I18n.t('notif.match_title') },
-          contato_solicitado:{ icon: 'fa-hands-helping', cls: 'contact', titulo: '👋 Alguém quer contato!' },
-          avistamento:       { icon: 'fa-eye',           cls: 'alert',   titulo: '👁️ Avistamento registrado' }
+          match_ia:           { icon: 'fa-robot',         cls: 'match',   titulo: I18n.t('notif.match_title') },
+          contato_solicitado: { icon: 'fa-hands-helping', cls: 'contact', titulo: '👋 Alguém quer contato!' },
+          avistamento:        { icon: 'fa-eye',           cls: 'alert',   titulo: '👁️ Avistamento registrado' },
+          avistamento_contato:{ icon: 'fa-mobile-alt',    cls: 'contact', titulo: '📱 Avistador quer entrar em contato!' }
         }[n.tipo] || { icon: 'fa-bell', cls: 'alert', titulo: I18n.t('notif.notification') };
 
         const petNome = n.pet_nome ? `<div class="notif-pet-name"><i class="fas fa-paw"></i> ${Security.sanitize(n.pet_nome)}</div>` : '';
@@ -3171,6 +3210,19 @@ const App = (() => {
         const viewLink = petId
           ? `<button class="notif-view-btn" data-pet-id="${petId}"><i class="fas fa-eye"></i> Ver pet</button>`
           : '';
+
+        // Botões de contato direto para avistamento_contato
+        const contactActions = n.tipo === 'avistamento_contato' && n.sighter_phone ? `
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+            <a href="${Security.sanitize(n.sighter_wa_link || '')}" target="_blank" rel="noopener"
+               class="btn-whatsapp btn-small" style="text-decoration:none">
+              <i class="fab fa-whatsapp"></i> WhatsApp
+            </a>
+            <a href="tel:${Security.sanitize(n.sighter_phone.replace(/\D/g,''))}"
+               class="btn-phone btn-small" style="text-decoration:none">
+              <i class="fas fa-phone"></i> Ligar
+            </a>
+          </div>` : '';
 
         return `
         <div class="notif-item ${!n.lida ? 'unread notif-flash' : ''}" data-nid="${n.id}">
@@ -3182,6 +3234,7 @@ const App = (() => {
             ${petNome}
             <div class="notif-desc">${Security.sanitize(n.mensagem || '')}</div>
             ${n.similaridade ? `<div style="color:var(--success);font-weight:700;font-size:0.85rem">${I18n.t('notif.similarity', {pct: n.similaridade})}</div>` : ''}
+            ${contactActions}
             <div class="notif-time">${getTimeAgo(n.created_at)}</div>
             ${viewLink}
           </div>
