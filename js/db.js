@@ -1198,19 +1198,22 @@ const DB = (() => {
     const docId = `${sighterFirebaseUid}_${petId}`;
     try {
       const db = FirebaseConfig.getDB();
-      const ref = db.collection('sighter_authorizations').doc(docId);
-      const snap = await ref.get();
-      if (!snap.exists) {
-        await ref.set({
-          sighter_firebase_uid: sighterFirebaseUid,
-          pet_id: petId,
-          pet_owner_firebase_uid: petOwnerFirebaseUid || '',
-          sighting_id: sightingId || '',
-          created_at: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      }
+      // Tenta criar diretamente sem get() prévio — get() falha com permission-denied
+      // quando o doc não existe (resource é null nas rules). Se o doc já existir,
+      // o set() recebe permission-denied em "update" (update: false nas rules),
+      // o que é aceitável: a autorização já está presente.
+      await db.collection('sighter_authorizations').doc(docId).set({
+        sighter_firebase_uid: sighterFirebaseUid,
+        pet_id: petId,
+        pet_owner_firebase_uid: petOwnerFirebaseUid || '',
+        sighting_id: sightingId || '',
+        created_at: firebase.firestore.FieldValue.serverTimestamp()
+      });
     } catch (err) {
-      console.warn('[DB] createSighterAuthorization error:', err.message);
+      // permission-denied = doc já existe (update bloqueado pelas rules) → OK
+      if (err.code !== 'permission-denied') {
+        console.warn('[DB] createSighterAuthorization error:', err.message);
+      }
     }
   }
 
