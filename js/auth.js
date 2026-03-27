@@ -1,5 +1,5 @@
 /**
- * Encontre Pet - Authentication System v1.0.0
+ * Encontre Pet - Authentication System v1.1.0
  * Login, Cadastro, Perfil - Auth LOCAL (SHA-256 + sessão)
  * Perfis salvos em: Firestore (principal) + REST API (fallback)
  * 

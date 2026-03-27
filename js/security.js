@@ -1,5 +1,5 @@
 /**
- * Encontre Pet - Security Module v1.0.0
+ * Encontre Pet - Security Module v1.1.0
  * Proteção de dados, hash de senhas (SHA-256), ofuscação de localização,
  * sanitização, rate limiting e controle de privacidade
  * 

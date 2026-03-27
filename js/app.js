@@ -1,5 +1,5 @@
 /**
- * Encontre Pet - App Principal v1.0.0
+ * Encontre Pet - App Principal v1.1.0
  * Integração: Auth (REST) + Security + AI Vision + Navegação
  * 100% sem Firebase, usa REST API local
  */
@@ -202,7 +202,7 @@ const App = (() => {
     // Registrar estado inicial no histórico para que popstate funcione ao voltar para home
     history.replaceState({ page: 'home' }, '');
 
-    console.log('🐾 Encontre Pet v1.0.0 inicializado!');
+    console.log('🐾 Encontre Pet v1.1.0 inicializado!');
   }
 
   /**
