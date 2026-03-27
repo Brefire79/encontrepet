@@ -28,3 +28,9 @@ test/
 # Build (projeto é estático — sem build)
 dist/
 build/
+
+# Claude Code sessions
+.claude/
+
+# Firebase debug
+firebase-debug.log

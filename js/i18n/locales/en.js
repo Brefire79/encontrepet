@@ -246,7 +246,16 @@ window.I18nLocales.en = {
   'details.contact_error': 'Error loading tutor contact',
   'details.email_tutor': 'Send Email to Owner',
   'details.tutor_no_phone': 'Owner found but no phone registered.',
+  'details.email_sent_to_tutor': 'No contact available. We notified the owner by email!',
   'details.whatsapp_msg': 'Hi! I saw the Encontre Pet alert about "{name}". I have information!',
+  'details.linked_sightings_title': 'Sightings of Your Pet',
+  'details.no_linked_sightings': 'No sightings linked to this pet yet.',
+  'details.contact_sighter': 'View reporter contact',
+  'details.sighter_info': 'Reporter Contact',
+  'details.sighter_no_contact': 'Reporter has no contact registered.',
+  'details.email_sent_to_sighter': 'No contact available. We notified the reporter by email!',
+  'details.match_score': 'Compatibility',
+  'details.sighting_date': 'Sighting date',
 
   // — Notifications —
   'notif.title': 'Notifications',

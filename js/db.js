@@ -24,7 +24,7 @@ const DB = (() => {
   const COLLECTIONS = TABLES;
 
   const CACHE_PREFIX = 'encontrePet_cache_';
-  const CACHE_TTL = 5 * 60 * 1000;
+  const CACHE_TTL = 24 * 60 * 60 * 1000; // 24h — permite uso offline significativo
 
   let useFirestore = false;
   const isLocalDevHost = (() => {
@@ -445,10 +445,11 @@ const DB = (() => {
 
     // Salvar dados PRIVADOS em collection separada (LGPD)
     if (result?.id) {
+      const profilePhone = Auth.getUserData?.()?.profile?.telefone || '';
       await savePrivateAlertData('pets_perdidos', result.id, {
-        contato_telefone: Security.sanitizePhone(data.contato_telefone || ''),
-        // Email nunca vem no payload público — lê do Auth como fonte primária (S-06)
+        contato_telefone: Security.sanitizePhone(data.contato_telefone || profilePhone),
         contato_email: Security.sanitizeEmail(data.contato_email || Auth.getUserData?.()?.email || ''),
+        contato_nome: Security.sanitize(data.contato_nome || ''),
         endereco_privado: Security.sanitize(data.endereco || ''),
         latitude_privada: data.latitude || 0,
         longitude_privada: data.longitude || 0
@@ -634,13 +635,36 @@ const DB = (() => {
 
     // Salvar dados PRIVADOS em collection separada (LGPD)
     if (result?.id) {
+      // Se o avistamento está vinculado a um pet, buscar o dono do pet
+      // para permitir acesso cruzado via Firestore Rules (sem Cloud Function)
+      const linkedPetId = record.pet_perdido_id || record.matchedLostPetId || '';
+      let linkedPetOwnerFirebaseUid = '';
+      if (linkedPetId && useFirestore) {
+        try {
+          const db = FirebaseConfig.getDB();
+          const petDoc = await db.collection(TABLES.PETS).doc(linkedPetId).get();
+          if (petDoc.exists) {
+            linkedPetOwnerFirebaseUid = petDoc.data().owner_firebase_uid || '';
+          }
+        } catch (e) { /* não bloqueia o salvamento */ }
+      }
+
+      const sighterProfilePhone = Auth.getUserData?.()?.profile?.telefone || '';
       await savePrivateAlertData('avistamentos', result.id, {
-        contato_telefone: Security.sanitizePhone(data.contato || ''),
-        contato_email: '',
+        contato_telefone: Security.sanitizePhone(data.contato || sighterProfilePhone),
+        contato_email: Security.sanitizeEmail(Auth.getUserData?.()?.email || ''),
+        reportado_por: Security.sanitize(data.reportado_por || Auth.getUserData?.()?.nome || ''),
         endereco_privado: Security.sanitize(data.endereco || ''),
         latitude_privada: data.latitude || 0,
-        longitude_privada: data.longitude || 0
+        longitude_privada: data.longitude || 0,
+        linked_pet_owner_firebase_uid: linkedPetOwnerFirebaseUid
       });
+
+      // Criar autorização imutável para que o avistador possa ler
+      // os dados privados do pet (Firestore Rules verificam este doc)
+      if (linkedPetId && linkedPetOwnerFirebaseUid) {
+        await createSighterAuthorization(linkedPetId, linkedPetOwnerFirebaseUid, result.id).catch(() => {});
+      }
     }
 
     // Upload Storage em background (fire-and-forget) — não bloqueia o retorno
@@ -794,6 +818,8 @@ const DB = (() => {
       owner_uid: Auth.getUID(),
       contato_telefone: privateData.contato_telefone || '',
       contato_email: privateData.contato_email || '',
+      contato_nome: privateData.contato_nome || '',
+      reportado_por: privateData.reportado_por || '',
       endereco_privado: privateData.endereco_privado || '',
       latitude_privada: privateData.latitude_privada || 0,
       longitude_privada: privateData.longitude_privada || 0,
@@ -801,6 +827,10 @@ const DB = (() => {
       alert_id: alertId,
       createdAt: new Date().toISOString()
     };
+    // Campo necessário para a Firestore Rule permitir ao tutor ler alert_privado do avistamento
+    if (privateData.linked_pet_owner_firebase_uid !== undefined) {
+      payload.linked_pet_owner_firebase_uid = privateData.linked_pet_owner_firebase_uid || '';
+    }
 
     if (useFirestore) {
       try {
@@ -822,6 +852,26 @@ const DB = (() => {
       localStorage.setItem('encontrePet_privateData', JSON.stringify(queue));
       console.log('[DB] Dados privados salvos localmente (LGPD):', docId);
     } catch (e) { /* localStorage full */ }
+  }
+
+  /**
+   * Atualiza apenas o telefone de contato em alert_privado sem sobrescrever outros campos.
+   * Chamado quando o usuário salva um novo telefone no perfil.
+   * @param {string} colecao - 'pets_perdidos' ou 'avistamentos'
+   * @param {string} alertId - ID do documento público
+   * @param {string} telefone - número normalizado
+   */
+  async function patchPrivateAlertPhone(colecao, alertId, telefone) {
+    const docId = `${colecao}_${alertId}`;
+    if (!useFirestore) return;
+    try {
+      const db = FirebaseConfig.getDB();
+      await db.collection(TABLES.ALERT_PRIVADO).doc(docId).update({
+        contato_telefone: Security.sanitizePhone(telefone)
+      });
+    } catch (e) {
+      console.warn('[DB] patchPrivateAlertPhone falhou:', docId, e.message);
+    }
   }
 
   /**
@@ -1132,6 +1182,82 @@ const DB = (() => {
    * @param {Function} onChange - callback(docs[])
    * @returns {Function} unsubscribe
    */
+  /**
+   * Cria documento de autorização imutável para que o avistador possa
+   * ler os dados privados (alert_privado) do pet vinculado.
+   * Documento ID: {sighterFirebaseUid}_{petId} — determinístico, sem duplicatas.
+   * As Firestore Rules verificam a existência deste documento.
+   * @param {string} petId - ID do pet perdido
+   * @param {string} petOwnerFirebaseUid - Firebase UID do tutor
+   * @param {string} sightingId - ID do avistamento que originou a autorização
+   */
+  async function createSighterAuthorization(petId, petOwnerFirebaseUid, sightingId) {
+    if (!useFirestore || !petId) return;
+    const sighterFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+    if (!sighterFirebaseUid) return;
+    const docId = `${sighterFirebaseUid}_${petId}`;
+    try {
+      const db = FirebaseConfig.getDB();
+      const ref = db.collection('sighter_authorizations').doc(docId);
+      const snap = await ref.get();
+      if (!snap.exists) {
+        await ref.set({
+          sighter_firebase_uid: sighterFirebaseUid,
+          pet_id: petId,
+          pet_owner_firebase_uid: petOwnerFirebaseUid || '',
+          sighting_id: sightingId || '',
+          created_at: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    } catch (err) {
+      console.warn('[DB] createSighterAuthorization error:', err.message);
+    }
+  }
+
+  /**
+   * Busca avistamentos vinculados a um pet perdido (para o tutor ver quem avistou).
+   * Combina sightings linkados por pet_perdido_id e por matchedLostPetId (AI ≥92%).
+   * @param {string} petId - ID do pet perdido
+   * @returns {Promise<Array>} Lista de avistamentos vinculados, ordenados por data desc
+   */
+  async function getLinkedSightings(petId) {
+    if (!useFirestore || !petId) return [];
+    try {
+      const db = FirebaseConfig.getDB();
+      // Query 1: vinculados manualmente (pet_perdido_id)
+      const snap1 = await db.collection(TABLES.AVISTAMENTOS)
+        .where('pet_perdido_id', '==', petId)
+        .limit(20)
+        .get();
+      // Query 2: vinculados por AI match (matchedLostPetId)
+      const snap2 = await db.collection(TABLES.AVISTAMENTOS)
+        .where('matchedLostPetId', '==', petId)
+        .limit(20)
+        .get();
+      // Merge sem duplicatas
+      const seen = new Set();
+      const results = [];
+      for (const snap of [snap1, snap2]) {
+        for (const doc of snap.docs) {
+          if (!seen.has(doc.id)) {
+            seen.add(doc.id);
+            results.push({ id: doc.id, ...doc.data() });
+          }
+        }
+      }
+      // Ordenar por data desc
+      results.sort((a, b) => {
+        const tA = a.created_at?.toMillis?.() || new Date(a.data_avistamento || 0).getTime();
+        const tB = b.created_at?.toMillis?.() || new Date(b.data_avistamento || 0).getTime();
+        return tB - tA;
+      });
+      return results;
+    } catch (err) {
+      console.error('[DB] getLinkedSightings error:', err);
+      return [];
+    }
+  }
+
   function watchPetsAtivos(onChange) {
     if (!useFirestore) return () => {};
     try {
@@ -1181,7 +1307,11 @@ const DB = (() => {
     clearCache,
     getStatus,
     watchNotificacoes,
-    watchPetsAtivos
+    watchPetsAtivos,
+    getLinkedSightings,
+    createSighterAuthorization,
+    processSyncQueue,
+    patchPrivateAlertPhone
   };
 
 })();

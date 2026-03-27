@@ -268,16 +268,20 @@ const Auth = (() => {
     const existing = await findByEmail(email);
     if (existing) throw new Error('Este e-mail já está cadastrado. Tente fazer login.');
 
-    // Gerar hash da senha (será salvo em senhas_usuarios via CF, não em usuarios)
+    // Gerar hash da senha
     const senhaHash = await Security.createPasswordHash(password);
 
     // Gerar UID
     const uid = generateUID();
 
-    // Dados do perfil — sem senha_hash (S-03: campo movido para senhas_usuarios)
+    // Dados do perfil
+    // senha_hash incluído como fallback para login cross-origin (hash SHA-256+salt).
+    // Idealmente ficaria em senhas_usuarios via CF (S-03), mas CF não está disponível
+    // no Spark plan, então vai no documento onde só usuários autenticados podem ler.
     const userData = {
       nome: Security.sanitize(displayName),
       email: Security.sanitizeEmail(email),
+      senha_hash: senhaHash,
       telefone: '',
       cidade: '',
       foto_perfil: '',
@@ -292,24 +296,20 @@ const Auth = (() => {
       ultimo_login: new Date().toISOString()
     };
 
-    // Salvar perfil público (Firestore → REST fallback)
+    // Salvar perfil (Firestore → REST fallback)
     const created = await createUser(uid, userData);
     const finalUID = created.id || uid;
 
-    // Salvar senha_hash em senhas_usuarios via Cloud Function (S-03)
-    // Nunca vai para o documento público de usuário
+    // Também salvar hash em localStorage para a sessão atual e tentar CF
+    localStorage.setItem(`_spk_${finalUID}`, senhaHash);
     try {
       const functions = FirebaseConfig.getFunctions?.();
       if (functions) {
         const savePass = functions.httpsCallable('saveUserPassword');
         await savePass({ uid: finalUID, senhaHash });
-      } else {
-        // Fallback local criptografado enquanto CF não disponível
-        localStorage.setItem(`_spk_${finalUID}`, senhaHash);
       }
     } catch (cfErr) {
-      console.warn('[Auth] saveUserPassword CF falhou, fallback local:', cfErr.message);
-      localStorage.setItem(`_spk_${finalUID}`, senhaHash);
+      console.warn('[Auth] saveUserPassword CF indisponível (Spark plan):', cfErr.message);
     }
 
     // Criar conta no Firebase Auth (necessário para recuperação de senha)
@@ -404,9 +404,15 @@ const Auth = (() => {
       }
     }
 
-    // Atualizar último login
+    // Atualizar último login + garantir senha_hash no Firestore (fallback cross-origin)
     try {
-      await updateUser(user.id, { ultimo_login: new Date().toISOString() });
+      const updates = { ultimo_login: new Date().toISOString() };
+      // Se Firebase Auth autenticou mas o doc não tem senha_hash, salvar agora
+      // Isso corrige contas antigas criadas antes deste fix
+      if (fbAuthOk && !user.senha_hash) {
+        updates.senha_hash = await Security.createPasswordHash(password);
+      }
+      await updateUser(user.id, updates);
     } catch {}
 
     // Criar sessão
@@ -446,19 +452,17 @@ const Auth = (() => {
       ultimo_login: new Date().toISOString()
     };
 
-    const created = await createUser(uid, userData);
-    const finalUID = created.id || uid;
-
+    // Visitante não é salvo no banco — apenas sessão local (evita acúmulo de registros)
     const token = Security.generateSessionToken();
-    Security.saveSession(finalUID, token, { nome: 'Visitante', email: '', is_anonymous: true });
+    Security.saveSession(uid, token, { nome: 'Visitante', email: '', is_anonymous: true });
 
     currentUser = {
-      uid: finalUID,
+      uid,
       email: '',
       displayName: 'Visitante',
       isAnonymous: true
     };
-    userProfile = { ...userData, id: finalUID };
+    userProfile = { ...userData, id: uid };
     notifyListeners('login', getUserData());
 
     return { success: true, user: currentUser };
@@ -471,16 +475,25 @@ const Auth = (() => {
     currentUser = null;
     userProfile = null;
     notifyListeners('logout', null);
+    // Invalidar token Firebase Auth para que onAuthStateChanged reflita o logout
+    if (typeof firebase !== 'undefined' && firebase.auth) {
+      firebase.auth().signOut().catch(() => {});
+    }
     console.log('[Auth] Usuário deslogado');
   }
 
   // ====== PERFIL ======
+
+  // Campos protegidos — usuários comuns nunca podem alterar (espelho do Firestore)
+  const PROTECTED_FIELDS = new Set(['role', 'status']);
 
   async function updateProfile(data) {
     if (!currentUser) throw new Error('Usuário não logado');
 
     const sanitized = {};
     for (const [key, value] of Object.entries(data)) {
+      // Impedir escalada de privilégio via role/status (Firestore também bloqueia)
+      if (!isAdmin() && PROTECTED_FIELDS.has(key)) continue;
       if (typeof value === 'string') {
         sanitized[key] = Security.sanitize(value);
       } else {
@@ -562,7 +575,11 @@ const Auth = (() => {
     }
 
     const novoHash = await Security.createPasswordHash(newPassword);
-    await updateProfile({ senha_hash: novoHash });
+    // Atualizar diretamente no Firestore (bypass do filtro de PROTECTED_FIELDS)
+    await updateUser(currentUser.uid, { senha_hash: novoHash });
+    userProfile = { ...userProfile, senha_hash: novoHash };
+    // Sincronizar localStorage para fallback cross-origin
+    localStorage.setItem(`_spk_${currentUser.uid}`, novoHash);
     return { success: true };
   }
 
@@ -578,13 +595,16 @@ const Auth = (() => {
 
   function getUserData() {
     if (!currentUser) return null;
+    const profile = userProfile ? { ...userProfile } : null;
+    // Nunca expor senha_hash pela API pública — campo interno de verificação
+    if (profile) delete profile.senha_hash;
     return {
       uid: currentUser.uid,
       email: currentUser.email || '',
       displayName: currentUser.displayName || 'Visitante',
-      photoURL: userProfile?.foto_perfil || '',
+      photoURL: profile?.foto_perfil || '',
       isAnonymous: isAnonymous(),
-      profile: userProfile
+      profile
     };
   }
 
@@ -610,17 +630,21 @@ const Auth = (() => {
   }
 
   /**
-   * Retorna o perfil completo do usuário (incluindo role)
+   * Retorna o perfil completo do usuário (incluindo role), sem dados sensíveis
    */
   function getProfile() {
-    return userProfile || null;
+    if (!userProfile) return null;
+    const profile = { ...userProfile };
+    delete profile.senha_hash; // nunca expor hash pela API pública
+    return profile;
   }
 
   // ====== VALIDAÇÕES ======
 
   function validateEmail(email) {
     if (!email || typeof email !== 'string') throw new Error('E-mail é obrigatório.');
-    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // RFC 5321 simplificado: exige TLD com pelo menos 2 letras (rejeita "test@a.b")
+    const regex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
     if (!regex.test(email.trim())) throw new Error('E-mail inválido.');
   }
 

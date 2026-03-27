@@ -246,7 +246,16 @@ window.I18nLocales.pt = {
   'details.contact_error': 'Erro ao buscar contato do tutor',
   'details.email_tutor': 'Enviar E-mail ao Tutor',
   'details.tutor_no_phone': 'Tutor encontrado mas sem telefone cadastrado.',
+  'details.email_sent_to_tutor': 'Sem contato disponível. Notificamos o tutor por e-mail!',
   'details.whatsapp_msg': 'Olá! Vi no Encontre Pet sobre "{name}". Tenho informações!',
+  'details.linked_sightings_title': 'Avistamentos do Seu Pet',
+  'details.no_linked_sightings': 'Nenhum avistamento vinculado a este pet ainda.',
+  'details.contact_sighter': 'Ver contato do avistador',
+  'details.sighter_info': 'Contato do Avistador',
+  'details.sighter_no_contact': 'Avistador sem contato cadastrado.',
+  'details.email_sent_to_sighter': 'Sem contato disponível. Notificamos o avistador por e-mail!',
+  'details.match_score': 'Compatibilidade',
+  'details.sighting_date': 'Data do avistamento',
 
   // — Notificações —
   'notif.title': 'Notificações',

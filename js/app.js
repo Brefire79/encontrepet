@@ -19,6 +19,7 @@ const App = (() => {
     matchedLostPetName: null,
     matchedScore: 0,
     matchedEngine: '',
+    matchedPetOwnerFirebaseUid: null,
     // Matching control
     isAnalyzing: false,
     _matchDebounceTimer: null,
@@ -184,6 +185,15 @@ const App = (() => {
 
     // 9. Notification badge polling (every 60s)
     startNotifPolling();
+
+    // 10. Feedback de conectividade
+    window.addEventListener('online', () => {
+      showToast('Conexão restaurada. Sincronizando...', 'success');
+      if (typeof DB !== 'undefined' && DB.processSyncQueue) DB.processSyncQueue();
+    });
+    window.addEventListener('offline', () => {
+      showToast('Você está offline. Alterações serão salvas localmente.', 'warning');
+    });
 
     // Registrar estado inicial no histórico para que popstate funcione ao voltar para home
     history.replaceState({ page: 'home' }, '');
@@ -549,7 +559,14 @@ const App = (() => {
     document.getElementById('menu-logout')?.addEventListener('click', async () => {
       closeSideMenu();
       if (confirm('Deseja sair da sua conta?')) {
-        Auth.logout();
+        try {
+          Auth.logout();
+        } catch (err) {
+          console.error('[App] Erro no logout:', err);
+          // Forçar limpeza local mesmo se logout falhar
+          Security.clearSession();
+          window.location.reload();
+        }
       }
     });
 
@@ -624,30 +641,54 @@ const App = (() => {
   // ====== PROFILE ======
 
   function setupProfilePage() {
-    document.getElementById('btn-save-profile')?.addEventListener('click', async () => {
+    document.getElementById('btn-save-profile')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const telefone = document.getElementById('profile-edit-phone').value.trim();
+      if (telefone) {
+        const phoneResult = Security.validatePhoneBR(telefone);
+        if (!phoneResult.valid) {
+          showToast(I18n.t('validation.phone_invalid'), 'error');
+          return;
+        }
+      }
+      setButtonLoading(btn, true);
       try {
         showLoading('Salvando perfil...');
         await Auth.updateProfile({
           nome: document.getElementById('profile-edit-name').value.trim(),
-          telefone: document.getElementById('profile-edit-phone').value.trim(),
+          telefone,
           cidade: document.getElementById('profile-edit-city').value.trim()
         });
         hideLoading();
         showToast(I18n.t('toast.profile_saved'), 'success');
+
+        // Propagar telefone novo para todos os alert_privado do usuário (em background)
+        if (telefone) {
+          const normalized = Security.validatePhoneBR(telefone)?.normalized || telefone;
+          const myReports = DB.getMyReports();
+          for (const r of myReports) {
+            const col = (r._reportType || r.type) === 'pet_perdido' ? 'pets_perdidos' : 'avistamentos';
+            DB.patchPrivateAlertPhone(col, r.id, normalized).catch(() => {});
+          }
+        }
       } catch (err) {
         hideLoading();
         showToast(err.message, 'error');
+      } finally {
+        setButtonLoading(btn, false);
       }
     });
 
     // Alterar senha
-    document.getElementById('btn-change-password')?.addEventListener('click', async () => {
+    document.getElementById('btn-change-password')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
       const current = document.getElementById('current-password')?.value;
       const newPass = document.getElementById('new-password')?.value;
       const newPass2 = document.getElementById('new-password2')?.value;
 
       if (newPass !== newPass2) { showToast(I18n.t('toast.passwords_mismatch'), 'error'); return; }
 
+      setButtonLoading(btn, true);
       try {
         showLoading('Alterando senha...');
         await Auth.changePassword(current, newPass);
@@ -659,6 +700,8 @@ const App = (() => {
       } catch (err) {
         hideLoading();
         showToast(err.message, 'error');
+      } finally {
+        setButtonLoading(btn, false);
       }
     });
   }
@@ -761,7 +804,9 @@ const App = (() => {
       radiusLabel.textContent = radiusSlider.value + 'm';
     });
 
-    document.getElementById('btn-save-privacy')?.addEventListener('click', async () => {
+    document.getElementById('btn-save-privacy')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setButtonLoading(btn, true);
       try {
         showLoading('Salvando...');
         await Auth.updateSecuritySettings({
@@ -775,6 +820,8 @@ const App = (() => {
       } catch (err) {
         hideLoading();
         showToast(err.message, 'error');
+      } finally {
+        setButtonLoading(btn, false);
       }
     });
   }
@@ -907,6 +954,7 @@ const App = (() => {
       if (!emailInput) return;
       const email = emailInput.value.trim();
       if (!email) { _showMsg(errorDiv, 'Informe seu e-mail.'); return; }
+      try { Auth.validateEmail(email); } catch (e) { _showMsg(errorDiv, e.message); return; }
 
       _hideMsg(errorDiv);
       _hideMsg(successDiv);
@@ -1212,7 +1260,12 @@ const App = (() => {
         DB.list(DB.TABLES.AVISTAMENTOS, { limit: 500 })
       ]);
 
-      adminData.users = (usersRes.data || []).sort((a, b) => {
+      adminData.users = (usersRes.data || []).map(u => {
+        // Nunca manter senha_hash em memória no contexto do painel admin
+        const clean = { ...u };
+        delete clean.senha_hash;
+        return clean;
+      }).sort((a, b) => {
         const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
         const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
         return tB - tA;
@@ -1720,6 +1773,7 @@ const App = (() => {
       state.matchedLostPetName = null;
       state.matchedScore = 0;
       state.matchedEngine = '';
+      state.matchedPetOwnerFirebaseUid = null;
       document.getElementById('foto-avistamento').value = '';
       document.getElementById('upload-preview-avistamento')?.classList.add('hidden');
       document.getElementById('upload-placeholder-avistamento')?.classList.remove('hidden');
@@ -1794,6 +1848,12 @@ const App = (() => {
     try {
       const tipo = document.querySelector('input[name="tipo-animal"]:checked')?.value || 'cao';
       const subtipo = tipo === 'outro' ? getSubtipoAnimal('perdido') : '';
+      if (tipo === 'outro' && !subtipo) {
+        hideLoading();
+        state.isLoading = false;
+        showToast('Informe qual tipo de animal.', 'error');
+        return;
+      }
       const cor = document.querySelector('input[name="cor-pet"]:checked')?.value || '';
       const porte = document.querySelector('input[name="porte-pet"]:checked')?.value || '';
 
@@ -1860,7 +1920,11 @@ const App = (() => {
       });
 
       incrementarContadorPerfil('pets_reportados');
-      showToast('✅ Alerta salvo!', 'success');
+      if (createdAlert?._localOnly) {
+        showToast('⚠️ Sem conexão. Alerta salvo localmente e enviado quando voltar online.', 'warning');
+      } else {
+        showToast('✅ Alerta salvo!', 'success');
+      }
       navigateTo('cadastro-completo');
       // Revogar objectURL antes de limpar (evita leak)
       if (state.photoData?._objectUrl) URL.revokeObjectURL(state.photoData._objectUrl);
@@ -1890,6 +1954,27 @@ const App = (() => {
     const lastReport = reports[reports.length - 1];
     if (!lastReport) { navigateTo('home'); return; }
 
+    // Validações antes de enviar
+    const emailTutor = document.getElementById('email-tutor')?.value.trim() || '';
+    if (emailTutor) {
+      try { Auth.validateEmail(emailTutor); } catch (e) {
+        showToast('E-mail de contato inválido.', 'error');
+        return;
+      }
+    }
+    const dataPerda = document.getElementById('data-perda')?.value || '';
+    if (dataPerda && new Date(dataPerda) > new Date()) {
+      showToast('A data de perda não pode ser no futuro.', 'error');
+      return;
+    }
+    const descricaoCompleta = document.getElementById('descricao-completa')?.value.trim() || '';
+    if (descricaoCompleta.length > 1000) {
+      showToast('Descrição muito longa (máximo 1000 caracteres).', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('btn-salvar-completo');
+    setButtonLoading(btn, true);
     showLoading('Salvando...');
     try {
       const sexo = document.querySelector('input[name="sexo-pet"]:checked')?.value || '';
@@ -1897,10 +1982,10 @@ const App = (() => {
         nome_pet: document.getElementById('nome-pet-completo')?.value.trim(),
         raca: document.getElementById('raca-completo')?.value.trim(),
         sexo,
-        data_perda: document.getElementById('data-perda')?.value,
-        descricao: document.getElementById('descricao-completa')?.value.trim(),
+        data_perda: dataPerda,
+        descricao: descricaoCompleta,
         contato_nome: document.getElementById('nome-tutor')?.value.trim(),
-        contato_email: document.getElementById('email-tutor')?.value.trim()
+        contato_email: emailTutor
       });
       hideLoading();
       showToast(I18n.t('toast.complete_done'), 'success');
@@ -1908,6 +1993,8 @@ const App = (() => {
     } catch (err) {
       hideLoading();
       showToast(I18n.t('toast.save_error'), 'error');
+    } finally {
+      setButtonLoading(btn, false);
     }
   }
 
@@ -2057,7 +2144,7 @@ const App = (() => {
           const emoji = match.totalScore >= 92 ? '🎉' : match.totalScore >= 75 ? '👀' : '🤔';
           const isLinked = state.matchedLostPetId === pet.id;
           return `
-            <div class="ai-match-item ${isLinked ? 'linked' : ''}" data-pet-id="${pet.id}" data-pet-name="${Security.sanitize(name)}" data-score="${match.totalScore}" data-engine="${engineUsed}">
+            <div class="ai-match-item ${isLinked ? 'linked' : ''}" data-pet-id="${pet.id}" data-pet-name="${Security.sanitize(name)}" data-score="${match.totalScore}" data-engine="${engineUsed}" data-owner-uid="${pet.owner_firebase_uid || ''}">
               ${pet.foto_comprimida ? `<img class="ai-match-photo" src="${fixCorruptedDataUrl(pet.foto_comprimida)}" alt="">` :
                 `<div class="ai-match-photo" style="display:flex;align-items:center;justify-content:center;background:var(--bg);"><i class="fas fa-paw" style="font-size:1.5rem;color:var(--text-muted)"></i></div>`}
               <div class="ai-match-info">
@@ -2095,6 +2182,7 @@ const App = (() => {
               state.matchedLostPetName = null;
               state.matchedScore = 0;
               state.matchedEngine = '';
+              state.matchedPetOwnerFirebaseUid = null;
               document.getElementById('matched-pet-banner')?.classList.add('hidden');
               item.classList.remove('linked');
               const btn = item.querySelector('[data-action="link"]');
@@ -2117,6 +2205,7 @@ const App = (() => {
               state.matchedLostPetName = petName;
               state.matchedScore = score;
               state.matchedEngine = engine;
+              state.matchedPetOwnerFirebaseUid = item.dataset.ownerUid || null;
               item.classList.add('linked');
               const btn = item.querySelector('[data-action="link"]');
               if (btn) {
@@ -2134,9 +2223,9 @@ const App = (() => {
           });
         });
 
-        if (matches.some(m => m.totalScore >= 92)) {
-          showToast(I18n.t('toast.match_found'), 'match');
-          for (const m of matches.filter(x => x.totalScore >= 92)) {
+        if (matches.some(m => m.totalScore >= 70)) {
+          if (matches.some(m => m.totalScore >= 92)) showToast(I18n.t('toast.match_found'), 'match');
+          for (const m of matches.filter(x => x.totalScore >= 70)) {
             try { await DB.criarNotificacao(AIMatch.generateMatchNotification(m, sightingData)); } catch (e) {}
           }
         }
@@ -2178,6 +2267,7 @@ const App = (() => {
       state.matchedLostPetName = null;
       state.matchedScore = 0;
       state.matchedEngine = '';
+      state.matchedPetOwnerFirebaseUid = null;
       banner.classList.add('hidden');
       document.querySelectorAll('.ai-match-item.linked').forEach(item => {
         item.classList.remove('linked');
@@ -2240,9 +2330,18 @@ const App = (() => {
 
       const telefonePublicoAtivoAv = document.getElementById('check-telefone-publico-avistamento')?.checked || false;
 
+      const tipoAv = document.querySelector('input[name="tipo-avistamento"]:checked')?.value || 'cao';
+      const subtipoAv = tipoAv === 'outro' ? getSubtipoAnimal('avistamento') : '';
+      if (tipoAv === 'outro' && !subtipoAv) {
+        hideLoading();
+        state.isLoading = false;
+        showToast('Informe qual tipo de animal.', 'error');
+        return;
+      }
+
       const payload = {
-        tipo_animal: document.querySelector('input[name="tipo-avistamento"]:checked')?.value || 'cao',
-        subtipo_animal: (document.querySelector('input[name="tipo-avistamento"]:checked')?.value === 'outro') ? getSubtipoAnimal('avistamento') : '',
+        tipo_animal: tipoAv,
+        subtipo_animal: subtipoAv,
         foto_comprimida: state.avistamentoPhotoData?.dataUrl || '',
         foto_hash: state.avistamentoPhotoData?.hash || '',
         embedding: state.avistamentoPhotoData?.embedding || null,
@@ -2272,7 +2371,36 @@ const App = (() => {
         startPostSubmitDuplicatePipeline('avistamento', createdAlert.id, state.avistamentoPhotoData);
       }
 
-      showToast(I18n.t('toast.sighting_thanks'), 'success');
+      // Notificar tutor quando avistamento é salvo com vinculação manual
+      // (o fluxo automático só dispara se score >= 70; vinculação manual não tem score)
+      if (state.matchedLostPetId && state.matchedPetOwnerFirebaseUid && !createdAlert?._localOnly) {
+        try {
+          await DB.criarNotificacao({
+            tipo: 'match_ia',
+            pet_perdido_id: state.matchedLostPetId,
+            avistamento_id: createdAlert?.id || '',
+            mensagem: `👀 Um avistamento foi vinculado manualmente ao seu pet perdido.`,
+            similaridade: state.matchedScore || 0,
+            lida: false,
+            owner_firebase_uid: state.matchedPetOwnerFirebaseUid,
+            destinatario_firebase_uid: state.matchedPetOwnerFirebaseUid,
+            data: new Date().toISOString()
+          });
+        } catch (_) {}
+      }
+
+      const linkedPetId = state.matchedLostPetId;
+      state.matchedLostPetId = null;
+      state.matchedLostPetName = null;
+      state.matchedScore = 0;
+      state.matchedEngine = '';
+      state.matchedPetOwnerFirebaseUid = null;
+
+      if (createdAlert?._localOnly) {
+        showToast('⚠️ Sem conexão. Avistamento salvo localmente e enviado quando voltar online.', 'warning');
+      } else {
+        showToast(I18n.t('toast.sighting_thanks'), 'success');
+      }
       incrementarContadorPerfil('avistamentos_count');
       clearPhoto('avistamento');
       navigateTo('home');
@@ -2460,6 +2588,7 @@ const App = (() => {
         state.matchedLostPetName = name;
         state.matchedScore = 0;
         state.matchedEngine = 'manual';
+        state.matchedPetOwnerFirebaseUid = displayPet.owner_firebase_uid || pet.owner_firebase_uid || null;
         navigateTo('avistamento');
         // Show banner after navigation
         setTimeout(() => showMatchedPetBanner(name, '-'), 100);
@@ -2511,21 +2640,33 @@ const App = (() => {
             } catch (e) { /* silencioso */ }
 
           } else if (safeName) {
-            // Só tem nome, sem telefone/email — mostrar aviso e não desabilitar
+            // Só tem nome, sem telefone/email
             if (contactDiv) {
               contactDiv.classList.remove('hidden');
               contactDiv.innerHTML = `
                 <h4><i class="fas fa-user"></i> ${I18n.t('details.tutor_info')}</h4>
                 <p><strong>${safeName}</strong></p>
                 <p style="color:var(--text-muted);font-size:0.85rem;margin-top:4px;">
-                  <i class="fas fa-info-circle"></i> Nenhum telefone cadastrado neste alerta.
+                  <i class="fas fa-info-circle"></i> ${
+                    result?.emailSent
+                      ? I18n.t('details.email_sent_to_tutor')
+                      : I18n.t('details.tutor_no_phone')
+                  }
                 </p>`;
             }
-            showToast(I18n.t('details.tutor_no_phone'), 'warning');
+            showToast(
+              result?.emailSent ? I18n.t('details.email_sent_to_tutor') : I18n.t('details.tutor_no_phone'),
+              result?.emailSent ? 'success' : 'warning'
+            );
             btn.innerHTML = `<i class="fas fa-envelope"></i> ${I18n.t('details.contact_tutor')}`;
 
           } else {
-            showToast(I18n.t('details.no_contact'), 'warning');
+            // Sem nome nem contato — verificar se email foi enviado ao tutor
+            if (result?.emailSent) {
+              showToast(I18n.t('details.email_sent_to_tutor'), 'success');
+            } else {
+              showToast(I18n.t('details.no_contact'), 'warning');
+            }
             btn.innerHTML = `<i class="fas fa-envelope"></i> ${I18n.t('details.contact_tutor')}`;
           }
         } catch (err) {
@@ -2546,6 +2687,11 @@ const App = (() => {
 
       hideLoading();
       navigateTo('detalhes');
+
+      // Se for o tutor, carregar avistamentos vinculados ao pet
+      if (isOwner) {
+        renderLinkedSightings(petId, name, container);
+      }
     } catch (err) {
       hideLoading();
       showToast(I18n.t('toast.details_error'), 'error');
@@ -2553,63 +2699,254 @@ const App = (() => {
   }
 
   /**
-   * Buscar contato do tutor via Cloud Function (LGPD-safe).
-   * Loga o acesso server-side para auditoria.
+   * Renderiza a seção de avistamentos vinculados para o tutor (dono do pet).
+   * Carrega assincronamente e exibe botão "Ver contato do avistador" para cada sighting.
    */
-  async function getTutorContact(petId) {
-    // 1. Tentar via Cloud Function (produção)
+  async function renderLinkedSightings(petId, petName, container) {
+    const body = container.querySelector('.detalhes-body');
+    if (!body) return;
+
+    const section = document.createElement('div');
+    section.className = 'detalhes-section linked-sightings-section';
+    section.innerHTML = `
+      <h4><i class="fas fa-eye"></i> ${I18n.t('details.linked_sightings_title')}</h4>
+      <div id="linked-sightings-list" class="linked-sightings-list">
+        <p class="linked-sightings-loading"><i class="fas fa-spinner fa-spin"></i></p>
+      </div>`;
+    body.appendChild(section);
+
     try {
-      const functions = FirebaseConfig.getFunctions?.();
-      if (functions) {
-        const callable = functions.httpsCallable('getTutorContact');
-        const result = await callable({ petId });
-        if (result?.data) return result.data;
+      const sightings = await DB.getLinkedSightings(petId);
+      const list = document.getElementById('linked-sightings-list');
+      if (!list) return;
+
+      if (!sightings.length) {
+        list.innerHTML = `<p class="empty-linked"><i class="fas fa-info-circle"></i> ${I18n.t('details.no_linked_sightings')}</p>`;
+        return;
+      }
+
+      list.innerHTML = sightings.map(s => {
+        const rawDate = s.data_avistamento || (s.created_at?.toDate ? s.created_at.toDate().toISOString() : '');
+        const date = rawDate ? new Date(rawDate).toLocaleDateString('pt-BR') : '';
+        const loc = Security.sanitize(s.endereco_publico || '');
+        const score = s.matchedScore ? `${Math.round(s.matchedScore)}%` : '';
+        const linkType = s.pet_perdido_id === petId ? 'manual' : 'ia';
+        const photoHtml = s.foto_comprimida && s.foto_comprimida.startsWith('data:image/')
+          ? `<img class="sighting-thumb" src="${s.foto_comprimida}" alt="">`
+          : `<div class="sighting-thumb-placeholder"><i class="fas fa-paw"></i></div>`;
+        return `
+          <div class="sighting-card" data-id="${s.id}">
+            ${photoHtml}
+            <div class="sighting-info">
+              ${date ? `<p class="sighting-meta"><i class="fas fa-calendar-alt"></i> ${date}</p>` : ''}
+              ${loc  ? `<p class="sighting-meta"><i class="fas fa-map-marker-alt"></i> ${loc}</p>` : ''}
+              ${score ? `<p class="sighting-meta sighting-score"><i class="fas fa-percent"></i> ${I18n.t('details.match_score')}: <strong>${score}</strong></p>` : ''}
+              ${linkType === 'manual' ? `<span class="sighting-badge badge-manual"><i class="fas fa-link"></i> Vinculado</span>` : `<span class="sighting-badge badge-ia"><i class="fas fa-robot"></i> AI Match</span>`}
+            </div>
+            <div class="sighting-contact-area">
+              <button class="btn-sighter-contact" data-sighting-id="${s.id}" data-pet-id="${petId}">
+                <i class="fas fa-comment-dots"></i> ${I18n.t('details.contact_sighter')}
+              </button>
+              <div class="sighter-contact-result hidden"></div>
+            </div>
+          </div>`;
+      }).join('');
+
+      // Bind botões de contato
+      list.querySelectorAll('.btn-sighter-contact').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          await handleContactSighter(btn, btn.dataset.sightingId, btn.dataset.petId, petName);
+        });
+      });
+    } catch (err) {
+      console.error('[App] renderLinkedSightings error:', err);
+      const list = document.getElementById('linked-sightings-list');
+      if (list) list.innerHTML = `<p class="empty-linked"><i class="fas fa-exclamation-circle"></i> ${I18n.t('details.contact_error')}</p>`;
+    }
+  }
+
+  /**
+   * Handler: tutor clica "Ver contato do avistador".
+   * Chama CF getSighterContact (LGPD-safe) e exibe o resultado.
+   */
+  async function handleContactSighter(btn, sightingId, petId, petName) {
+    if (!btn || btn.classList.contains('loading')) return;
+    btn.classList.add('loading');
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18n.t('details.loading_contact')}`;
+    try {
+      const result = await getSighterContact(sightingId, petId);
+      const safeName  = Security.sanitize(result?.nome || '');
+      const safePhone = Security.sanitizePhone(result?.telefone || '');
+      const safeEmail = Security.sanitizeEmail(result?.email || '');
+
+      const card = btn.closest('.sighting-card');
+      const resultDiv = card?.querySelector('.sighter-contact-result');
+      if (resultDiv) resultDiv.classList.remove('hidden');
+
+      if (safePhone || safeEmail) {
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="contact-revealed-box">
+              <p class="contact-revealed-label"><i class="fas fa-user"></i> ${I18n.t('details.sighter_info')}</p>
+              ${safeName ? `<p><strong>${safeName}</strong></p>` : ''}
+              ${safePhone ? `
+                <p><i class="fas fa-phone"></i> ${safePhone}</p>
+                <div class="tutor-contact-actions">
+                  <button class="btn-whatsapp btn-small" data-action="whatsapp" data-phone="${safePhone}" data-name="${Security.sanitize(petName)}">
+                    <i class="fab fa-whatsapp"></i> WhatsApp
+                  </button>
+                  <button class="btn-phone btn-small" data-action="call" data-phone="${safePhone}">
+                    <i class="fas fa-phone"></i> ${I18n.t('details.btn_call')}
+                  </button>
+                </div>` : ''}
+              ${safeEmail ? `<p><i class="fas fa-envelope"></i> ${safeEmail}</p>` : ''}
+            </div>`;
+        }
+        btn.innerHTML = `<i class="fas fa-check-circle"></i> ${I18n.t('details.contact_revealed')}`;
+        btn.disabled = true;
+      } else {
+        const msg = result?.emailSent
+          ? I18n.t('details.email_sent_to_sighter')
+          : I18n.t('details.sighter_no_contact');
+        if (resultDiv) {
+          resultDiv.innerHTML = `<p class="contact-fallback-msg"><i class="fas fa-info-circle"></i> ${msg}</p>`;
+        }
+        showToast(msg, result?.emailSent ? 'success' : 'warning');
+        btn.innerHTML = `<i class="fas fa-comment-dots"></i> ${I18n.t('details.contact_sighter')}`;
       }
     } catch (err) {
-      console.warn('[App] Cloud Function getTutorContact falhou, usando fallback Firestore:', err.message);
+      console.error('[App] getSighterContact error:', err);
+      showToast(I18n.t('details.contact_error'), 'error');
+      btn.innerHTML = `<i class="fas fa-comment-dots"></i> ${I18n.t('details.contact_sighter')}`;
     }
+    btn.classList.remove('loading');
+  }
 
-    // 2. Fallback: leitura direta da coleção alert_privado
-    // Nota: só funciona se o usuário for o próprio dono (regra S-01 corrigida).
-    // Não-donos chegarão aqui apenas se a Cloud Function falhou E eles são donos.
-    const privateData = await DB.getPrivateAlertData('pets_perdidos', petId);
-    if (privateData) {
-      // Log LGPD do acesso via fallback (S-04)
-      try {
-        await DB.criarNotificacao({
-          tipo: 'contato_acesso_fallback',
-          pet_id: petId,
-          solicitante_uid: Auth.getUID(),
-          solicitante_firebase_uid: Auth.getFirebaseUID?.() || '',
-          via: 'firestore_direto',
-          timestamp: new Date().toISOString(),
-          destinatario_uid: Auth.getUID()
-        });
-      } catch (_) { /* log nunca deve bloquear o fluxo */ }
+  /**
+   * Buscar contato do avistador via Firestore direto (sem Cloud Function).
+   * Acesso autorizado pelas Firestore Rules:
+   *   alert_privado do avistamento permite leitura se
+   *   linked_pet_owner_firebase_uid == request.auth.uid (tutor do pet).
+   */
+  async function getSighterContact(sightingId, petId) {
+    if (!sightingId) throw new Error('sightingId obrigatorio.');
 
-      return {
-        nome:     privateData.contato_nome     || '',
-        telefone: privateData.contato_telefone || '',
-        email:    privateData.contato_email    || ''
-      };
-    }
+    // Buscar avistamento público para notificação e fallback de nome
+    let sightingDoc = null;
+    try { sightingDoc = await DB.get('avistamentos', sightingId); } catch (_) {}
 
-    // 3. Último recurso: dados públicos do documento principal
-    // (cobre alertas criados antes do sistema alert_privado)
+    // Log LGPD client-side (create-only — rules permitem)
     try {
-      const petDoc = await DB.get('pets_perdidos', petId);
-      if (petDoc) {
-        const nome     = petDoc.contato_nome || '';
-        const telefone = petDoc.telefone_publico || petDoc.contato_telefone || '';
-        // contato_email não deve existir em documentos públicos (S-06) — usar apenas contato_email_publico
-        const email    = petDoc.contato_email_publico || '';
-        if (nome || telefone || email) {
-          return { nome, telefone, email };
-        }
+      const db = FirebaseConfig.getDB?.();
+      if (db) {
+        await db.collection('lgpd_access_log').add({
+          tipo: 'contato_avistador_acesso',
+          petId: petId || '',
+          sightingId,
+          tutorFirebaseUid: FirebaseConfig.getFirebaseUID?.() || '',
+          via: 'firestore_direto',
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
       }
     } catch (_) {}
 
-    throw new Error('Dados de contato não encontrados');
+    // Ler dados privados do avistador (rule verifica linked_pet_owner_firebase_uid)
+    const privateData = await DB.getPrivateAlertData('avistamentos', sightingId);
+    if (!privateData) throw new Error('Dados privados do avistamento não encontrados.');
+
+    // Notificar avistador que tutor acessou seu contato
+    if (sightingDoc?.owner_uid || sightingDoc?.owner_firebase_uid) {
+      try {
+        await DB.criarNotificacao({
+          tipo: 'contato_acessado_pelo_tutor',
+          pet_id: petId || '',
+          avistamento_id: sightingId,
+          mensagem: 'O tutor do pet acessou seu contato referente ao avistamento',
+          data: new Date().toISOString(),
+          lida: false,
+          destinatario_uid: sightingDoc.owner_uid || '',
+          destinatario_firebase_uid: sightingDoc.owner_firebase_uid || ''
+        });
+      } catch (_) {}
+    }
+
+    const telefone = privateData.contato_telefone || '';
+    const email    = privateData.contato_email    || '';
+    // Nome: primeiro do alert_privado (salvo no cadastro), depois do documento público
+    const nome     = privateData.reportado_por || sightingDoc?.reportado_por || '';
+    return { telefone, email, nome, available: !!(telefone || email) };
+  }
+
+  /**
+   * Buscar contato do tutor via Firestore direto (sem Cloud Function).
+   * Fluxo:
+   *  1. Criar autorização sighter→pet se ainda não existe
+   *  2. Ler alert_privado do pet (rule verifica sighter_authorizations/{uid}_{petId})
+   *  3. Log LGPD client-side
+   *  4. Notificar tutor
+   */
+  async function getTutorContact(petId) {
+    const myFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+
+    // Buscar pet uma única vez (reutilizado em todas as etapas)
+    let pet = null;
+    try { pet = await DB.get('pets_perdidos', petId); } catch (_) {}
+
+    // 1. Garantir que a autorização existe (permite a regra Firestore liberar a leitura)
+    if (pet?.owner_firebase_uid) {
+      try { await DB.createSighterAuthorization(petId, pet.owner_firebase_uid, null); } catch (_) {}
+    }
+
+    // 2. Ler dados privados do tutor (rule verifica sighter_authorizations)
+    let privateData = null;
+    try { privateData = await DB.getPrivateAlertData('pets_perdidos', petId); } catch (_) {}
+
+    if (!privateData) {
+      // Fallback: dados públicos do documento principal
+      if (pet) {
+        const nome     = pet.contato_nome || '';
+        const telefone = pet.telefone_publico || '';
+        const email    = pet.contato_email_publico || '';
+        if (nome || telefone || email) return { nome, telefone, email, available: !!(telefone || email) };
+      }
+      throw new Error('Dados de contato não encontrados');
+    }
+
+    // 3. Log LGPD client-side
+    try {
+      const db = FirebaseConfig.getDB?.();
+      if (db) {
+        await db.collection('lgpd_access_log').add({
+          tipo: 'contato_tutor_acesso',
+          petId,
+          requesterFirebaseUid: myFirebaseUid,
+          via: 'firestore_direto',
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    } catch (_) {}
+
+    // 4. Notificar tutor
+    if (pet?.owner_uid || pet?.owner_firebase_uid) {
+      try {
+        await DB.criarNotificacao({
+          tipo: 'contato_acessado',
+          pet_id: petId,
+          pet_nome: pet.nome_pet || 'Pet',
+          mensagem: `Alguém visualizou seu contato referente a "${pet.nome_pet || 'seu pet'}"`,
+          data: new Date().toISOString(),
+          lida: false,
+          destinatario_uid: pet.owner_uid || '',
+          destinatario_firebase_uid: pet.owner_firebase_uid || ''
+        });
+      } catch (_) {}
+    }
+
+    const telefone = privateData.contato_telefone || '';
+    const email    = privateData.contato_email || '';
+    // Nome: primeiro do alert_privado, depois do documento público do pet
+    const nome     = privateData.contato_nome || pet?.contato_nome || '';
+    return { telefone, email, nome, available: !!(telefone || email) };
   }
 
   function contactWhatsApp(phone, name) {

@@ -81,27 +81,24 @@ const Security = (() => {
       name: userData.nome || 'Visitante',
       email: userData.email || '',
       isAnonymous: userData.is_anonymous || false,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000) // 30 dias
+      createdAt: Date.now()
+      // Sem expiresAt — sessão dura apenas enquanto o app estiver aberto
     };
-    localStorage.setItem('encontrePet_session', JSON.stringify(session));
+    // sessionStorage: limpa ao fechar o app/aba — evita auto-login indesejado
+    sessionStorage.setItem('encontrePet_session', JSON.stringify(session));
+    // Remover sessão antiga do localStorage (migração)
+    localStorage.removeItem('encontrePet_session');
   }
 
   /**
-   * Recupera sessão do localStorage
-   * @returns {Object|null} Dados da sessão ou null se expirada
+   * Recupera sessão do sessionStorage (dura apenas enquanto o app está aberto)
+   * @returns {Object|null} Dados da sessão ou null se não existe
    */
   function getSession() {
     try {
-      const raw = localStorage.getItem('encontrePet_session');
+      const raw = sessionStorage.getItem('encontrePet_session');
       if (!raw) return null;
-      const session = JSON.parse(raw);
-      // Verificar expiração
-      if (session.expiresAt && Date.now() > session.expiresAt) {
-        clearSession();
-        return null;
-      }
-      return session;
+      return JSON.parse(raw);
     } catch {
       return null;
     }
@@ -111,7 +108,8 @@ const Security = (() => {
    * Limpa sessão (logout)
    */
   function clearSession() {
-    localStorage.removeItem('encontrePet_session');
+    sessionStorage.removeItem('encontrePet_session');
+    localStorage.removeItem('encontrePet_session'); // limpar legacy
   }
 
   // ====== SANITIZAÇÃO DE DADOS ======

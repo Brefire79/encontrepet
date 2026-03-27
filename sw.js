@@ -1,6 +1,6 @@
-// Encontre Pet - Service Worker v1.6.0
+// Encontre Pet - Service Worker v1.12.0
 // Estratégia: Cache First para assets, Network First para API e Firestore
-const CACHE_VERSION = 'encontre-pet-v1.6.0';
+const CACHE_VERSION = 'encontre-pet-v1.13.0';
 const DYNAMIC_CACHE = 'encontre-pet-dynamic-v1.0';
 const API_CACHE = 'encontre-pet-api-v1.0';
 
@@ -21,6 +21,9 @@ const STATIC_ASSETS = [
   '/js/ai-vision.js',
   '/js/db.js',
   '/js/app.js',
+  '/js/services/image-hash.js',
+  '/js/services/similarity.js',
+  '/js/components/ModalDuplicateCase.js',
   '/manifest.json'
 ];
 
@@ -82,7 +85,15 @@ self.addEventListener('fetch', event => {
     return; // Let browser handle Firestore connections directly
   }
 
-  // CDN assets (Firebase SDK, TensorFlow, Fonts) - Cache First (stale-while-revalidate)
+  // Font Awesome e Google Fonts — pass-through: browser usa style-src/font-src, não connect-src
+  // Interceptar via SW forçaria connect-src, que não inclui essas origens de UI
+  if (url.href.includes('cdn.jsdelivr.net') ||
+      url.href.includes('fonts.googleapis.com') ||
+      url.href.includes('fonts.gstatic.com')) {
+    return;
+  }
+
+  // CDN assets (Firebase SDK, TensorFlow) - Cache First (stale-while-revalidate)
   if (CDN_PATTERNS.some(pattern => request.url.includes(pattern))) {
     event.respondWith(cacheFirstCDN(request));
     return;
