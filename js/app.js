@@ -2930,7 +2930,8 @@ const App = (() => {
       submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
 
       try {
-        const sighterNome = Security.sanitize(Auth.getUserData()?.displayName || 'Avistador');
+        const rawNome = Auth.getUserData()?.displayName || 'Avistador';
+        const sighterNome = Security.sanitize(rawNome);
         const phone = phoneResult.normalized || rawPhone;
         const cleanPhone = phone.replace(/\D/g, '');
         const waMsg = encodeURIComponent(`Olá! Vi o alerta do pet "${petNome}" no Encontre Pet e quero ajudar. Pode entrar em contato comigo.`);
@@ -2939,11 +2940,11 @@ const App = (() => {
         await DB.criarNotificacao({
           tipo: 'avistamento_contato',
           pet_id: petId,
-          pet_nome: Security.sanitize(petNome),
-          sighter_nome: sighterNome,
+          pet_nome: petNome,
+          sighter_nome: rawNome,
           sighter_phone: phone,
           sighter_wa_link: waLink,
-          mensagem: `${sighterNome} viu "${Security.sanitize(petNome)}" e quer entrar em contato: ${phone}`,
+          mensagem: `${rawNome} viu «${petNome}» e quer entrar em contato: ${phone}`,
           data: new Date().toISOString(),
           lida: false,
           destinatario_uid: pet.owner_uid || '',
@@ -3019,7 +3020,7 @@ const App = (() => {
           tipo: 'contato_acessado',
           pet_id: petId,
           pet_nome: pet.nome_pet || 'Pet',
-          mensagem: `Alguém visualizou seu contato referente a "${pet.nome_pet || 'seu pet'}"`,
+          mensagem: `Alguém visualizou seu contato referente a «${pet.nome_pet || 'seu pet'}»`,
           data: new Date().toISOString(),
           lida: false,
           destinatario_uid: pet.owner_uid || '',
