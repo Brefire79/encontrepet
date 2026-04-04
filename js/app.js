@@ -344,6 +344,8 @@ const App = (() => {
           }
         }
       }
+      // Atualiza stat-pets no hero em tempo real
+      animateCounter('stat-pets', pets.length);
       _lastKnownFeedIds = currentIds;
     });
 
@@ -1282,8 +1284,8 @@ const App = (() => {
     if (!container) return;
     if (stories.length === 0) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-heart"></i>
-        <p>Nenhuma história de reencontro ainda.</p>
-        <p class="text-muted">Quando um pet for marcado como encontrado, ele aparecerá aqui!</p></div>`;
+        <p>${I18n.t('home.stories.empty')}</p>
+        <p class="text-muted">${I18n.t('home.stories.empty.hint')}</p></div>`;
       return;
     }
     container.innerHTML = stories.map(pet => {
