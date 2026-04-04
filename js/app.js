@@ -39,6 +39,7 @@ const App = (() => {
   let _lastKnownUnread = -1; // -1 = not yet loaded
   let _notifPollTimer = null;
   let _lastKnownFeedIds = null; // Set of IDs from the last feed check
+  let _lastKnownAvistamentosCount = -1; // -1 = not yet loaded
 
   /**
    * Plays a short, pleasant notification chime using Web Audio API.
@@ -163,6 +164,45 @@ const App = (() => {
     setTimeout(() => notif.close(), 10000);
   }
 
+  function showHomeSightingBanner(notif) {
+    const existing = document.getElementById('home-sighting-banner');
+    if (existing) existing.remove();
+
+    const petNome = notif.pet_nome || notif.pet_id || 'seu pet';
+    const tipo = notif.tipo === 'avistamento_contato' ? 'Contato de avistamento' : 'Possível avistamento';
+    const msg = notif.tipo === 'avistamento_contato'
+      ? `Alguém enviou o número de telefone sobre «${petNome}»!`
+      : `Possível combinação encontrada para «${petNome}»!`;
+
+    const banner = document.createElement('div');
+    banner.id = 'home-sighting-banner';
+    banner.setAttribute('role', 'alert');
+    banner.style.cssText = [
+      'position:fixed', 'bottom:80px', 'left:50%', 'transform:translateX(-50%)',
+      'background:#1a73e8', 'color:#fff', 'padding:14px 20px',
+      'border-radius:12px', 'box-shadow:0 4px 20px rgba(0,0,0,0.25)',
+      'display:flex', 'align-items:center', 'gap:12px',
+      'z-index:9999', 'max-width:92vw', 'font-size:14px',
+      'animation:fadeInUp 0.3s ease'
+    ].join(';');
+
+    banner.innerHTML = `
+      <span style="font-size:22px" aria-hidden="true">🐾</span>
+      <span><strong>${tipo}:</strong> ${msg}</span>
+      <button onclick="document.getElementById('btn-notificacoes')?.click();document.getElementById('home-sighting-banner')?.remove();"
+        style="background:rgba(255,255,255,0.25);border:none;color:#fff;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">
+        Ver detalhes
+      </button>
+      <button onclick="this.parentElement.remove();"
+        aria-label="Fechar"
+        style="background:none;border:none;color:#fff;cursor:pointer;font-size:18px;line-height:1;padding:4px">
+        ×
+      </button>`;
+
+    document.body.appendChild(banner);
+    setTimeout(() => { const b = document.getElementById('home-sighting-banner'); if (b) b.remove(); }, 12000);
+  }
+
   // ====== INICIALIZAÇÃO ======
 
   function init() {
@@ -269,6 +309,11 @@ const App = (() => {
           bellBtn.classList.add('notif-bell-flash');
           setTimeout(() => bellBtn.classList.remove('notif-bell-flash'), 40000);
         }
+        // Banner na home quando tutor recebe nova notificação de avistamento
+        if (state.currentPage === 'home') {
+          const newNotif = notifs.find(n => !n.lida && (n.tipo === 'match_ia' || n.tipo === 'avistamento_contato'));
+          if (newNotif) showHomeSightingBanner(newNotif);
+        }
       }
       _lastKnownUnread = unread;
     });
@@ -302,8 +347,26 @@ const App = (() => {
       _lastKnownFeedIds = currentIds;
     });
 
+    // --- Avistamentos em tempo real — atualiza stat-avistamentos no hero ---
+    const unsubAvistamentos = DB.watchAvistamentos((avistamentos) => {
+      const count = avistamentos.length;
+      if (_lastKnownAvistamentosCount >= 0 && count > _lastKnownAvistamentosCount) {
+        animateCounter('stat-avistamentos', count);
+        if (state.currentPage === 'home') {
+          const el = document.getElementById('stat-avistamentos');
+          if (el) {
+            el.classList.add('feed-card-flash');
+            setTimeout(() => el.classList.remove('feed-card-flash'), 3000);
+          }
+        }
+      } else if (_lastKnownAvistamentosCount < 0) {
+        animateCounter('stat-avistamentos', count);
+      }
+      _lastKnownAvistamentosCount = count;
+    });
+
     // Guardar unsubscribers para limpeza no logout
-    _notifPollTimer = { unsubNotif, unsubFeed };
+    _notifPollTimer = { unsubNotif, unsubFeed, unsubAvistamentos };
 
     // Fallback: se Firestore indisponível, onSnapshot retorna no-op e o badge
     // só atualiza quando o usuário navega — fazer uma checagem inicial manual
@@ -479,8 +542,10 @@ const App = (() => {
       if (_notifPollTimer) {
         try { _notifPollTimer.unsubNotif?.(); } catch {}
         try { _notifPollTimer.unsubFeed?.(); } catch {}
+        try { _notifPollTimer.unsubAvistamentos?.(); } catch {}
         _notifPollTimer = null;
       }
+      _lastKnownAvistamentosCount = -1;
       authScreen?.classList.remove('hidden');
       showAuthForm('login');
       updateAdminMenuVisibility();

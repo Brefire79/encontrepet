@@ -1321,6 +1321,23 @@ const DB = (() => {
     }
   }
 
+  function watchAvistamentos(onChange) {
+    if (!useFirestore) return () => {};
+    try {
+      const db = FirebaseConfig.getDB();
+      const unsubscribe = db.collection(TABLES.AVISTAMENTOS)
+        .limit(200)
+        .onSnapshot(
+          (snapshot) => onChange(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
+          (err) => console.error('[DB] watchAvistamentos error:', err)
+        );
+      return unsubscribe;
+    } catch (err) {
+      console.error('[DB] watchAvistamentos init error:', err);
+      return () => {};
+    }
+  }
+
   // API pública
   return {
     init,
@@ -1351,6 +1368,7 @@ const DB = (() => {
     getStatus,
     watchNotificacoes,
     watchPetsAtivos,
+    watchAvistamentos,
     getLinkedSightings,
     createSighterAuthorization,
     processSyncQueue,
