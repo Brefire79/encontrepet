@@ -20,6 +20,7 @@ const App = (() => {
     matchedScore: 0,
     matchedEngine: '',
     matchedPetOwnerFirebaseUid: null,
+    matchedPetOwnerUid: null,
     // Matching control
     isAnalyzing: false,
     _matchDebounceTimer: null,
@@ -72,6 +73,32 @@ const App = (() => {
    * Plays a softer, lower-pitched sound for general feed updates.
    * Single gentle tone (G4) at lower volume.
    */
+  /**
+   * Som urgente para quando o avistador envia o próprio contato ao tutor.
+   * Três tons ascendentes em sequência rápida — inconfundível.
+   */
+  function playContactAlertSound() {
+    try {
+      if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = _audioCtx;
+      const now = ctx.currentTime;
+      [523.25, 659.25, 783.99].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.28, now + i * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.12);
+        osc.stop(now + i * 0.12 + 0.35);
+      });
+    } catch (e) {
+      console.warn('[Sound] Contact alert sound failed:', e);
+    }
+  }
+
   function playFeedSound() {
     try {
       if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -217,9 +244,11 @@ const App = (() => {
       const myIds = DB.getMyReports()
         .filter(r => (r.type || r._reportType) === 'pet_perdido')
         .map(r => r.id);
+      const myFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
 
       const notifs = docs.filter(n =>
         (n.destinatario_uid && n.destinatario_uid === uid) ||
+        (myFirebaseUid && n.destinatario_firebase_uid && n.destinatario_firebase_uid === myFirebaseUid) ||
         (n.pet_perdido_id && myIds.includes(n.pet_perdido_id)) ||
         (n.pet_id && myIds.includes(n.pet_id))
       );
@@ -232,7 +261,9 @@ const App = (() => {
       }
 
       if (_lastKnownUnread >= 0 && unread > _lastKnownUnread) {
-        playNotificationSound();
+        const hasContactNotif = notifs.some(n => !n.lida && n.tipo === 'avistamento_contato');
+        if (hasContactNotif) playContactAlertSound();
+        else playNotificationSound();
         const bellBtn = document.getElementById('btn-notificacoes');
         if (bellBtn) {
           bellBtn.classList.add('notif-bell-flash');
@@ -300,7 +331,9 @@ const App = (() => {
 
       // Play sound + flash if there are NEW unread notifications
       if (_lastKnownUnread >= 0 && unread > _lastKnownUnread) {
-        playNotificationSound();
+        const hasContactNotif = notifs.some(n => !n.lida && n.tipo === 'avistamento_contato');
+        if (hasContactNotif) playContactAlertSound();
+        else playNotificationSound();
         // Flash the bell icon
         const bellBtn = document.getElementById('btn-notificacoes');
         if (bellBtn) {
@@ -1778,6 +1811,7 @@ const App = (() => {
       state.matchedScore = 0;
       state.matchedEngine = '';
       state.matchedPetOwnerFirebaseUid = null;
+      state.matchedPetOwnerUid = null;
       document.getElementById('foto-avistamento').value = '';
       document.getElementById('upload-preview-avistamento')?.classList.add('hidden');
       document.getElementById('upload-placeholder-avistamento')?.classList.remove('hidden');
@@ -2148,7 +2182,7 @@ const App = (() => {
           const emoji = match.totalScore >= 92 ? '🎉' : match.totalScore >= 75 ? '👀' : '🤔';
           const isLinked = state.matchedLostPetId === pet.id;
           return `
-            <div class="ai-match-item ${isLinked ? 'linked' : ''}" data-pet-id="${pet.id}" data-pet-name="${Security.sanitize(name)}" data-score="${match.totalScore}" data-engine="${engineUsed}" data-owner-uid="${pet.owner_firebase_uid || ''}">
+            <div class="ai-match-item ${isLinked ? 'linked' : ''}" data-pet-id="${pet.id}" data-pet-name="${Security.sanitize(name)}" data-score="${match.totalScore}" data-engine="${engineUsed}" data-owner-uid="${pet.owner_firebase_uid || ''}" data-owner-custom-uid="${pet.owner_uid || ''}">
               ${pet.foto_comprimida ? `<img class="ai-match-photo" src="${fixCorruptedDataUrl(pet.foto_comprimida)}" alt="">` :
                 `<div class="ai-match-photo" style="display:flex;align-items:center;justify-content:center;background:var(--bg);"><i class="fas fa-paw" style="font-size:1.5rem;color:var(--text-muted)"></i></div>`}
               <div class="ai-match-info">
@@ -2187,6 +2221,7 @@ const App = (() => {
               state.matchedScore = 0;
               state.matchedEngine = '';
               state.matchedPetOwnerFirebaseUid = null;
+              state.matchedPetOwnerUid = null;
               document.getElementById('matched-pet-banner')?.classList.add('hidden');
               item.classList.remove('linked');
               const btn = item.querySelector('[data-action="link"]');
@@ -2210,6 +2245,7 @@ const App = (() => {
               state.matchedScore = score;
               state.matchedEngine = engine;
               state.matchedPetOwnerFirebaseUid = item.dataset.ownerUid || null;
+              state.matchedPetOwnerUid = item.dataset.ownerCustomUid || null;
               item.classList.add('linked');
               const btn = item.querySelector('[data-action="link"]');
               if (btn) {
@@ -2229,9 +2265,8 @@ const App = (() => {
 
         if (matches.some(m => m.totalScore >= 70)) {
           if (matches.some(m => m.totalScore >= 92)) showToast(I18n.t('toast.match_found'), 'match');
-          for (const m of matches.filter(x => x.totalScore >= 70)) {
-            try { await DB.criarNotificacao(AIMatch.generateMatchNotification(m, sightingData)); } catch (e) {}
-          }
+          // Notificações serão criadas APÓS o avistamento ser salvo (handleReportarAvistamento)
+          // para garantir avistamento_id correto e evitar notificações de formulários não enviados.
         }
       } else {
         aiMatches.innerHTML = `<div class="ai-no-match"><i class="fas fa-search"></i><p>${I18n.t('sighting.ai.no_match')}</p></div>`;
@@ -2272,6 +2307,7 @@ const App = (() => {
       state.matchedScore = 0;
       state.matchedEngine = '';
       state.matchedPetOwnerFirebaseUid = null;
+      state.matchedPetOwnerUid = null;
       banner.classList.add('hidden');
       document.querySelectorAll('.ai-match-item.linked').forEach(item => {
         item.classList.remove('linked');
@@ -2356,10 +2392,14 @@ const App = (() => {
         telefone_publico_ativo: telefonePublicoAtivoAv,
         cor: document.getElementById('cor-avistamento')?.value || '',
         porte: document.getElementById('porte-avistamento')?.value || '',
-        // Vinculação opcional a pet perdido (match IA)
+        reportado_por: Auth.getUserData()?.displayName || '',
+        // Vinculação opcional a pet perdido (match IA ou manual)
+        pet_perdido_id: state.matchedLostPetId || '',
         matchedLostPetId: state.matchedLostPetId || '',
         matchedScore: state.matchedScore || 0,
-        matchedEngine: state.matchedEngine || ''
+        matchedEngine: state.matchedEngine || '',
+        // UID do dono do pet (auxilia linked_pet_owner_firebase_uid se Firestore falhar)
+        matchedPetOwnerFirebaseUid: state.matchedPetOwnerFirebaseUid || ''
       };
 
       // imageHash será gerado server-side pela Cloud Function
@@ -2375,19 +2415,21 @@ const App = (() => {
         startPostSubmitDuplicatePipeline('avistamento', createdAlert.id, state.avistamentoPhotoData);
       }
 
-      // Notificar tutor quando avistamento é salvo com vinculação manual
-      // (o fluxo automático só dispara se score >= 70; vinculação manual não tem score)
+      // Notificar tutor quando avistamento é salvo com vinculação (manual ou AI)
       if (state.matchedLostPetId && state.matchedPetOwnerFirebaseUid && !createdAlert?._localOnly) {
         try {
           await DB.criarNotificacao({
             tipo: 'match_ia',
             pet_perdido_id: state.matchedLostPetId,
             avistamento_id: createdAlert?.id || '',
-            mensagem: `👀 Um avistamento foi vinculado manualmente ao seu pet perdido.`,
+            mensagem: state.matchedScore > 0
+              ? `👀 Um animal com ${state.matchedScore}% de similaridade com seu pet foi avistado.`
+              : `👀 Um avistamento foi vinculado ao seu pet perdido.`,
             similaridade: state.matchedScore || 0,
             lida: false,
             owner_firebase_uid: state.matchedPetOwnerFirebaseUid,
             destinatario_firebase_uid: state.matchedPetOwnerFirebaseUid,
+            destinatario_uid: state.matchedPetOwnerUid || '',
             data: new Date().toISOString()
           });
         } catch (_) {}
@@ -2399,6 +2441,7 @@ const App = (() => {
       state.matchedScore = 0;
       state.matchedEngine = '';
       state.matchedPetOwnerFirebaseUid = null;
+      state.matchedPetOwnerUid = null;
 
       if (createdAlert?._localOnly) {
         showToast('⚠️ Sem conexão. Avistamento salvo localmente e enviado quando voltar online.', 'warning');
@@ -2595,6 +2638,7 @@ const App = (() => {
         state.matchedScore = 0;
         state.matchedEngine = 'manual';
         state.matchedPetOwnerFirebaseUid = displayPet.owner_firebase_uid || pet.owner_firebase_uid || null;
+        state.matchedPetOwnerUid = displayPet.owner_uid || pet.owner_uid || null;
         navigateTo('avistamento');
         // Show banner after navigation
         setTimeout(() => showMatchedPetBanner(name, '-'), 100);

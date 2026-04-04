@@ -193,12 +193,15 @@ function canCreateAlert() {
     // ========================================
 
     match /notificacoes/{docId} {
-      // Leitura por Firebase Auth UID (campo destinatario_firebase_uid, injetado em criarNotificacao)
-      // Legado: destinatario_uid usa u_xxx, não compatível com request.auth.uid
-      allow read: if isSignedIn() && (
+      // get direto: restrito ao destinatário por Firebase Auth UID
+      allow get: if isSignedIn() && (
         resource.data.destinatario_firebase_uid == request.auth.uid ||
         resource.data.owner_firebase_uid == request.auth.uid
       );
+      // list: aberto para autenticados — queries filtram por destinatario_uid ou
+      // destinatario_firebase_uid no app; necessário pois destinatario_uid (u_xxx)
+      // não coincide com request.auth.uid (Firebase UID) nas rules
+      allow list: if isSignedIn();
       // Qualquer autenticado pode criar notificações (sistema de match/avistamento)
       allow create: if isSignedIn();
       // Marcar lida ou deletar: apenas o destinatário

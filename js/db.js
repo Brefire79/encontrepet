@@ -593,7 +593,7 @@ const DB = (() => {
 
     // Documento PÚBLICO — sem dados sensíveis (LGPD)
     const record = {
-      pet_perdido_id: data.pet_perdido_id || '',
+      pet_perdido_id: data.pet_perdido_id || data.matchedLostPetId || '',
       tipo_animal: data.tipo_animal || 'cao',
       subtipo_animal: Security.sanitize(data.subtipo_animal || ''),
       foto_comprimida: data.foto_comprimida || '',
@@ -638,13 +638,15 @@ const DB = (() => {
       // Se o avistamento está vinculado a um pet, buscar o dono do pet
       // para permitir acesso cruzado via Firestore Rules (sem Cloud Function)
       const linkedPetId = record.pet_perdido_id || record.matchedLostPetId || '';
-      let linkedPetOwnerFirebaseUid = '';
+      // Fallback: UID passado diretamente pelo client quando disponível (evita falha se pet não tem o campo)
+      let linkedPetOwnerFirebaseUid = data.matchedPetOwnerFirebaseUid || '';
       if (linkedPetId && useFirestore) {
         try {
           const db = FirebaseConfig.getDB();
           const petDoc = await db.collection(TABLES.PETS).doc(linkedPetId).get();
           if (petDoc.exists) {
-            linkedPetOwnerFirebaseUid = petDoc.data().owner_firebase_uid || '';
+            // Preferir valor do Firestore; cair no fallback do client apenas se vazio
+            linkedPetOwnerFirebaseUid = petDoc.data().owner_firebase_uid || linkedPetOwnerFirebaseUid;
           }
         } catch (e) { /* não bloqueia o salvamento */ }
       }
@@ -916,19 +918,25 @@ const DB = (() => {
   }
 
   async function listarNotificacoes() {
-    // Firestore rules exigem where por firebase_uid — sem filtro o list é negado
     const firebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
     const uid = Auth.getUID();
     if (useFirestore && (firebaseUid || uid)) {
       try {
         const db = FirebaseConfig.getDB();
-        const field = firebaseUid ? 'destinatario_firebase_uid' : 'destinatario_uid';
-        const value = firebaseUid || uid;
-        const snapshot = await db.collection(TABLES.NOTIFICACOES)
-          .where(field, '==', value)
-          .limit(200)
-          .get();
-        const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        const merged = new Map();
+        // Query 1: por firebase_uid
+        if (firebaseUid) {
+          const snap1 = await db.collection(TABLES.NOTIFICACOES)
+            .where('destinatario_firebase_uid', '==', firebaseUid).limit(200).get();
+          snap1.docs.forEach(d => merged.set(d.id, { id: d.id, ...d.data() }));
+        }
+        // Query 2: por destinatario_uid (cobre UID mismatch entre sessões)
+        if (uid) {
+          const snap2 = await db.collection(TABLES.NOTIFICACOES)
+            .where('destinatario_uid', '==', uid).limit(200).get();
+          snap2.docs.forEach(d => merged.set(d.id, { id: d.id, ...d.data() }));
+        }
+        const data = [...merged.values()];
         return { data, total: data.length };
       } catch (err) {
         console.warn('[DB] listarNotificacoes Firestore falhou:', err.message);
@@ -1177,21 +1185,32 @@ const DB = (() => {
     if (!useFirestore || !uid) return () => {};
     try {
       const db = FirebaseConfig.getDB();
-      // Usar destinatario_firebase_uid (Firebase Auth UID) como campo primário (S-02)
-      // Firestore Rules validam por Firebase UID; u_xxx é campo legado
       const firebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
-      const queryField = firebaseUid ? 'destinatario_firebase_uid' : 'destinatario_uid';
-      const queryValue = firebaseUid || uid;
-      const unsubscribe = db.collection(TABLES.NOTIFICACOES)
-        .where(queryField, '==', queryValue)
+
+      // Mapa compartilhado para deduplicar resultados das duas queries
+      const merged = new Map();
+      const notify = () => onChange([...merged.values()]);
+
+      // Query 1: por destinatario_firebase_uid (Firebase Auth UID atual)
+      let unsub1 = () => {};
+      if (firebaseUid) {
+        unsub1 = db.collection(TABLES.NOTIFICACOES)
+          .where('destinatario_firebase_uid', '==', firebaseUid)
+          .onSnapshot(
+            snap => { snap.docs.forEach(d => merged.set(d.id, { id: d.id, ...d.data() })); notify(); },
+            err => console.warn('[DB] watchNotificacoes (firebase_uid) error:', err.message)
+          );
+      }
+
+      // Query 2: por destinatario_uid (u_xxx — cobre casos de UID mismatch entre sessões)
+      const unsub2 = db.collection(TABLES.NOTIFICACOES)
+        .where('destinatario_uid', '==', uid)
         .onSnapshot(
-          (snapshot) => {
-            const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            onChange(docs);
-          },
-          (err) => console.error('[DB] watchNotificacoes error:', err)
+          snap => { snap.docs.forEach(d => merged.set(d.id, { id: d.id, ...d.data() })); notify(); },
+          err => console.warn('[DB] watchNotificacoes (uid) error:', err.message)
         );
-      return unsubscribe;
+
+      return () => { unsub1(); unsub2(); };
     } catch (err) {
       console.error('[DB] watchNotificacoes init error:', err);
       return () => {};
