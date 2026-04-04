@@ -2931,11 +2931,7 @@ const App = (() => {
 
       try {
         const rawNome = Auth.getUserData()?.displayName || 'Avistador';
-        const sighterNome = Security.sanitize(rawNome);
         const phone = phoneResult.normalized || rawPhone;
-        const cleanPhone = phone.replace(/\D/g, '');
-        const waMsg = encodeURIComponent(`Olá! Vi o alerta do pet "${petNome}" no Encontre Pet e quero ajudar. Pode entrar em contato comigo.`);
-        const waLink = `https://wa.me/55${cleanPhone}?text=${waMsg}`;
 
         await DB.criarNotificacao({
           tipo: 'avistamento_contato',
@@ -2943,7 +2939,8 @@ const App = (() => {
           pet_nome: petNome,
           sighter_nome: rawNome,
           sighter_phone: phone,
-          sighter_wa_link: waLink,
+          // sighter_wa_link não é armazenado — URLs sofrem encoding em sanitizeObject.
+          // O link é construído em tempo de renderização a partir de sighter_phone.
           mensagem: `${rawNome} viu «${petNome}» e quer entrar em contato: ${phone}`,
           data: new Date().toISOString(),
           lida: false,
@@ -3257,17 +3254,26 @@ const App = (() => {
           : '';
 
         // Botões de contato direto para avistamento_contato
-        const contactActions = n.tipo === 'avistamento_contato' && n.sighter_phone ? `
+        // Link WhatsApp construído aqui — nunca armazenado no Firestore para evitar
+        // encoding duplo de URLs pelo sanitizeObject.
+        let contactActions = '';
+        if (n.tipo === 'avistamento_contato' && n.sighter_phone) {
+          const _clean = n.sighter_phone.replace(/\D/g, '');
+          const _waNum = _clean.startsWith('55') ? _clean : '55' + _clean;
+          const _waMsg = encodeURIComponent(`Olá! Sou o tutor de «${n.pet_nome || 'meu pet'}» no Encontre Pet. Vi que você quer entrar em contato!`);
+          const _waUrl = `https://wa.me/${_waNum}?text=${_waMsg}`;
+          contactActions = `
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-            <a href="${Security.sanitize(n.sighter_wa_link || '')}" target="_blank" rel="noopener"
+            <a href="${_waUrl}" target="_blank" rel="noopener noreferrer"
                class="btn-whatsapp btn-small" style="text-decoration:none">
               <i class="fab fa-whatsapp"></i> WhatsApp
             </a>
-            <a href="tel:${Security.sanitize(n.sighter_phone.replace(/\D/g,''))}"
+            <a href="tel:+${_waNum}"
                class="btn-phone btn-small" style="text-decoration:none">
               <i class="fas fa-phone"></i> Ligar
             </a>
-          </div>` : '';
+          </div>`;
+        }
 
         return `
         <div class="notif-item ${!n.lida ? 'unread notif-flash' : ''}" data-nid="${n.id}">
