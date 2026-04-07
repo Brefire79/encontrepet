@@ -163,13 +163,15 @@ function canCreateAlert() {
     }
 
     match /usuarios/{uid} {
-      // list: necessário para findByEmail (login/cadastro).
-      // Restringe ao máximo: apenas queries com limite 1 e pelo menos 1 filtro.
-      // Firestore não suporta projeção de campos via rules, então a app
-      // nunca deve expor o campo senha_hash retornado pela query.
-      // Limitação conhecida do Spark plan (sem CF para verificar senha server-side).
-      allow list: if isSignedIn()
-        && request.query.limit <= 1;
+      // list: necessário para findByEmail (login/cadastro) e painel admin.
+      // fsList() usa limit 200 por padrão — regra bloqueia queries acima disso para users normais.
+      // Admin (isFirestoreAdmin) lista sem restrição de limite.
+      // Limitação conhecida: sem Cloud Functions (Spark plan) não há como
+      // fazer projeção de campos ou mover senha_hash para collection protegida.
+      allow list: if isSignedIn() && (
+        isFirestoreAdmin() ||
+        request.query.limit <= 200
+      );
       // get direto por ID: próprio UID ou email do Firebase Auth bate com o doc
       allow get: if isSignedIn() && (
         uid == request.auth.uid ||
