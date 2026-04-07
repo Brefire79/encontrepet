@@ -61,6 +61,10 @@ const Security = (() => {
 
   // ====== SESSÃO & TOKEN ======
 
+  // Expiração: 30 dias em ms (sessão persistente — usuário não precisa relogar toda vez)
+  const SESSION_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
+  const SESSION_KEY = 'encontrePet_session';
+
   /**
    * Gera um token de sessão aleatório
    * @returns {string} Token seguro (64 chars hex)
@@ -72,7 +76,9 @@ const Security = (() => {
   }
 
   /**
-   * Salva sessão de forma segura no localStorage
+   * Salva sessão com expiração de 30 dias no localStorage.
+   * localStorage mantém o login entre abas e reinicializações do browser —
+   * essencial para um app de busca de pets usado sob estresse.
    */
   function saveSession(userId, token, userData) {
     const session = {
@@ -81,24 +87,39 @@ const Security = (() => {
       name: userData.nome || 'Visitante',
       email: userData.email || '',
       isAnonymous: userData.is_anonymous || false,
-      createdAt: Date.now()
-      // Sem expiresAt — sessão dura apenas enquanto o app estiver aberto
+      createdAt: Date.now(),
+      expiresAt: Date.now() + SESSION_EXPIRY_MS
     };
-    // sessionStorage: limpa ao fechar o app/aba — evita auto-login indesejado
-    sessionStorage.setItem('encontrePet_session', JSON.stringify(session));
-    // Remover sessão antiga do localStorage (migração)
-    localStorage.removeItem('encontrePet_session');
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    } catch (e) {
+      // Fallback para sessionStorage se localStorage estiver bloqueado (ex: Safari privado)
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    }
   }
 
   /**
-   * Recupera sessão do sessionStorage (dura apenas enquanto o app está aberto)
-   * @returns {Object|null} Dados da sessão ou null se não existe
+   * Recupera sessão do localStorage e valida expiração (30 dias).
+   * @returns {Object|null} Dados da sessão ou null se não existe/expirou
    */
   function getSession() {
     try {
-      const raw = sessionStorage.getItem('encontrePet_session');
+      const raw = localStorage.getItem(SESSION_KEY)
+               || sessionStorage.getItem(SESSION_KEY); // fallback legacy/Safari privado
       if (!raw) return null;
-      return JSON.parse(raw);
+      const session = JSON.parse(raw);
+      // Sessões antigas (sem expiresAt): migrar adicionando prazo de 30 dias
+      if (!session.expiresAt) {
+        session.expiresAt = Date.now() + SESSION_EXPIRY_MS;
+        try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
+        return session;
+      }
+      // Sessão expirada — limpar e forçar novo login
+      if (Date.now() > session.expiresAt) {
+        clearSession();
+        return null;
+      }
+      return session;
     } catch {
       return null;
     }
@@ -108,8 +129,8 @@ const Security = (() => {
    * Limpa sessão (logout)
    */
   function clearSession() {
-    sessionStorage.removeItem('encontrePet_session');
-    localStorage.removeItem('encontrePet_session'); // limpar legacy
+    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY); // limpar fallback/legacy
   }
 
   // ====== SANITIZAÇÃO DE DADOS ======

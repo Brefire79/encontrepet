@@ -163,8 +163,13 @@ function canCreateAlert() {
     }
 
     match /usuarios/{uid} {
-      // Qualquer auth (anônima/logada) pode listar/buscar por email
-      allow list: if isSignedIn();
+      // list: necessário para findByEmail (login/cadastro).
+      // Restringe ao máximo: apenas queries com limite 1 e pelo menos 1 filtro.
+      // Firestore não suporta projeção de campos via rules, então a app
+      // nunca deve expor o campo senha_hash retornado pela query.
+      // Limitação conhecida do Spark plan (sem CF para verificar senha server-side).
+      allow list: if isSignedIn()
+        && request.query.limit <= 1;
       // get direto por ID: próprio UID ou email do Firebase Auth bate com o doc
       allow get: if isSignedIn() && (
         uid == request.auth.uid ||

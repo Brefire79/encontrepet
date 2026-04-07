@@ -300,8 +300,7 @@ const Auth = (() => {
     const created = await createUser(uid, userData);
     const finalUID = created.id || uid;
 
-    // Também salvar hash em localStorage para a sessão atual e tentar CF
-    localStorage.setItem(`_spk_${finalUID}`, senhaHash);
+    // Tentar salvar hash na CF (segura, admin SDK) — não disponível no Spark plan
     try {
       const functions = FirebaseConfig.getFunctions?.();
       if (functions) {
@@ -311,6 +310,8 @@ const Auth = (() => {
     } catch (cfErr) {
       console.warn('[Auth] saveUserPassword CF indisponível (Spark plan):', cfErr.message);
     }
+    // NOTA DE SEGURANÇA: hash nunca salvo em localStorage (risco XSS).
+    // Fallback de verificação usa apenas user.senha_hash do Firestore.
 
     // Criar conta no Firebase Auth (necessário para recuperação de senha)
     if (typeof firebase !== 'undefined' && firebase.auth) {
@@ -386,12 +387,12 @@ const Auth = (() => {
           senhaCorreta = result.data?.valid === true;
         }
       } catch (cfErr) {
-        // Fallback: verificação local com hash em localStorage (usuários sem CF)
-        const localHash = localStorage.getItem(`_spk_${user.id}`) || user.senha_hash || '';
-        if (localHash) {
-          senhaCorreta = await Security.verifyPassword(password, localHash);
+        // Fallback: verificação via senha_hash no Firestore (não usa localStorage — risco XSS)
+        const storedHash = user.senha_hash || '';
+        if (storedHash) {
+          senhaCorreta = await Security.verifyPassword(password, storedHash);
         }
-        console.warn('[Auth] verifyUserPassword CF falhou, fallback local:', cfErr.message);
+        console.warn('[Auth] verifyUserPassword CF falhou, fallback Firestore:', cfErr.message);
       }
 
       if (!senhaCorreta) throw new Error('Senha incorreta. Tente novamente.');
@@ -404,15 +405,9 @@ const Auth = (() => {
       }
     }
 
-    // Atualizar último login + garantir senha_hash no Firestore (fallback cross-origin)
+    // Atualizar último login
     try {
-      const updates = { ultimo_login: new Date().toISOString() };
-      // Se Firebase Auth autenticou mas o doc não tem senha_hash, salvar agora
-      // Isso corrige contas antigas criadas antes deste fix
-      if (fbAuthOk && !user.senha_hash) {
-        updates.senha_hash = await Security.createPasswordHash(password);
-      }
-      await updateUser(user.id, updates);
+      await updateUser(user.id, { ultimo_login: new Date().toISOString() });
     } catch {}
 
     // Criar sessão
@@ -575,11 +570,18 @@ const Auth = (() => {
     }
 
     const novoHash = await Security.createPasswordHash(newPassword);
-    // Atualizar diretamente no Firestore (bypass do filtro de PROTECTED_FIELDS)
+    // Atualizar Firestore
     await updateUser(currentUser.uid, { senha_hash: novoHash });
     userProfile = { ...userProfile, senha_hash: novoHash };
-    // Sincronizar localStorage para fallback cross-origin
-    localStorage.setItem(`_spk_${currentUser.uid}`, novoHash);
+    // Sincronizar Firebase Auth (habilita recuperação de senha por e-mail)
+    if (typeof firebase !== 'undefined' && firebase.auth?.()?.currentUser) {
+      try {
+        await firebase.auth().currentUser.updatePassword(newPassword);
+        console.log('[Auth] ✅ Firebase Auth password atualizado.');
+      } catch (fbErr) {
+        console.warn('[Auth] Firebase Auth updatePassword falhou (re-autenticação pode ser necessária):', fbErr.code);
+      }
+    }
     return { success: true };
   }
 
