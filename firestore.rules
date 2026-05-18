@@ -12,17 +12,19 @@ service cloud.firestore {
       );
     }
 
+    // Campos de hash gerados SOMENTE por Cloud Functions (admin SDK).
+    // imageHashProcessed é um flag de status que o cliente pode definir
+    // como false na criação — não está na lista de bloqueio.
     function hashFields() {
       return [
         'imageHash',
         'imageHashAlgo',
         'imageHashVersion',
-        'imageHashCreatedAt',
-        'imageHashProcessed'
+        'imageHashCreatedAt'
       ];
     }
 
-function canCreateAlert() {
+    function canCreateAlert() {
       return isOwner(request.resource.data)
         && !request.resource.data.keys().hasAny(hashFields());
     }
@@ -81,27 +83,16 @@ function canCreateAlert() {
     // ========================================
 
     match /alert_privado/{docId} {
-      // Dono sempre pode ler seus próprios dados privados
-      // Tutor pode ler alert_privado do avistamento (tutor→avistador)
-      // Avistador pode ler alert_privado do pet se autorizado (avistador→tutor)
       allow get: if isSignedIn() && (
         resource.data.owner_firebase_uid == request.auth.uid ||
-        resource.data.owner_uid == request.auth.uid ||
-        resource.data.linked_pet_owner_firebase_uid == request.auth.uid ||
-        (docId.matches('pets_perdidos_.*') &&
-          exists(/databases/$(database)/documents/sighter_authorizations/$(request.auth.uid + '_' + docId.split('pets_perdidos_')[1])))
+        resource.data.owner_uid == request.auth.uid
       );
-      // list sempre bloqueado
       allow list: if false;
       allow create: if isSignedIn() && (
         request.resource.data.owner_firebase_uid == request.auth.uid ||
         request.resource.data.owner_uid == request.auth.uid
       );
-      allow update: if isSignedIn() && (
-        resource.data.owner_firebase_uid == request.auth.uid ||
-        resource.data.owner_uid == request.auth.uid
-      );
-      allow delete: if isSignedIn() && (
+      allow update, delete: if isSignedIn() && (
         resource.data.owner_firebase_uid == request.auth.uid ||
         resource.data.owner_uid == request.auth.uid
       );
@@ -200,22 +191,46 @@ function canCreateAlert() {
     // ========================================
 
     match /notificacoes/{docId} {
-      // get direto: restrito ao destinatário por Firebase Auth UID
-      allow get: if isSignedIn() && (
+      allow read: if isSignedIn() && (
         resource.data.destinatario_firebase_uid == request.auth.uid ||
+        resource.data.destinatario_uid == request.auth.uid ||
         resource.data.owner_firebase_uid == request.auth.uid
       );
-      // list: aberto para autenticados — queries filtram por destinatario_uid ou
-      // destinatario_firebase_uid no app; necessário pois destinatario_uid (u_xxx)
-      // não coincide com request.auth.uid (Firebase UID) nas rules
-      allow list: if isSignedIn();
-      // Qualquer autenticado pode criar notificações (sistema de match/avistamento)
       allow create: if isSignedIn();
-      // Marcar lida ou deletar: apenas o destinatário
       allow update, delete: if isSignedIn() && (
         resource.data.destinatario_firebase_uid == request.auth.uid ||
+        resource.data.destinatario_uid == request.auth.uid ||
         resource.data.owner_firebase_uid == request.auth.uid
       );
+    }
+
+    // ========================================
+    //  CHAT INTERNO ENTRE TUTOR E AVISTADOR
+    //  Criado pela Cloud Function em matches altos.
+    //  Apenas participantes leem e enviam mensagens.
+    // ========================================
+
+    match /conversas/{conversaId} {
+      allow read: if isSignedIn() &&
+        request.auth.uid in resource.data.participantes_firebase_uids;
+      allow create: if false;
+      allow update: if isSignedIn() &&
+        request.auth.uid in resource.data.participantes_firebase_uids &&
+        request.resource.data.diff(resource.data).changedKeys()
+          .hasOnly(['lastMessage', 'lastMessageAt', 'updatedAt']);
+      allow delete: if false;
+
+      match /mensagens/{mensagemId} {
+        allow read: if isSignedIn() &&
+          request.auth.uid in get(/databases/$(database)/documents/conversas/$(conversaId)).data.participantes_firebase_uids;
+        allow create: if isSignedIn() &&
+          request.auth.uid in get(/databases/$(database)/documents/conversas/$(conversaId)).data.participantes_firebase_uids &&
+          request.resource.data.autor_firebase_uid == request.auth.uid &&
+          request.resource.data.texto is string &&
+          request.resource.data.texto.size() > 0 &&
+          request.resource.data.texto.size() <= 1000;
+        allow update, delete: if false;
+      }
     }
 
     // ========================================

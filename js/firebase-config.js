@@ -78,12 +78,9 @@ const FirebaseConfig = (() => {
         storage = firebase.storage();
       }
 
-      // Inicializar Functions (opcional, para Cloud Functions)
+      // Cloud Functions centralizam a liberação de contatos sensíveis (LGPD).
       if (firebase.functions) {
-        // A Cloud Function getTutorContact está em southamerica-east1
-        // firebase.app().functions() é a API correta do SDK compat v9+
         functions = firebase.app().functions('southamerica-east1');
-        // Para usar emulador local: functions.useEmulator('localhost', 5001);
       }
 
       // Inicializar Auth anônimo (opcional, para regras de segurança)

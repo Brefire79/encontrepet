@@ -18,7 +18,8 @@ const DB = (() => {
     AVISTAMENTOS: 'avistamentos',
     NOTIFICACOES: 'notificacoes',
     USUARIOS: 'usuarios',
-    ALERT_PRIVADO: 'alert_privado'
+    ALERT_PRIVADO: 'alert_privado',
+    CONVERSAS: 'conversas'
   };
 
   const COLLECTIONS = TABLES;
@@ -388,6 +389,15 @@ const DB = (() => {
     Security.checkRateLimit('report_pet', 3, 300000);
     Security.validateReportData(data);
 
+    // [FIX C12] Garante que Firebase Auth UID esteja pronto ANTES de montar o
+    // record. Sem isso, race condition fazia o doc ser salvo com
+    // owner_firebase_uid='' e depois o proprio dono nao conseguia ler/atualizar
+    // (Firestore Rules: isOwner checa owner_firebase_uid == auth.uid).
+    let ensuredFirebaseUid = '';
+    if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.waitForAuthUID) {
+      try { ensuredFirebaseUid = await FirebaseConfig.waitForAuthUID(3000); } catch {}
+    }
+
     const raio = GeoUtils.getSearchRadius(data.tipo_animal);
     const settings = Auth.getUserSettings();
 
@@ -436,7 +446,8 @@ const DB = (() => {
       suspiciousFlag: data.suspiciousFlag || false,
       suspiciousReason: Security.sanitize(data.suspiciousReason || ''),
       flaggedByUid: data.flaggedByUid || '',
-      owner_firebase_uid: data.owner_firebase_uid || FirebaseConfig.getFirebaseUID?.() || '',
+      // [FIX C12] Usa ensuredFirebaseUid (garantido via waitForAuthUID) como fallback
+      owner_firebase_uid: data.owner_firebase_uid || ensuredFirebaseUid || FirebaseConfig.getFirebaseUID?.() || '',
       similarCandidates: Array.isArray(data.similarCandidates) ? data.similarCandidates.slice(0, 5) : [],
       owner_uid: Auth.getUID()
     };
@@ -586,6 +597,12 @@ const DB = (() => {
   async function reportarAvistamento(data) {
     Security.checkRateLimit('report_sighting', 5, 300000);
 
+    // [FIX C12] Mesma garantia de owner_firebase_uid valido (ver reportarPetPerdido)
+    let ensuredFirebaseUid = '';
+    if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.waitForAuthUID) {
+      try { ensuredFirebaseUid = await FirebaseConfig.waitForAuthUID(3000); } catch {}
+    }
+
     const settings = Auth.getUserSettings();
     const pubLoc = Security.getPublicLocation(
       data.latitude, data.longitude, data.endereco || '', settings
@@ -617,6 +634,7 @@ const DB = (() => {
       // Vinculação opcional a pet perdido (match IA)
       matchedLostPetId: data.matchedLostPetId || '',
       matchedScore: data.matchedScore || 0,
+      match_score: data.matchedScore || data.match_score || 0,
       matchedEngine: data.matchedEngine || '',
       // Hash será gerado server-side via Cloud Function
       imageHashProcessed: false,
@@ -626,7 +644,8 @@ const DB = (() => {
       suspiciousFlag: data.suspiciousFlag || false,
       suspiciousReason: Security.sanitize(data.suspiciousReason || ''),
       flaggedByUid: data.flaggedByUid || '',
-      owner_firebase_uid: data.owner_firebase_uid || FirebaseConfig.getFirebaseUID?.() || '',
+      // [FIX C12] Usa ensuredFirebaseUid (garantido via waitForAuthUID) como fallback
+      owner_firebase_uid: data.owner_firebase_uid || ensuredFirebaseUid || FirebaseConfig.getFirebaseUID?.() || '',
       similarCandidates: Array.isArray(data.similarCandidates) ? data.similarCandidates.slice(0, 5) : [],
       owner_uid: Auth.getUID()
     };
@@ -815,8 +834,14 @@ const DB = (() => {
    */
   async function savePrivateAlertData(colecao, alertId, privateData) {
     const docId = `${colecao}_${alertId}`;
+    // [FIX C12] Aguarda Firebase UID antes de salvar para evitar payload com
+    // owner_firebase_uid='' (que tornava o doc privado inacessivel ao proprio dono).
+    let ensuredFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+    if (!ensuredFirebaseUid && FirebaseConfig.waitForAuthUID) {
+      try { ensuredFirebaseUid = await FirebaseConfig.waitForAuthUID(3000); } catch {}
+    }
     const payload = {
-      owner_firebase_uid: FirebaseConfig.getFirebaseUID?.() || '',
+      owner_firebase_uid: ensuredFirebaseUid || '',
       owner_uid: Auth.getUID(),
       contato_telefone: privateData.contato_telefone || '',
       contato_email: privateData.contato_email || '',
@@ -829,7 +854,7 @@ const DB = (() => {
       alert_id: alertId,
       createdAt: new Date().toISOString()
     };
-    // Campo necessário para a Firestore Rule permitir ao tutor ler alert_privado do avistamento
+    // Metadado usado apenas pelo backend/auditoria; clientes não leem dados privados de terceiros.
     if (privateData.linked_pet_owner_firebase_uid !== undefined) {
       payload.linked_pet_owner_firebase_uid = privateData.linked_pet_owner_firebase_uid || '';
     }
@@ -890,7 +915,15 @@ const DB = (() => {
         const doc = await db.collection(TABLES.ALERT_PRIVADO).doc(docId).get();
         if (doc.exists) return { id: doc.id, ...doc.data() };
       } catch (err) {
-        console.warn('[DB] getPrivateAlertData falhou:', err.message);
+        // [FIX C12] permission-denied aqui geralmente significa que o doc foi
+        // criado antes do C12 com owner_firebase_uid='' e o request.auth.uid
+        // atual nao bate. Loga como info (nao erro vermelho) para nao poluir
+        // o console — a UI vai mostrar "dados privados indisponiveis" mesmo.
+        if (err.code === 'permission-denied') {
+          console.info('[DB] alert_privado inacessivel (provavel doc legado pre-C12):', docId);
+        } else {
+          console.warn('[DB] getPrivateAlertData falhou:', err.message);
+        }
       }
     }
     // Fallback local
@@ -909,9 +942,14 @@ const DB = (() => {
     // possam validar o acesso sem depender do ID customizado u_xxx
     const enriched = { ...data };
     if (!enriched.destinatario_firebase_uid) {
-      // Notificação para o próprio usuário
+      // [FIX C12] Aguarda Firebase UID se necessario antes de salvar a notificacao.
+      let firebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+      if (!firebaseUid && FirebaseConfig.waitForAuthUID) {
+        try { firebaseUid = await FirebaseConfig.waitForAuthUID(2000); } catch {}
+      }
+      // Notificacao para o proprio usuario
       if (!enriched.destinatario_uid || enriched.destinatario_uid === Auth.getUID()) {
-        enriched.destinatario_firebase_uid = FirebaseConfig.getFirebaseUID?.() || '';
+        enriched.destinatario_firebase_uid = firebaseUid;
       }
     }
     return await create(TABLES.NOTIFICACOES, Security.sanitizeObject(enriched));
@@ -950,6 +988,59 @@ const DB = (() => {
 
   async function marcarNotificacaoLida(notifId) {
     return await update(TABLES.NOTIFICACOES, notifId, { lida: true });
+  }
+
+  // ============================================================
+  //  CHAT INTERNO
+  // ============================================================
+
+  async function getConversa(conversaId) {
+    if (!conversaId) throw new Error('conversaId obrigatorio.');
+    return await get(TABLES.CONVERSAS, conversaId);
+  }
+
+  function watchMensagensConversa(conversaId, onChange) {
+    if (!useFirestore || !conversaId) return () => {};
+    try {
+      const db = FirebaseConfig.getDB();
+      return db.collection(TABLES.CONVERSAS).doc(conversaId)
+        .collection('mensagens')
+        .orderBy('createdAt', 'asc')
+        .limit(100)
+        .onSnapshot(
+          snap => onChange(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+          err => console.warn('[DB] watchMensagensConversa error:', err.message)
+        );
+    } catch (err) {
+      console.warn('[DB] watchMensagensConversa init error:', err.message);
+      return () => {};
+    }
+  }
+
+  async function enviarMensagemConversa(conversaId, texto) {
+    if (!useFirestore) throw new Error('Chat indisponível offline.');
+    const cleanText = Security.sanitize(String(texto || '').trim()).slice(0, 1000);
+    if (!cleanText) throw new Error('Mensagem vazia.');
+
+    const db = FirebaseConfig.getDB();
+    const conversaRef = db.collection(TABLES.CONVERSAS).doc(conversaId);
+    const authorFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+    const authorUid = Auth.getUID() || '';
+    const authorName = Auth.getUserData?.()?.displayName || Auth.getUserData?.()?.nome || 'Usuário';
+
+    await conversaRef.collection('mensagens').add({
+      texto: cleanText,
+      autor_firebase_uid: authorFirebaseUid,
+      autor_uid: authorUid,
+      autor_nome: Security.sanitize(authorName),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await conversaRef.update({
+      lastMessage: cleanText,
+      lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
   }
 
   // ============================================================
@@ -1070,7 +1161,12 @@ const DB = (() => {
   async function countUsersInRadius(centerLat, centerLng, radiusKm = 3) {
     try {
       if (!centerLat || !centerLng) return 0;
-      const usersResult = await list(TABLES.USUARIOS, { limit: 1000 });
+      // [FIX C13] Reduzido limit de 1000 para 200 — a regra Firestore de /usuarios
+      // bloqueia list com limit > 200 para nao-admins (request.query.limit <= 200).
+      // Limitacao: se houver mais de 200 usuarios cadastrados, a contagem fica
+      // subestimada. Quando o app crescer, considerar paginacao ou Cloud Function
+      // dedicada (admin SDK) para count global.
+      const usersResult = await list(TABLES.USUARIOS, { limit: 200 });
       const allUsers = (usersResult.data || []).filter(u => !u.is_anonymous);
       const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
 
@@ -1259,7 +1355,7 @@ const DB = (() => {
 
   /**
    * Busca avistamentos vinculados a um pet perdido (para o tutor ver quem avistou).
-   * Combina sightings linkados por pet_perdido_id e por matchedLostPetId (AI ≥92%).
+   * Combina sightings linkados por pet_perdido_id e por matchedLostPetId (AI >=70%).
    * @param {string} petId - ID do pet perdido
    * @returns {Promise<Array>} Lista de avistamentos vinculados, ordenados por data desc
    */
@@ -1305,8 +1401,11 @@ const DB = (() => {
     if (!useFirestore) return () => {};
     try {
       const db = FirebaseConfig.getDB();
+      // [FIX M6] Adicionado .limit(200) para evitar memory bomb conforme a
+      // colecao cresce. Antes baixava TODOS os ativos a cada update.
       const unsubscribe = db.collection(TABLES.PETS)
         .where('status', '==', 'ativo')
+        .limit(200)
         .onSnapshot(
           (snapshot) => {
             const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1358,6 +1457,9 @@ const DB = (() => {
     criarNotificacao,
     listarNotificacoes,
     marcarNotificacaoLida,
+    getConversa,
+    watchMensagensConversa,
+    enviarMensagemConversa,
     savePrivateAlertData,
     getPrivateAlertData,
     getMyReports,

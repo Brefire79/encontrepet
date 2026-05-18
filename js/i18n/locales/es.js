@@ -195,6 +195,8 @@ window.I18nLocales.es = {
   'sighting.ai.no_pets': 'Ninguna mascota reportada para comparar.',
   'sighting.ai.no_match': 'Sin match. ¡Envía el avistamiento de todas formas!',
   'sighting.ai.error': 'Error en la comparación. Envía de todas formas.',
+  'sighting.match_high_contact_sent': '¡Match encontrado! El contacto del dueño fue enviado a tus notificaciones.',
+  'sighting.registered_low_match': 'Avistamiento registrado ({score}% de compatibilidad). Se notificó al dueño.',
 
   // — Validación —
   'validation.phone_invalid': 'Teléfono inválido. Use formato brasileño: (XX) XXXXX-XXXX',
@@ -260,6 +262,25 @@ window.I18nLocales.es = {
   // — Notifications —
   'notif.title': 'Notificaciones',
   'notif.empty': 'Aún no hay notificaciones.',
+  'notif.match_found': '¡Match de {score}% para "{pet}"! Contacto del dueño disponible.',
+  'notif.tutor_name': 'Dueño: {nome}',
+  'notif.contact_tutor_whatsapp': 'Hablar con el Dueño en WhatsApp',
+  'notif.contact_tutor_email': 'Enviar Email al Dueño',
+  'notif.sighting_match': '¡Avistamiento de {score}% de "{pet}" registrado!',
+  'notif.finder_name': 'Avistador: {nome}',
+  'notif.contact_finder_whatsapp': 'Hablar con el Avistador en WhatsApp',
+  'notif.new_sighting': 'Nuevo avistamiento de "{pet}"',
+  'notif.sighting_score': 'Compatibilidad: {score}%',
+
+  // — Chat interno —
+  'chat.title': 'Chat interno',
+  'chat.open': 'Chat interno',
+  'chat.loading': 'Cargando mensajes...',
+  'chat.empty': 'Aún no hay mensajes.',
+  'chat.placeholder': 'Escribe un mensaje...',
+  'chat.send': 'Enviar',
+  'chat.send_error': 'Error al enviar el mensaje.',
+  'chat.unavailable': 'Chat no disponible para este match.',
 
   // — Map —
   'map.title': 'Mapa de Alertas',
@@ -284,7 +305,7 @@ window.I18nLocales.es = {
   'how.step3.title': 'Alerta Instantánea',
   'how.step3.desc': 'La alerta se envía a personas cercanas: <strong>5km para perros</strong>, <strong>2km para gatos</strong>.',
   'how.step4.title': 'La IA Compara Fotos',
-  'how.step4.desc': 'Cuando alguien ve una mascota, la IA compara fotos. Con <strong>92%+ similitud</strong>, el dueño es notificado automáticamente.',
+  'how.step4.desc': 'Cuando alguien ve una mascota, la IA compara fotos. Con <strong>70%+ similitud</strong>, el dueño es notificado automáticamente.',
   'how.step5.title': '¡Reencuentro!',
   'how.step5.desc': 'El dueño se pone en contacto y se reúne con su mejor amigo. ¡Todo gratis!',
 

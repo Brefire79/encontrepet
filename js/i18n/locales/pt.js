@@ -195,6 +195,8 @@ window.I18nLocales.pt = {
   'sighting.ai.no_pets': 'Nenhum pet reportado para comparar.',
   'sighting.ai.no_match': 'Nenhum match. Envie o avistamento mesmo assim!',
   'sighting.ai.error': 'Erro na comparação. Envie mesmo assim.',
+  'sighting.match_high_contact_sent': 'Match encontrado! O contato do tutor foi enviado para suas notificações.',
+  'sighting.registered_low_match': 'Avistamento registrado ({score}% de compatibilidade). O tutor foi notificado.',
 
   // — Validação —
   'validation.phone_invalid': 'Telefone inválido. Use formato brasileiro: (XX) XXXXX-XXXX',
@@ -260,6 +262,25 @@ window.I18nLocales.pt = {
   // — Notificações —
   'notif.title': 'Notificações',
   'notif.empty': 'Nenhuma notificação ainda.',
+  'notif.match_found': 'Match de {score}% para "{pet}"! Contato do tutor disponível.',
+  'notif.tutor_name': 'Tutor: {nome}',
+  'notif.contact_tutor_whatsapp': 'Falar com o Tutor no WhatsApp',
+  'notif.contact_tutor_email': 'Enviar E-mail ao Tutor',
+  'notif.sighting_match': 'Avistamento de {score}% de "{pet}" registrado!',
+  'notif.finder_name': 'Avistador: {nome}',
+  'notif.contact_finder_whatsapp': 'Falar com o Avistador no WhatsApp',
+  'notif.new_sighting': 'Novo avistamento de "{pet}"',
+  'notif.sighting_score': 'Compatibilidade: {score}%',
+
+  // — Chat interno —
+  'chat.title': 'Chat interno',
+  'chat.open': 'Chat interno',
+  'chat.loading': 'Carregando mensagens...',
+  'chat.empty': 'Nenhuma mensagem ainda.',
+  'chat.placeholder': 'Digite uma mensagem...',
+  'chat.send': 'Enviar',
+  'chat.send_error': 'Erro ao enviar mensagem.',
+  'chat.unavailable': 'Chat indisponível para este match.',
 
   // — Mapa —
   'map.title': 'Mapa de Alertas',
@@ -284,7 +305,7 @@ window.I18nLocales.pt = {
   'how.step3.title': 'Alerta Instantâneo',
   'how.step3.desc': 'O alerta é disparado para pessoas próximas: <strong>5km para cães</strong>, <strong>2km para gatos</strong>.',
   'how.step4.title': 'IA Compara Fotos',
-  'how.step4.desc': 'Quando alguém avista um pet, a IA compara as fotos. Com <strong>92%+ de similaridade</strong>, o dono é notificado automaticamente!',
+  'how.step4.desc': 'Quando alguém avista um pet, a IA compara as fotos. Com <strong>70%+ de similaridade</strong>, o dono é notificado automaticamente!',
   'how.step5.title': 'Reencontro!',
   'how.step5.desc': 'O dono entra em contato e busca seu melhor amigo. Tudo gratuito!',
 

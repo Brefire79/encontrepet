@@ -195,6 +195,8 @@ window.I18nLocales.en = {
   'sighting.ai.no_pets': 'No reported pets to compare.',
   'sighting.ai.no_match': 'No match. Send the sighting anyway!',
   'sighting.ai.error': 'Comparison error. Send anyway.',
+  'sighting.match_high_contact_sent': 'Match found! Owner contact has been sent to your notifications.',
+  'sighting.registered_low_match': 'Sighting registered ({score}% compatibility). The owner was notified.',
 
   // — Validation —
   'validation.phone_invalid': 'Invalid phone. Use Brazilian format: (XX) XXXXX-XXXX',
@@ -260,6 +262,25 @@ window.I18nLocales.en = {
   // — Notifications —
   'notif.title': 'Notifications',
   'notif.empty': 'No notifications yet.',
+  'notif.match_found': '{score}% match for "{pet}"! Owner contact is available.',
+  'notif.tutor_name': 'Owner: {nome}',
+  'notif.contact_tutor_whatsapp': 'Contact Owner on WhatsApp',
+  'notif.contact_tutor_email': 'Email the Owner',
+  'notif.sighting_match': '{score}% sighting match for "{pet}"!',
+  'notif.finder_name': 'Finder: {nome}',
+  'notif.contact_finder_whatsapp': 'Contact Finder on WhatsApp',
+  'notif.new_sighting': 'New sighting of "{pet}"',
+  'notif.sighting_score': 'Compatibility: {score}%',
+
+  // — Internal chat —
+  'chat.title': 'Internal chat',
+  'chat.open': 'Internal chat',
+  'chat.loading': 'Loading messages...',
+  'chat.empty': 'No messages yet.',
+  'chat.placeholder': 'Type a message...',
+  'chat.send': 'Send',
+  'chat.send_error': 'Error sending message.',
+  'chat.unavailable': 'Chat unavailable for this match.',
 
   // — Map —
   'map.title': 'Alerts Map',
@@ -284,7 +305,7 @@ window.I18nLocales.en = {
   'how.step3.title': 'Instant Alert',
   'how.step3.desc': 'The alert is sent to nearby people: <strong>5km for dogs</strong>, <strong>2km for cats</strong>.',
   'how.step4.title': 'AI Compares Photos',
-  'how.step4.desc': 'When someone spots a pet, AI compares photos. With <strong>92%+ similarity</strong>, the owner is notified automatically!',
+  'how.step4.desc': 'When someone spots a pet, AI compares photos. With <strong>70%+ similarity</strong>, the owner is notified automatically!',
   'how.step5.title': 'Reunion!',
   'how.step5.desc': 'The owner contacts you and reunites with their best friend. Totally free!',
 

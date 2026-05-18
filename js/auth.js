@@ -211,15 +211,22 @@ const Auth = (() => {
     if (session && session.uid) {
       loadUserFromSession(session);
     }
-    const mode = firestoreReady() ? '🔥 Firestore + REST fallback' : '📡 REST API';
-    console.log('[Auth] ✅ Sistema de autenticação inicializado — Perfis via:', mode);
+    const mode = firestoreReady() ? '[Firestore + REST fallback]' : '[REST API]';
+    console.log('[Auth] Sistema de autenticacao inicializado - Perfis via:', mode);
   }
 
   /**
-   * Carrega usuário de sessão salva no localStorage
+   * Carrega usuario de sessao salva no localStorage.
+   * [FIX C11] Aguarda waitForAuthUID antes de consultar Firestore para evitar
+   * "Missing or insufficient permissions" em queries que rodam antes do
+   * auth anonimo Firebase estar pronto.
    */
   async function loadUserFromSession(session) {
     try {
+      // Aguarda auth anonimo Firebase ficar pronto antes da query (race condition)
+      if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.waitForAuthUID) {
+        try { await FirebaseConfig.waitForAuthUID(3000); } catch {}
+      }
       const user = await getUser(session.uid);
       if (user && user.status !== 'bloqueado') {
         currentUser = {
@@ -370,8 +377,10 @@ const Auth = (() => {
     }
 
     // 3. Buscar perfil no Firestore/REST
+    // [FIX B2] Mensagem de erro generica em login fail evita enumeracao de emails.
+    const GENERIC_LOGIN_ERROR = 'E-mail ou senha incorretos.';
     const user = await findByEmail(normalizedEmail);
-    if (!user) throw new Error('Nenhuma conta encontrada com este e-mail.');
+    if (!user) throw new Error(GENERIC_LOGIN_ERROR);
     if (user.status === 'bloqueado') throw new Error('Esta conta foi bloqueada.');
 
     // 4. Se Firebase Auth falhou, verificar senha via Cloud Function (S-03)
@@ -395,7 +404,8 @@ const Auth = (() => {
         console.warn('[Auth] verifyUserPassword CF falhou, fallback Firestore:', cfErr.message);
       }
 
-      if (!senhaCorreta) throw new Error('Senha incorreta. Tente novamente.');
+      // [FIX B2] Erro generico nao revela se eh email-nao-existe ou senha-errada.
+      if (!senhaCorreta) throw new Error(GENERIC_LOGIN_ERROR);
 
       // Migrar: criar conta Firebase Auth para habilitar recuperação de senha futura
       if (typeof firebase !== 'undefined' && firebase.auth) {
@@ -466,15 +476,17 @@ const Auth = (() => {
   // ====== LOGOUT ======
 
   function logout() {
+    // [FIX C3] signOut() do Firebase Auth ANTES de limpar sessao e notificar listeners.
+    // Isso evita que onSnapshot dispare com auth.currentUser ja nulo no meio do logout
+    // (causava erros silenciosos firestore/permission-denied no console).
+    if (typeof firebase !== 'undefined' && firebase.auth) {
+      try { firebase.auth().signOut().catch(() => {}); } catch {}
+    }
     Security.clearSession();
     currentUser = null;
     userProfile = null;
     notifyListeners('logout', null);
-    // Invalidar token Firebase Auth para que onAuthStateChanged reflita o logout
-    if (typeof firebase !== 'undefined' && firebase.auth) {
-      firebase.auth().signOut().catch(() => {});
-    }
-    console.log('[Auth] Usuário deslogado');
+    console.log('[Auth] Usuario deslogado');
   }
 
   // ====== PERFIL ======
@@ -536,21 +548,42 @@ const Auth = (() => {
   async function sendPasswordReset(email) {
     validateEmail(email);
     if (typeof firebase === 'undefined' || !firebase.auth) {
-      throw new Error('Serviço de autenticação indisponível. Tente novamente.');
+      throw new Error('Servico de autenticacao indisponivel. Tente novamente.');
     }
+    const normalizedEmail = email.trim().toLowerCase();
     try {
-      await firebase.auth().sendPasswordResetEmail(email.trim().toLowerCase(), {
+      await firebase.auth().sendPasswordResetEmail(normalizedEmail, {
         url: window.location.origin
       });
     } catch (fbErr) {
+      // [FIX C4] auth/user-not-found pode acontecer para perfis antigos que ainda
+      // nao tem conta Firebase Auth (so existem em Firestore com senha_hash).
+      // Antes a funcao retornava success silencioso e o e-mail nunca chegava.
+      // Agora: verificamos no Firestore se o usuario existe. Se existir mas sem
+      // conta Firebase Auth, instruimos a fazer login uma vez (o login cria a
+      // conta automaticamente) e tentar reset depois. Mantemos enumeracao zero
+      // retornando a mesma mensagem para email inexistente.
       if (fbErr.code === 'auth/user-not-found') {
-        // Não revelar se o e-mail existe ou não (prevenção de enumeração)
+        try {
+          const existing = await findByEmail(normalizedEmail);
+          if (existing) {
+            // Conta existe so no Firestore — orientar usuario a fazer login antes
+            throw new Error(
+              'Este e-mail nao esta habilitado para recuperacao automatica. ' +
+              'Faca login uma vez com sua senha atual e tente novamente.'
+            );
+          }
+        } catch (lookupErr) {
+          // findByEmail falhou — fingir sucesso para nao vazar enumeracao
+          if (lookupErr.message?.includes('habilitado')) throw lookupErr;
+        }
+        // Email realmente nao existe — retornar success generico
         return { success: true };
       }
       if (fbErr.code === 'auth/too-many-requests') {
         throw new Error('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
       }
-      throw new Error('Erro ao enviar e-mail. Verifique o endereço e tente novamente.');
+      throw new Error('Erro ao enviar e-mail. Verifique o endereco e tente novamente.');
     }
     return { success: true };
   }

@@ -146,13 +146,15 @@ const Security = (() => {
     // Preservar Data URLs de imagem — não sanitizar base64
     if (/^data:image\/[a-z+]+;base64,/i.test(input)) return input;
 
+    // [FIX C7] Removido escape de '/' que destruia URLs (https://) e datas (01/01/2026).
+    // A barra '/' isolada nao e vetor de XSS no contexto de texto; escapamos apenas
+    // os caracteres realmente perigosos (<, >, &, ", ') e bloqueamos javascript:/on*=.
     return input
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#x27;')
-      .replace(/\//g, '&#x2F;')
       .replace(/javascript:/gi, '')
       .replace(/on\w+\s*=/gi, '')
       .replace(/data:(?!image\/)/gi, 'blocked:')

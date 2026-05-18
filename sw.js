@@ -1,7 +1,10 @@
-// Encontre Pet - Service Worker v1.1.1
-// Estratégia: Cache First para assets, Network First para API e Firestore
-const CACHE_VERSION = 'encontre-pet-v1.14.0';
-const DYNAMIC_CACHE = 'encontre-pet-dynamic-v1.0';
+// Encontre Pet - Service Worker v1.2.0
+// Estrategia: Cache First para assets, Network First para API e Firestore
+// [FIX C5] CACHE_VERSION bumpado para forcar re-cache com os novos icones.
+// [FIX C5] icons/icon-192.png e icons/icon-512.png agora pre-cacheados para
+// que o PWA funcione corretamente offline no launcher do dispositivo.
+const CACHE_VERSION = 'encontre-pet-v1.15.0';
+const DYNAMIC_CACHE = 'encontre-pet-dynamic-v1.1';
 const API_CACHE = 'encontre-pet-api-v1.0';
 
 const STATIC_ASSETS = [
@@ -24,7 +27,10 @@ const STATIC_ASSETS = [
   '/js/services/image-hash.js',
   '/js/services/similarity.js',
   '/js/components/ModalDuplicateCase.js',
-  '/manifest.json'
+  '/manifest.json',
+  // [FIX C5] Icones principais para PWA funcionar offline
+  '/icons/icon-192.png',
+  '/icons/icon-512.png'
 ];
 
 // CDN assets para cache dinâmico (Firebase SDK, TensorFlow, fontes, ícones)

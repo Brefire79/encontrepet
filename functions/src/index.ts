@@ -1,5 +1,6 @@
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import * as logger from 'firebase-functions/logger';
 import * as admin from 'firebase-admin';
 import sharp from 'sharp';
@@ -8,6 +9,46 @@ import * as nodemailer from 'nodemailer';
 const blockhashCore = require('blockhash-core');
 
 admin.initializeApp();
+
+const MATCH_THRESHOLD = 70;
+
+// [FIX C9] Lista CORS compartilhada por TODAS as Cloud Functions HTTPS callable.
+// Antes apenas getTutorContact/getSighterContact tinham CORS configurado e
+// saveUserPassword/verifyUserPassword falhavam no preflight com
+// "No 'Access-Control-Allow-Origin' header is present".
+// Tambem adicionado http://localhost:8888 para suportar Netlify Dev.
+const ALLOWED_CORS_ORIGINS: (string | RegExp)[] = [
+  'http://localhost:3000',
+  'http://localhost:5000',
+  'http://localhost:5173',
+  'http://localhost:8888',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:8888',
+  'https://encontre-pet-137d2.web.app',
+  'https://encontre-pet-137d2.firebaseapp.com',
+  'https://encontrepet.netlify.app',
+  /^https:\/\/.*\.netlify\.app$/,
+];
+
+async function waitForPrivateAlertData(docId: string, attempts = 4) {
+  const db = admin.firestore();
+  for (let i = 0; i < attempts; i++) {
+    const snap = await db.collection('alert_privado').doc(docId).get();
+    if (snap.exists) return snap.data() || {};
+    if (i < attempts - 1) {
+      await new Promise(resolve => setTimeout(resolve, 300 * (i + 1)));
+    }
+  }
+  return {};
+}
+
+function buildWhatsAppLink(phone: string): string {
+  const clean = phone.replace(/\D/g, '');
+  const number = clean.startsWith('55') ? clean : `55${clean}`;
+  return `https://wa.me/${number}`;
+}
 
 // ============================================================
 //  EMAIL — Nodemailer SMTP
@@ -294,6 +335,192 @@ export const generateImageHash = onObjectFinalized(
   }
 );
 
+export const onAvistamentoCreated = onDocumentCreated(
+  {
+    document: 'avistamentos/{avistamentoId}',
+    region: 'southamerica-east1'
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+
+    const avistamento = snap.data();
+    const avistamentoId = event.params.avistamentoId;
+    const db = admin.firestore();
+    const timestamp = admin.firestore.FieldValue.serverTimestamp();
+
+    const petId = avistamento.pet_perdido_id || avistamento.matchedLostPetId || '';
+    const rawScore = avistamento.match_score ?? avistamento.matchedScore ?? avistamento.match_percentual ?? 0;
+    const matchScore = typeof rawScore === 'number' ? rawScore : Number(rawScore) || 0;
+    const avistadorUid = avistamento.owner_firebase_uid || '';
+    const avistadorOwnerUid = avistamento.owner_uid || '';
+
+    if (!petId) {
+      await db.collection('lgpd_access_log').add({
+        tipo: 'avistamento_registrado',
+        petId: '',
+        avistamentoId,
+        avistadorUid,
+        matchScore,
+        threshold: MATCH_THRESHOLD,
+        timestamp
+      });
+      return;
+    }
+
+    const petDoc = await db.collection('pets_perdidos').doc(petId).get();
+    if (!petDoc.exists) return;
+    const pet = petDoc.data() || {};
+
+    const tutorUid = pet.owner_firebase_uid || pet.destinatario_firebase_uid || '';
+    const tutorOwnerUid = pet.owner_uid || '';
+    const petNome = pet.nome || pet.nome_pet || 'seu pet';
+
+    const tutorPrivateDocId = `pets_perdidos_${petId}`;
+    const tutorPrivateData = await waitForPrivateAlertData(tutorPrivateDocId, 1);
+    const avistadorPrivateDocId = `avistamentos_${avistamentoId}`;
+    const avistadorPrivateData = await waitForPrivateAlertData(avistadorPrivateDocId);
+
+    const tutorTelefone = tutorPrivateData.contato_telefone || pet.contato_telefone || pet.telefone_publico || '';
+    const tutorEmail = tutorPrivateData.contato_email || pet.contato_email || pet.contato_email_publico || '';
+    const tutorNome = tutorPrivateData.contato_nome || pet.contato_nome || pet.tutorNome || 'Tutor';
+    const tutorTelPublico = pet.telefone_publico_ativo ?? true;
+    const tutorEmailPublico = pet.email_publico_ativo === true || pet.contato_email_publico_ativo === true;
+
+    const avistadorTelefone = avistadorPrivateData.contato_telefone || avistamento.telefone_publico || '';
+    const avistadorNome = avistadorPrivateData.reportado_por || avistamento.reportado_por || 'Avistador';
+    const avistadorTelPublico = avistamento.telefone_publico_ativo === true;
+
+    const isHighMatch = matchScore >= MATCH_THRESHOLD;
+    const conversaId = `${petId}_${avistamentoId}`;
+
+    await db.collection('lgpd_access_log').add({
+      tipo: isHighMatch ? 'match_alto_bilateral' : 'avistamento_registrado',
+      petId,
+      avistamentoId,
+      avistadorUid,
+      tutorUid,
+      matchScore,
+      threshold: MATCH_THRESHOLD,
+      timestamp
+    });
+
+    if (!isHighMatch) {
+      await db.collection('notificacoes').add({
+        tipo: 'avistamento_registrado',
+        destinatario_uid: tutorOwnerUid || tutorUid,
+        destinatario_firebase_uid: tutorUid,
+        owner_firebase_uid: tutorUid,
+        petId,
+        pet_id: petId,
+        petNome,
+        pet_nome: petNome,
+        avistamentoId,
+        avistamento_id: avistamentoId,
+        matchScore,
+        mensagem: `Novo avistamento de ${petNome} registrado (compatibilidade ${matchScore}%)`,
+        lida: false,
+        timestamp
+      });
+      return;
+    }
+
+    await db.collection('conversas').doc(conversaId).set({
+      petId,
+      petNome,
+      avistamentoId,
+      matchScore,
+      participantes_firebase_uids: [tutorUid, avistadorUid].filter(Boolean),
+      participantes_owner_uids: [tutorOwnerUid, avistadorOwnerUid].filter(Boolean),
+      tutorUid,
+      tutorOwnerUid,
+      tutorNome,
+      avistadorUid,
+      avistadorOwnerUid,
+      avistadorNome,
+      status: 'ativa',
+      origem: 'match_alto_bilateral',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      lastMessage: '',
+      lastMessageAt: null
+    }, { merge: true });
+
+    const notifTutor: Record<string, any> = {
+      tipo: 'match_alto_para_tutor',
+      destinatario_uid: tutorOwnerUid || tutorUid,
+      destinatario_firebase_uid: tutorUid,
+      owner_firebase_uid: tutorUid,
+      petId,
+      pet_id: petId,
+      petNome,
+      pet_nome: petNome,
+      avistamentoId,
+      avistamento_id: avistamentoId,
+      conversaId,
+      conversa_id: conversaId,
+      matchScore,
+      avistadorNome,
+      lida: false,
+      timestamp
+    };
+    if (avistadorTelPublico && avistadorTelefone) {
+      notifTutor.contato_telefone_avistador = avistadorTelefone;
+      notifTutor.whatsapp_link = buildWhatsAppLink(avistadorTelefone);
+    }
+    await db.collection('notificacoes').add(notifTutor);
+
+    const notifAvistador: Record<string, any> = {
+      tipo: 'match_alto_para_avistador',
+      destinatario_uid: avistadorOwnerUid || avistadorUid,
+      destinatario_firebase_uid: avistadorUid,
+      owner_firebase_uid: avistadorUid,
+      petId,
+      pet_id: petId,
+      petNome,
+      pet_nome: petNome,
+      avistamentoId,
+      avistamento_id: avistamentoId,
+      conversaId,
+      conversa_id: conversaId,
+      matchScore,
+      tutorNome,
+      lida: false,
+      timestamp
+    };
+    if (tutorTelPublico && tutorTelefone) {
+      notifAvistador.contato_telefone_tutor = tutorTelefone;
+      notifAvistador.whatsapp_link = buildWhatsAppLink(tutorTelefone);
+    }
+    if (tutorEmailPublico && tutorEmail) {
+      notifAvistador.contato_email_tutor = tutorEmail;
+    }
+    await db.collection('notificacoes').add(notifAvistador);
+
+    await snap.ref.update({
+      match_confirmado: true,
+      match_score: matchScore,
+      conversaId,
+      contato_revelado_em: timestamp
+    });
+
+    await db.collection('lgpd_access_log').add({
+      tipo: 'contato_revelado_bilateral',
+      petId,
+      avistamentoId,
+      avistadorUid,
+      tutorUid,
+      matchScore,
+      camposReveladosParaTutor: avistadorTelPublico && avistadorTelefone ? ['telefone_avistador'] : [],
+      camposReveladosParaAvistador: [
+        ...(tutorTelPublico && tutorTelefone ? ['telefone_tutor'] : []),
+        ...(tutorEmailPublico && tutorEmail ? ['email_tutor'] : [])
+      ],
+      timestamp
+    });
+  }
+);
+
 /**
  * getTutorContact — Cloud Function callable (LGPD-compliant)
  * 
@@ -326,13 +553,8 @@ export const getTutorContact = onCall(
   {
     region: 'southamerica-east1',
     maxInstances: 10,
-    cors: [
-      'http://localhost:5000',
-      'http://127.0.0.1:5000',
-      'http://localhost:3000',
-      'https://encontre-pet-137d2.web.app',
-      'https://encontre-pet-137d2.firebaseapp.com',
-    ],
+    // [FIX C9] Usa lista CORS compartilhada (inclui localhost:8888 do Netlify Dev)
+    cors: ALLOWED_CORS_ORIGINS,
   },
   async (request) => {
     // 1. Verificar autenticação
@@ -378,7 +600,7 @@ export const getTutorContact = onCall(
         .get();
 
       if (sightingSnap.empty) {
-        // Avistamento não vinculado — verificar se há avistamento com match score ≥ 92%
+        // Avistamento não vinculado — verificar se há avistamento com match score >= 70%
         const highScoreSnap = await db.collection('avistamentos')
           .where('owner_firebase_uid', '==', requesterUid)
           .where('matchedLostPetId', '==', petId)
@@ -522,7 +744,14 @@ export const getTutorContact = onCall(
 // ============================================================
 
 export const saveUserPassword = onCall(
-  { region: 'southamerica-east1', maxInstances: 10 },
+  {
+    region: 'southamerica-east1',
+    maxInstances: 10,
+    // [FIX C9] CORS adicionado — antes esta funcao falhava com erro de preflight
+    // ao ser chamada do browser. O fluxo de cadastro caia silenciosamente no
+    // catch e a senha so era salva no Firestore publico (regressao para S-03).
+    cors: ALLOWED_CORS_ORIGINS,
+  },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Autenticacao necessaria.');
@@ -564,7 +793,13 @@ function checkLoginRateLimit(key: string): void {
 }
 
 export const verifyUserPassword = onCall(
-  { region: 'southamerica-east1', maxInstances: 10 },
+  {
+    region: 'southamerica-east1',
+    maxInstances: 10,
+    // [FIX C9] CORS adicionado — antes o browser caia no fallback Firestore
+    // direto (menos seguro) porque a chamada falhava no preflight.
+    cors: ALLOWED_CORS_ORIGINS,
+  },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Autenticacao necessaria.');
@@ -611,13 +846,8 @@ export const getSighterContact = onCall(
   {
     region: 'southamerica-east1',
     maxInstances: 10,
-    cors: [
-      'http://localhost:5000',
-      'http://127.0.0.1:5000',
-      'http://localhost:3000',
-      'https://encontre-pet-137d2.web.app',
-      'https://encontre-pet-137d2.firebaseapp.com',
-    ],
+    // [FIX C9] Usa lista CORS compartilhada (inclui localhost:8888 do Netlify Dev)
+    cors: ALLOWED_CORS_ORIGINS,
   },
   async (request) => {
     // 1. Autenticacao obrigatoria
