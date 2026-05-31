@@ -1,5 +1,8 @@
 // Encontre Pet — Traduções Português (Brasil)
 window.I18nLocales = window.I18nLocales || {};
+const PT_APP_CONFIG = window.AppConfig || {};
+const PT_RADIUS = PT_APP_CONFIG.SEARCH_RADIUS_KM || { cao: 5, gato: 0.8, outro: 3 };
+const PT_MATCH_THRESHOLD = typeof PT_APP_CONFIG.MATCH_THRESHOLD === 'number' ? PT_APP_CONFIG.MATCH_THRESHOLD : 70;
 window.I18nLocales.pt = {
   // — App geral —
   'app.name': 'Encontre Pet',
@@ -75,11 +78,11 @@ window.I18nLocales.pt = {
 
   // — Info cards —
   'home.info.dogs': 'Cães',
-  'home.info.dogs.desc': 'Alerta em raio de <strong>5 km</strong>',
+  'home.info.dogs.desc': `Alerta em raio de <strong>${PT_RADIUS.cao} km</strong>`,
   'home.info.cats': 'Gatos',
-  'home.info.cats.desc': 'Alerta em raio de <strong>0.8 km</strong>',
+  'home.info.cats.desc': `Alerta em raio de <strong>${PT_RADIUS.gato} km</strong>`,
   'home.info.others': 'Outros',
-  'home.info.others.desc': 'Alerta em raio de <strong>3 km</strong>',
+  'home.info.others.desc': `Alerta em raio de <strong>${PT_RADIUS.outro} km</strong>`,
 
   // — Effectiveness panel —
   'home.effectiveness.title': 'Efetividade dos Alertas',
@@ -109,9 +112,9 @@ window.I18nLocales.pt = {
   'report.dog': 'Cão',
   'report.cat': 'Gato',
   'report.other': 'Outro',
-  'report.dog.radius': 'Raio: 5km',
-  'report.cat.radius': 'Raio: 0.8km',
-  'report.other.radius': 'Raio: 3km',
+  'report.dog.radius': `Raio: ${PT_RADIUS.cao}km`,
+  'report.cat.radius': `Raio: ${PT_RADIUS.gato}km`,
+  'report.other.radius': `Raio: ${PT_RADIUS.outro}km`,
   'report.which_animal': 'Qual animal?',
   'report.location.label': 'Local onde foi perdido *',
   'report.location.btn': 'Usar minha localização atual',
@@ -168,6 +171,9 @@ window.I18nLocales.pt = {
   'complete.your_name.placeholder': 'Seu nome completo',
   'complete.your_email': 'E-mail',
   'complete.your_email.placeholder': 'seu@email.com',
+  'complete.validation.invalid_contact_email': 'E-mail de contato inválido.',
+  'complete.validation.date_future': 'A data de perda não pode ser no futuro.',
+  'complete.validation.description_too_long': 'Descrição muito longa (máximo {max} caracteres).',
   'complete.save': 'Salvar Cadastro Completo',
   'complete.skip': 'Pular por agora →',
 
@@ -303,9 +309,9 @@ window.I18nLocales.pt = {
   'how.step2.title': 'Localização',
   'how.step2.desc': 'Informe onde o pet foi perdido. O app usa GPS para precisão.',
   'how.step3.title': 'Alerta Instantâneo',
-  'how.step3.desc': 'O alerta é disparado para pessoas próximas: <strong>5km para cães</strong>, <strong>2km para gatos</strong>.',
+  'how.step3.desc': `O alerta é disparado para pessoas próximas: <strong>${PT_RADIUS.cao}km para cães</strong>, <strong>${PT_RADIUS.gato}km para gatos</strong>.`,
   'how.step4.title': 'IA Compara Fotos',
-  'how.step4.desc': 'Quando alguém avista um pet, a IA compara as fotos. Com <strong>70%+ de similaridade</strong>, o dono é notificado automaticamente!',
+  'how.step4.desc': `Quando alguém avista um pet, a IA compara as fotos. Com <strong>${PT_MATCH_THRESHOLD}%+ de similaridade</strong>, o dono é notificado automaticamente!`,
   'how.step5.title': 'Reencontro!',
   'how.step5.desc': 'O dono entra em contato e busca seu melhor amigo. Tudo gratuito!',
 

@@ -289,7 +289,7 @@
           </div>
           <div class="info-text">
             <h4 data-i18n="home.info.dogs">Cães</h4>
-            <p data-i18n-html="home.info.dogs.desc">Alerta em raio de <strong>5 km</strong></p>
+            <p data-i18n-html="home.info.dogs.desc">Alerta por proximidade</p>
           </div>
         </div>
         <div class="info-card">
@@ -298,7 +298,7 @@
           </div>
           <div class="info-text">
             <h4 data-i18n="home.info.cats">Gatos</h4>
-            <p data-i18n-html="home.info.cats.desc">Alerta em raio de <strong>0.8 km</strong></p>
+            <p data-i18n-html="home.info.cats.desc">Alerta por proximidade</p>
           </div>
         </div>
         <div class="info-card">
@@ -307,7 +307,7 @@
           </div>
           <div class="info-text">
             <h4 data-i18n="home.info.others">Outros</h4>
-            <p data-i18n-html="home.info.others.desc">Alerta em raio de <strong>3 km</strong></p>
+            <p data-i18n-html="home.info.others.desc">Alerta por proximidade</p>
           </div>
         </div>
       </div>
@@ -423,7 +423,7 @@
               <div class="radio-card-content">
                 <i class="fas fa-dog"></i>
                 <span data-i18n="report.dog">Cão</span>
-                <small data-i18n="report.dog.radius">Raio: 5km</small>
+                <small data-i18n="report.dog.radius">Raio por espécie</small>
               </div>
             </label>
             <label class="radio-card">
@@ -431,7 +431,7 @@
               <div class="radio-card-content">
                 <i class="fas fa-cat"></i>
                 <span data-i18n="report.cat">Gato</span>
-                <small data-i18n="report.cat.radius">Raio: 0.8km</small>
+                <small data-i18n="report.cat.radius">Raio por espécie</small>
               </div>
             </label>
             <label class="radio-card">
@@ -439,7 +439,7 @@
               <div class="radio-card-content">
                 <i class="fas fa-dove"></i>
                 <span data-i18n="report.other">Outro</span>
-                <small data-i18n="report.other.radius">Raio: 3km</small>
+                <small data-i18n="report.other.radius">Raio por espécie</small>
               </div>
             </label>
           </div>
@@ -896,13 +896,13 @@
             <div class="step-number">3</div>
             <div class="step-icon"><i class="fas fa-bolt"></i></div>
             <h3 data-i18n="how.step3.title">Alerta Instantâneo</h3>
-            <p data-i18n-html="how.step3.desc">O alerta é disparado para pessoas próximas: <strong>5km para cães</strong>, <strong>2km para gatos</strong>.</p>
+            <p data-i18n-html="how.step3.desc">O alerta é disparado para pessoas próximas de acordo com o tipo do animal.</p>
           </div>
           <div class="step-card">
             <div class="step-number">4</div>
             <div class="step-icon"><i class="fas fa-robot"></i></div>
             <h3 data-i18n="how.step4.title">IA Compara Fotos</h3>
-            <p data-i18n-html="how.step4.desc">Quando alguém avista um pet, a IA compara as fotos. Com <strong>92%+ de similaridade</strong>, o dono é notificado automaticamente!</p>
+            <p data-i18n-html="how.step4.desc">Quando alguém avista um pet, a IA compara as fotos. Em matches fortes, o dono é notificado automaticamente!</p>
           </div>
           <div class="step-card">
             <div class="step-number">5</div>
@@ -1554,6 +1554,7 @@
   </div>
 
   <!-- Scripts - Ordem importa! Locales → i18n → Firebase Config -->
+  <script src="js/app-config.js"></script>
   <script src="js/i18n/locales/pt.js"></script>
   <script src="js/i18n/locales/en.js"></script>
   <script src="js/i18n/locales/es.js"></script>

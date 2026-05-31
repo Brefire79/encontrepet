@@ -185,7 +185,7 @@ service cloud.firestore {
 
     // ========================================
     //  NOTIFICAÇÕES
-    //  Leitura restrita ao destinatário ou dono do alerta.
+    //  Leitura/alteração restritas ao destinatário.
     //  Escrita aberta para autenticados (sistema gera notificações).
     //  Auditoria: S-02 (2026-03-21)
     // ========================================
@@ -193,14 +193,12 @@ service cloud.firestore {
     match /notificacoes/{docId} {
       allow read: if isSignedIn() && (
         resource.data.destinatario_firebase_uid == request.auth.uid ||
-        resource.data.destinatario_uid == request.auth.uid ||
-        resource.data.owner_firebase_uid == request.auth.uid
+        resource.data.destinatario_uid == request.auth.uid
       );
       allow create: if isSignedIn();
       allow update, delete: if isSignedIn() && (
         resource.data.destinatario_firebase_uid == request.auth.uid ||
-        resource.data.destinatario_uid == request.auth.uid ||
-        resource.data.owner_firebase_uid == request.auth.uid
+        resource.data.destinatario_uid == request.auth.uid
       );
     }
 

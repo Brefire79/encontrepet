@@ -7,11 +7,15 @@
 const AIMatch = (() => {
 
   // ─── Configuração ───
-  // Thresholds separados por engine:
-  //   AI   (MobileNet embedding) → 92%  — embedding é rico, threshold alto é justo
-  //   HASH (dHash perceptual)    → 75%  — hash é simples, threshold alto gera falsos negativos
-  const MATCH_THRESHOLD      = 92;   // engine AI
-  const HASH_MATCH_THRESHOLD = 75;   // engine HASH (padrão quando TF.js não carrega)
+  // Limiar de match padrao do produto (recall > precisao): 70%.
+  const MATCH_THRESHOLD =
+    (window.AppConfig && typeof window.AppConfig.MATCH_THRESHOLD === 'number')
+      ? window.AppConfig.MATCH_THRESHOLD
+      : 70;
+  const HASH_MATCH_THRESHOLD =
+    (window.AppConfig && typeof window.AppConfig.HASH_MATCH_THRESHOLD === 'number')
+      ? window.AppConfig.HASH_MATCH_THRESHOLD
+      : MATCH_THRESHOLD;
   const GATE_MAX_DISTANCE_KM = 50;          // G2: descarta se > 50 km
   const GATE_HASH_REPOST_HAMMING = 5;       // G3: hamming <= 5 = imagem quase idêntica
   const GATE_HASH_REPOST_GEO_KM  = 20;     // G3: se dist geo > 20 km + hash ≈ → fraude
@@ -160,7 +164,7 @@ const AIMatch = (() => {
   function findMatches(sighting, pets, engine) {
     if (!sighting || !pets || pets.length === 0) return [];
     const eng = engine || 'HASH';
-    // Threshold varia por engine: HASH usa limiar mais baixo (75) pois dHash é menos preciso
+    // Threshold varia por engine.
     const threshold = eng === 'AI' ? MATCH_THRESHOLD : HASH_MATCH_THRESHOLD;
 
     return pets

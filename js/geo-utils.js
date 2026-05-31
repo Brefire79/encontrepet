@@ -5,11 +5,13 @@
 
 const GeoUtils = (() => {
 
-  // Raios de busca por tipo de animal (em km)
+  // Raios de busca por tipo de animal (em km) vindo da configuracao global.
   const RAIO_BUSCA = {
-    cao: 5,
-    gato: 0.8,
-    outro: 3
+    ...((window.AppConfig && window.AppConfig.SEARCH_RADIUS_KM) || {
+      cao: 5,
+      gato: 0.8,
+      outro: 3
+    })
   };
 
   // Cache da localização do usuário

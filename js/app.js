@@ -2407,18 +2407,18 @@ const App = (() => {
     const emailTutor = document.getElementById('email-tutor')?.value.trim() || '';
     if (emailTutor) {
       try { Auth.validateEmail(emailTutor); } catch (e) {
-        showToast('E-mail de contato inválido.', 'error');
+        showToast(I18n.t('complete.validation.invalid_contact_email'), 'error');
         return;
       }
     }
     const dataPerda = document.getElementById('data-perda')?.value || '';
     if (dataPerda && new Date(dataPerda) > new Date()) {
-      showToast('A data de perda não pode ser no futuro.', 'error');
+      showToast(I18n.t('complete.validation.date_future'), 'error');
       return;
     }
     const descricaoCompleta = document.getElementById('descricao-completa')?.value.trim() || '';
     if (descricaoCompleta.length > 1000) {
-      showToast('Descrição muito longa (máximo 1000 caracteres).', 'error');
+      showToast(I18n.t('complete.validation.description_too_long', { max: 1000 }), 'error');
       return;
     }
 

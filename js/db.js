@@ -938,20 +938,27 @@ const DB = (() => {
   // ============================================================
 
   async function criarNotificacao(data) {
-    // Injetar destinatario_firebase_uid para que as Firestore Rules (S-02)
-    // possam validar o acesso sem depender do ID customizado u_xxx
+    // Garante destinatario_uid/destinatario_firebase_uid para as regras S-02.
     const enriched = { ...data };
+    if (!enriched.destinatario_uid) {
+      enriched.destinatario_uid = enriched.owner_uid || Auth.getUID() || '';
+    }
+
     if (!enriched.destinatario_firebase_uid) {
-      // [FIX C12] Aguarda Firebase UID se necessario antes de salvar a notificacao.
-      let firebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
-      if (!firebaseUid && FirebaseConfig.waitForAuthUID) {
-        try { firebaseUid = await FirebaseConfig.waitForAuthUID(2000); } catch {}
+      let firebaseUid = enriched.owner_firebase_uid || '';
+      if (!firebaseUid) {
+        // [FIX C12] Aguarda Firebase UID se necessario antes de salvar a notificacao.
+        firebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+        if (!firebaseUid && FirebaseConfig.waitForAuthUID) {
+          try { firebaseUid = await FirebaseConfig.waitForAuthUID(2000); } catch {}
+        }
       }
-      // Notificacao para o proprio usuario
-      if (!enriched.destinatario_uid || enriched.destinatario_uid === Auth.getUID()) {
+      // So preenche automaticamente quando for notificacao para o proprio usuario.
+      if (enriched.destinatario_uid === Auth.getUID()) {
         enriched.destinatario_firebase_uid = firebaseUid;
       }
     }
+
     return await create(TABLES.NOTIFICACOES, Security.sanitizeObject(enriched));
   }
 
