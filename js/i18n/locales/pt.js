@@ -145,6 +145,8 @@ window.I18nLocales.pt = {
   'report.phone.placeholder': '(00) 00000-0000',
   'report.phone_public': 'Exibir meu telefone publicamente',
   'report.phone_public.hint': 'Facilita o contato direto de quem avistar seu pet.',
+  'report.email_public': 'Exibir meu e-mail publicamente',
+  'report.email_public.hint': 'Permite contato por e-mail de quem avistar seu pet.',
   'report.submit': 'DISPARAR ALERTA AGORA',
   'report.validate.photo_phone': 'Adicione foto e telefone',
   'report.validate.photo_location': 'Adicione foto e localização',

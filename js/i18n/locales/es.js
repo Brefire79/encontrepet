@@ -145,6 +145,8 @@ window.I18nLocales.es = {
   'report.phone.placeholder': '(00) 00000-0000',
   'report.phone_public': 'Mostrar mi teléfono públicamente',
   'report.phone_public.hint': 'Facilita el contacto directo de quien aviste tu mascota.',
+  'report.email_public': 'Mostrar mi correo públicamente',
+  'report.email_public.hint': 'Permite contacto por correo de quien aviste tu mascota.',
   'report.submit': 'ENVIAR ALERTA AHORA',
   'report.validate.photo_phone': 'Agrega foto y teléfono',
   'report.validate.photo_location': 'Agrega foto y ubicación',
