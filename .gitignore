@@ -34,3 +34,6 @@ build/
 
 # Firebase debug
 firebase-debug.log
+
+# Local Netlify folder
+.netlify

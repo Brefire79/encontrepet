@@ -1,13 +1,17 @@
-// Encontre Pet - Service Worker v1.1.0
-// Estratégia: Cache First para assets, Network First para API e Firestore
-const CACHE_VERSION = 'encontre-pet-v1.13.0';
-const DYNAMIC_CACHE = 'encontre-pet-dynamic-v1.0';
+// Encontre Pet - Service Worker v1.2.0
+// Estrategia: Cache First para assets, Network First para API e Firestore
+// [FIX C5] CACHE_VERSION bumpado para forcar re-cache com os novos icones.
+// [FIX C5] icons/icon-192.png e icons/icon-512.png agora pre-cacheados para
+// que o PWA funcione corretamente offline no launcher do dispositivo.
+const CACHE_VERSION = 'encontre-pet-v1.18.0';
+const DYNAMIC_CACHE = 'encontre-pet-dynamic-v1.1';
 const API_CACHE = 'encontre-pet-api-v1.0';
 
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/css/style.css',
+  '/js/app-config.js',
   '/js/i18n/locales/pt.js',
   '/js/i18n/locales/en.js',
   '/js/i18n/locales/es.js',
@@ -24,7 +28,10 @@ const STATIC_ASSETS = [
   '/js/services/image-hash.js',
   '/js/services/similarity.js',
   '/js/components/ModalDuplicateCase.js',
-  '/manifest.json'
+  '/manifest.json',
+  // [FIX C5] Icones principais para PWA funcionar offline
+  '/icons/icon-192.png',
+  '/icons/icon-512.png'
 ];
 
 // CDN assets para cache dinâmico (Firebase SDK, TensorFlow, fontes, ícones)
@@ -115,6 +122,9 @@ async function cacheFirst(request) {
     }
     return response;
   } catch (err) {
+    if (request.mode !== 'navigate' && request.destination !== 'document') {
+      return new Response('', { status: 503, statusText: 'Offline asset unavailable' });
+    }
     return new Response('<h1>Sem conexão</h1><p>Verifique sua internet e tente novamente.</p>', {
       headers: { 'Content-Type': 'text/html; charset=utf-8' }
     });

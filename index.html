@@ -9,7 +9,8 @@
   <meta name="description" content="App gratuito para encontrar pets perdidos. Reporte rápido, alerta por proximidade e matching com IA.">
   <meta http-equiv="X-Content-Type-Options" content="nosniff">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' https://www.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.openstreetmap.org https://tile.openstreetmap.org; connect-src 'self' https://*.googleapis.com https://*.gstatic.com https://*.firebaseio.com https://*.firebaseapp.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://nominatim.openstreetmap.org https://storage.googleapis.com https://cdn.jsdelivr.net wss://*.firebaseio.com wss://*.googleapis.com; frame-src 'none'; object-src 'none'; base-uri 'self';">
+  <!-- [FIX C2] CSP removida do <meta>. Aplicada apenas via header HTTP no netlify.toml
+       para evitar intersecao restritiva entre duas CSPs e facilitar manutencao. -->
   
   <title>Encontre Pet - Encontre seu melhor amigo</title>
   
@@ -288,7 +289,7 @@
           </div>
           <div class="info-text">
             <h4 data-i18n="home.info.dogs">Cães</h4>
-            <p data-i18n-html="home.info.dogs.desc">Alerta em raio de <strong>5 km</strong></p>
+            <p data-i18n-html="home.info.dogs.desc">Alerta por proximidade</p>
           </div>
         </div>
         <div class="info-card">
@@ -297,7 +298,7 @@
           </div>
           <div class="info-text">
             <h4 data-i18n="home.info.cats">Gatos</h4>
-            <p data-i18n-html="home.info.cats.desc">Alerta em raio de <strong>0.8 km</strong></p>
+            <p data-i18n-html="home.info.cats.desc">Alerta por proximidade</p>
           </div>
         </div>
         <div class="info-card">
@@ -306,7 +307,7 @@
           </div>
           <div class="info-text">
             <h4 data-i18n="home.info.others">Outros</h4>
-            <p data-i18n-html="home.info.others.desc">Alerta em raio de <strong>3 km</strong></p>
+            <p data-i18n-html="home.info.others.desc">Alerta por proximidade</p>
           </div>
         </div>
       </div>
@@ -422,7 +423,7 @@
               <div class="radio-card-content">
                 <i class="fas fa-dog"></i>
                 <span data-i18n="report.dog">Cão</span>
-                <small data-i18n="report.dog.radius">Raio: 5km</small>
+                <small data-i18n="report.dog.radius">Raio por espécie</small>
               </div>
             </label>
             <label class="radio-card">
@@ -430,7 +431,7 @@
               <div class="radio-card-content">
                 <i class="fas fa-cat"></i>
                 <span data-i18n="report.cat">Gato</span>
-                <small data-i18n="report.cat.radius">Raio: 0.8km</small>
+                <small data-i18n="report.cat.radius">Raio por espécie</small>
               </div>
             </label>
             <label class="radio-card">
@@ -438,7 +439,7 @@
               <div class="radio-card-content">
                 <i class="fas fa-dove"></i>
                 <span data-i18n="report.other">Outro</span>
-                <small data-i18n="report.other.radius">Raio: 3km</small>
+                <small data-i18n="report.other.radius">Raio por espécie</small>
               </div>
             </label>
           </div>
@@ -480,16 +481,16 @@
         <div class="form-group">
           <label data-i18n="report.color">Cor predominante</label>
           <div class="color-chips">
-            <label class="color-chip"><input type="radio" name="cor-pet" value="preto"><span style="background:#333">Preto</span></label>
-            <label class="color-chip"><input type="radio" name="cor-pet" value="branco"><span style="background:#f0f0f0;color:#333;border-color:#ddd">Branco</span></label>
-            <label class="color-chip"><input type="radio" name="cor-pet" value="marrom"><span style="background:#8B4513">Marrom</span></label>
-            <label class="color-chip"><input type="radio" name="cor-pet" value="caramelo"><span style="background:#D2691E">Caramelo</span></label>
-            <label class="color-chip"><input type="radio" name="cor-pet" value="cinza"><span style="background:#808080">Cinza</span></label>
-            <label class="color-chip"><input type="radio" name="cor-pet" value="rajado"><span style="background:linear-gradient(45deg,#8B4513 25%,#D2691E 75%)">Rajado</span></label>
-            <label class="color-chip"><input type="radio" name="cor-pet" value="malhado"><span style="background:linear-gradient(45deg,#333 30%,#fff 70%);color:#555">Malhado</span></label>
-            <label class="color-chip"><input type="radio" name="cor-pet" value="preto_branco"><span style="background:linear-gradient(135deg,#333 50%,#f0f0f0 50%);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5)">P&B</span></label>
-            <label class="color-chip"><input type="radio" name="cor-pet" value="bicolor"><span style="background:linear-gradient(135deg,#8B4513 50%,#F5DEB3 50%)">Bicolor</span></label>
-            <label class="color-chip"><input type="radio" name="cor-pet" value="tricolor"><span style="background:linear-gradient(135deg,#333 33%,#D2691E 33%,#D2691E 66%,#f0f0f0 66%);text-shadow:0 1px 2px rgba(0,0,0,0.5)">Tricolor</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="preto"><span style="background:#333" data-i18n="report.color.black">Preto</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="branco"><span style="background:#f0f0f0;color:#333;border-color:#ddd" data-i18n="report.color.white">Branco</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="marrom"><span style="background:#8B4513" data-i18n="report.color.brown">Marrom</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="caramelo"><span style="background:#D2691E" data-i18n="report.color.caramel">Caramelo</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="cinza"><span style="background:#808080" data-i18n="report.color.gray">Cinza</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="rajado"><span style="background:linear-gradient(45deg,#8B4513 25%,#D2691E 75%)" data-i18n="report.color.brindle">Rajado</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="malhado"><span style="background:linear-gradient(45deg,#333 30%,#fff 70%);color:#555" data-i18n="report.color.spotted">Malhado</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="preto_branco"><span style="background:linear-gradient(135deg,#333 50%,#f0f0f0 50%);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5)" data-i18n="report.color.bw">P&B</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="bicolor"><span style="background:linear-gradient(135deg,#8B4513 50%,#F5DEB3 50%)" data-i18n="report.color.bicolor">Bicolor</span></label>
+            <label class="color-chip"><input type="radio" name="cor-pet" value="tricolor"><span style="background:linear-gradient(135deg,#333 33%,#D2691E 33%,#D2691E 66%,#f0f0f0 66%);text-shadow:0 1px 2px rgba(0,0,0,0.5)" data-i18n="report.color.tricolor">Tricolor</span></label>
           </div>
         </div>
 
@@ -525,7 +526,7 @@
           <label><i class="fas fa-phone"></i> <span data-i18n="report.phone">Telefone para contato (opcional)</span></label>
           <input type="tel" id="telefone-rapido" class="form-input" placeholder="(00) 00000-0000" data-i18n-placeholder="report.phone.placeholder" aria-describedby="telefone-rapido-erro">
           <p id="telefone-rapido-erro" class="field-error hidden" role="alert" aria-live="polite"></p>
-        </div>
+        </div>    
 
         <!-- Exibir telefone publicamente -->
         <div class="form-group">
@@ -542,13 +543,13 @@
         <!-- Exibir e-mail publicamente -->
         <div class="form-group">
           <label class="switch-label">
-            <span>Exibir meu e-mail publicamente</span>
+            <span data-i18n="report.email_public">Exibir meu e-mail publicamente</span>
             <label class="switch">
               <input type="checkbox" id="check-email-publico">
               <span class="switch-slider"></span>
             </label>
           </label>
-          <p class="field-hint">Permite contato por e-mail de quem avistar seu pet.</p>
+          <p class="field-hint" data-i18n="report.email_public.hint">Permite contato por e-mail de quem avistar seu pet.</p>
         </div>
 
         <!-- Botão Disparar Alerta -->
@@ -559,8 +560,7 @@
 
         <p class="form-note">
           <i class="fas fa-info-circle"></i>
-          O alerta será enviado para pessoas em um raio de até <strong id="raio-info">5 km</strong>. 
-          Você poderá completar o cadastro depois.
+          <span data-i18n-html="report.note">O alerta será enviado para pessoas em um raio de até <strong id="raio-info">5 km</strong>. Você poderá completar o cadastro depois.</span>
         </p>
       </div>
     </section>
@@ -733,10 +733,10 @@
 
         <!-- Localização -->
         <div class="form-group">
-          <label><i class="fas fa-map-marker-alt"></i> Local do avistamento</label>
+          <label><i class="fas fa-map-marker-alt"></i> <span data-i18n="sighting.location">Local do avistamento</span></label>
           <button id="btn-get-location-avistamento" class="btn-location">
             <i class="fas fa-crosshairs"></i>
-            <span>Usar minha localização atual</span>
+            <span data-i18n="sighting.location.btn">Usar minha localização</span>
           </button>
           <div id="location-info-avistamento" class="location-info hidden">
             <i class="fas fa-check-circle"></i>
@@ -749,28 +749,28 @@
         <!-- Cor e Porte -->
         <div class="form-row">
           <div class="form-group half">
-            <label>Cor</label>
+            <label data-i18n="sighting.color">Cor</label>
             <select id="cor-avistamento" class="form-select">
-              <option value="">Selecione</option>
-              <option value="preto">Preto</option>
-              <option value="branco">Branco</option>
-              <option value="marrom">Marrom</option>
-              <option value="caramelo">Caramelo</option>
-              <option value="cinza">Cinza</option>
-              <option value="rajado">Rajado</option>
-              <option value="malhado">Malhado</option>
-              <option value="preto_branco">Preto e Branco</option>
-              <option value="bicolor">Bicolor</option>
-              <option value="tricolor">Tricolor</option>
+              <option value="" data-i18n="sighting.color.select">Selecione</option>
+              <option value="preto" data-i18n="report.color.black">Preto</option>
+              <option value="branco" data-i18n="report.color.white">Branco</option>
+              <option value="marrom" data-i18n="report.color.brown">Marrom</option>
+              <option value="caramelo" data-i18n="report.color.caramel">Caramelo</option>
+              <option value="cinza" data-i18n="report.color.gray">Cinza</option>
+              <option value="rajado" data-i18n="report.color.brindle">Rajado</option>
+              <option value="malhado" data-i18n="report.color.spotted">Malhado</option>
+              <option value="preto_branco" data-i18n="report.color.bw">Preto e Branco</option>
+              <option value="bicolor" data-i18n="report.color.bicolor">Bicolor</option>
+              <option value="tricolor" data-i18n="report.color.tricolor">Tricolor</option>
             </select>
           </div>
           <div class="form-group half">
-            <label>Porte</label>
+            <label data-i18n="sighting.size">Porte</label>
             <select id="porte-avistamento" class="form-select">
-              <option value="">Selecione</option>
-              <option value="pequeno">Pequeno</option>
-              <option value="medio">Médio</option>
-              <option value="grande">Grande</option>
+              <option value="" data-i18n="sighting.size.select">Selecione</option>
+              <option value="pequeno" data-i18n="report.size.small">Pequeno</option>
+              <option value="medio" data-i18n="report.size.medium">Médio</option>
+              <option value="grande" data-i18n="report.size.large">Grande</option>
             </select>
           </div>
         </div>
@@ -895,13 +895,13 @@
             <div class="step-number">3</div>
             <div class="step-icon"><i class="fas fa-bolt"></i></div>
             <h3 data-i18n="how.step3.title">Alerta Instantâneo</h3>
-            <p data-i18n-html="how.step3.desc">O alerta é disparado para pessoas próximas: <strong>5km para cães</strong>, <strong>2km para gatos</strong>.</p>
+            <p data-i18n-html="how.step3.desc">O alerta é disparado para pessoas próximas de acordo com o tipo do animal.</p>
           </div>
           <div class="step-card">
             <div class="step-number">4</div>
             <div class="step-icon"><i class="fas fa-robot"></i></div>
             <h3 data-i18n="how.step4.title">IA Compara Fotos</h3>
-            <p data-i18n-html="how.step4.desc">Quando alguém avista um pet, a IA compara as fotos. Com <strong>92%+ de similaridade</strong>, o dono é notificado automaticamente!</p>
+            <p data-i18n-html="how.step4.desc">Quando alguém avista um pet, a IA compara as fotos. Em matches fortes, o dono é notificado automaticamente!</p>
           </div>
           <div class="step-card">
             <div class="step-number">5</div>
@@ -1553,10 +1553,11 @@
   </div>
 
   <!-- Scripts - Ordem importa! Locales → i18n → Firebase Config -->
-  <script src="js/i18n/locales/pt.js"></script>
-  <script src="js/i18n/locales/en.js"></script>
-  <script src="js/i18n/locales/es.js"></script>
-  <script src="js/i18n.js"></script>
+  <script src="js/app-config.js?v=1.18.0"></script>
+  <script src="js/i18n/locales/pt.js?v=1.18.0"></script>
+  <script src="js/i18n/locales/en.js?v=1.18.0"></script>
+  <script src="js/i18n/locales/es.js?v=1.18.0"></script>
+  <script src="js/i18n.js?v=1.18.0"></script>
   <script src="js/firebase-config.js"></script>
   <script src="js/security.js"></script>
   <script src="js/auth.js"></script>

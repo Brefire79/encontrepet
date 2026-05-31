@@ -1,5 +1,8 @@
 // Encontre Pet — Translations English
 window.I18nLocales = window.I18nLocales || {};
+const EN_APP_CONFIG = window.AppConfig || {};
+const EN_RADIUS = EN_APP_CONFIG.SEARCH_RADIUS_KM || { cao: 5, gato: 0.8, outro: 3 };
+const EN_MATCH_THRESHOLD = typeof EN_APP_CONFIG.MATCH_THRESHOLD === 'number' ? EN_APP_CONFIG.MATCH_THRESHOLD : 70;
 window.I18nLocales.en = {
   // — App —
   'app.name': 'Find Pet',
@@ -75,11 +78,11 @@ window.I18nLocales.en = {
 
   // — Info cards —
   'home.info.dogs': 'Dogs',
-  'home.info.dogs.desc': 'Alerts within a <strong>5 km</strong> radius',
+  'home.info.dogs.desc': `Alerts within a <strong>${EN_RADIUS.cao} km</strong> radius`,
   'home.info.cats': 'Cats',
-  'home.info.cats.desc': 'Alerts within a <strong>0.8 km</strong> radius',
+  'home.info.cats.desc': `Alerts within a <strong>${EN_RADIUS.gato} km</strong> radius`,
   'home.info.others': 'Others',
-  'home.info.others.desc': 'Alerts within a <strong>3 km</strong> radius',
+  'home.info.others.desc': `Alerts within a <strong>${EN_RADIUS.outro} km</strong> radius`,
 
   // — Effectiveness —
   'home.effectiveness.title': 'Alert Effectiveness',
@@ -109,9 +112,9 @@ window.I18nLocales.en = {
   'report.dog': 'Dog',
   'report.cat': 'Cat',
   'report.other': 'Other',
-  'report.dog.radius': 'Radius: 5km',
-  'report.cat.radius': 'Radius: 0.8km',
-  'report.other.radius': 'Radius: 3km',
+  'report.dog.radius': `Radius: ${EN_RADIUS.cao}km`,
+  'report.cat.radius': `Radius: ${EN_RADIUS.gato}km`,
+  'report.other.radius': `Radius: ${EN_RADIUS.outro}km`,
   'report.which_animal': 'Which animal?',
   'report.location.label': 'Where it was lost *',
   'report.location.btn': 'Use my current location',
@@ -142,6 +145,8 @@ window.I18nLocales.en = {
   'report.phone.placeholder': '(00) 00000-0000',
   'report.phone_public': 'Show my phone publicly',
   'report.phone_public.hint': 'Makes it easier for whoever spots your pet to contact you.',
+  'report.email_public': 'Show my email publicly',
+  'report.email_public.hint': 'Allows contact by email from whoever spots your pet.',
   'report.submit': 'SEND ALERT NOW',
   'report.validate.photo_phone': 'Add photo and phone number',
   'report.validate.photo_location': 'Add photo and location',
@@ -168,6 +173,9 @@ window.I18nLocales.en = {
   'complete.your_name.placeholder': 'Your full name',
   'complete.your_email': 'Email',
   'complete.your_email.placeholder': 'you@email.com',
+  'complete.validation.invalid_contact_email': 'Invalid contact email.',
+  'complete.validation.date_future': 'Loss date cannot be in the future.',
+  'complete.validation.description_too_long': 'Description is too long (max {max} characters).',
   'complete.save': 'Save Details',
   'complete.skip': 'Skip for now →',
 
@@ -195,6 +203,8 @@ window.I18nLocales.en = {
   'sighting.ai.no_pets': 'No reported pets to compare.',
   'sighting.ai.no_match': 'No match. Send the sighting anyway!',
   'sighting.ai.error': 'Comparison error. Send anyway.',
+  'sighting.match_high_contact_sent': 'Match found! Owner contact has been sent to your notifications.',
+  'sighting.registered_low_match': 'Sighting registered ({score}% compatibility). The owner was notified.',
 
   // — Validation —
   'validation.phone_invalid': 'Invalid phone. Use Brazilian format: (XX) XXXXX-XXXX',
@@ -260,6 +270,25 @@ window.I18nLocales.en = {
   // — Notifications —
   'notif.title': 'Notifications',
   'notif.empty': 'No notifications yet.',
+  'notif.match_found': '{score}% match for "{pet}"! Owner contact is available.',
+  'notif.tutor_name': 'Owner: {nome}',
+  'notif.contact_tutor_whatsapp': 'Contact Owner on WhatsApp',
+  'notif.contact_tutor_email': 'Email the Owner',
+  'notif.sighting_match': '{score}% sighting match for "{pet}"!',
+  'notif.finder_name': 'Finder: {nome}',
+  'notif.contact_finder_whatsapp': 'Contact Finder on WhatsApp',
+  'notif.new_sighting': 'New sighting of "{pet}"',
+  'notif.sighting_score': 'Compatibility: {score}%',
+
+  // — Internal chat —
+  'chat.title': 'Internal chat',
+  'chat.open': 'Internal chat',
+  'chat.loading': 'Loading messages...',
+  'chat.empty': 'No messages yet.',
+  'chat.placeholder': 'Type a message...',
+  'chat.send': 'Send',
+  'chat.send_error': 'Error sending message.',
+  'chat.unavailable': 'Chat unavailable for this match.',
 
   // — Map —
   'map.title': 'Alerts Map',
@@ -282,9 +311,9 @@ window.I18nLocales.en = {
   'how.step2.title': 'Location',
   'how.step2.desc': 'Tell where the pet was lost. The app uses GPS for accuracy.',
   'how.step3.title': 'Instant Alert',
-  'how.step3.desc': 'The alert is sent to nearby people: <strong>5km for dogs</strong>, <strong>2km for cats</strong>.',
+  'how.step3.desc': `The alert is sent to nearby people: <strong>${EN_RADIUS.cao}km for dogs</strong>, <strong>${EN_RADIUS.gato}km for cats</strong>.`,
   'how.step4.title': 'AI Compares Photos',
-  'how.step4.desc': 'When someone spots a pet, AI compares photos. With <strong>92%+ similarity</strong>, the owner is notified automatically!',
+  'how.step4.desc': `When someone spots a pet, AI compares photos. With <strong>${EN_MATCH_THRESHOLD}%+ similarity</strong>, the owner is notified automatically!`,
   'how.step5.title': 'Reunion!',
   'how.step5.desc': 'The owner contacts you and reunites with their best friend. Totally free!',
 

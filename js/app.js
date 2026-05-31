@@ -20,6 +20,7 @@ const App = (() => {
     matchedScore: 0,
     matchedEngine: '',
     matchedPetOwnerFirebaseUid: null,
+    matchedPetOwnerUid: null,
     // Matching control
     isAnalyzing: false,
     _matchDebounceTimer: null,
@@ -38,6 +39,11 @@ const App = (() => {
   let _lastKnownUnread = -1; // -1 = not yet loaded
   let _notifPollTimer = null;
   let _lastKnownFeedIds = null; // Set of IDs from the last feed check
+  let _lastKnownAvistamentosCount = -1; // -1 = not yet loaded
+  // [FIX C6] Guard contra reload duplo quando SW dispara controllerchange.
+  let _isReloading = false;
+  // [FIX C8] Handle do setInterval do SW update — para clearInterval no logout.
+  let _swUpdateInterval = null;
 
   /**
    * Plays a short, pleasant notification chime using Web Audio API.
@@ -72,6 +78,32 @@ const App = (() => {
    * Plays a softer, lower-pitched sound for general feed updates.
    * Single gentle tone (G4) at lower volume.
    */
+  /**
+   * Som urgente para quando o avistador envia o próprio contato ao tutor.
+   * Três tons ascendentes em sequência rápida — inconfundível.
+   */
+  function playContactAlertSound() {
+    try {
+      if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = _audioCtx;
+      const now = ctx.currentTime;
+      [523.25, 659.25, 783.99].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.28, now + i * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.12);
+        osc.stop(now + i * 0.12 + 0.35);
+      });
+    } catch (e) {
+      console.warn('[Sound] Contact alert sound failed:', e);
+    }
+  }
+
   function playFeedSound() {
     try {
       if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -134,6 +166,354 @@ const App = (() => {
     };
 
     setTimeout(() => notif.close(), 10000);
+  }
+
+  function showHomeSightingBanner(notif) {
+    const existing = document.getElementById('home-sighting-banner');
+    if (existing) existing.remove();
+
+    const petNome = notif.pet_nome || notif.pet_id || 'seu pet';
+    const tipo = notif.tipo === 'avistamento_contato' ? 'Contato de avistamento' : 'Possível avistamento';
+    const msg = notif.tipo === 'avistamento_contato'
+      ? `Alguém enviou o número de telefone sobre «${petNome}»!`
+      : `Possível combinação encontrada para «${petNome}»!`;
+
+    const banner = document.createElement('div');
+    banner.id = 'home-sighting-banner';
+    banner.setAttribute('role', 'alert');
+    banner.style.cssText = [
+      'position:fixed', 'bottom:80px', 'left:50%', 'transform:translateX(-50%)',
+      'background:#1a73e8', 'color:#fff', 'padding:14px 20px',
+      'border-radius:12px', 'box-shadow:0 4px 20px rgba(0,0,0,0.25)',
+      'display:flex', 'align-items:center', 'gap:12px',
+      'z-index:9999', 'max-width:92vw', 'font-size:14px',
+      'animation:fadeInUp 0.3s ease'
+    ].join(';');
+
+    banner.innerHTML = `
+      <span style="font-size:22px" aria-hidden="true">🐾</span>
+      <span><strong>${tipo}:</strong> ${msg}</span>
+      <button onclick="document.getElementById('btn-notificacoes')?.click();document.getElementById('home-sighting-banner')?.remove();"
+        style="background:rgba(255,255,255,0.25);border:none;color:#fff;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">
+        Ver detalhes
+      </button>
+      <button onclick="this.parentElement.remove();"
+        aria-label="Fechar"
+        style="background:none;border:none;color:#fff;cursor:pointer;font-size:18px;line-height:1;padding:4px">
+        ×
+      </button>`;
+
+    document.body.appendChild(banner);
+    setTimeout(() => { const b = document.getElementById('home-sighting-banner'); if (b) b.remove(); }, 12000);
+  }
+
+  // ====== ALERTA URGENTE — impossível de ignorar (para o TUTOR) ======
+  let _alarmInterval = null;
+
+  function playAlarmSound() {
+    try {
+      if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = _audioCtx;
+      const now = ctx.currentTime;
+      // Padrão de alarme: 3 bipes urgentes
+      [0, 0.35, 0.70].forEach(offset => {
+        [880, 1100].forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.25, now + offset + i * 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + offset + i * 0.12 + 0.1);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + offset + i * 0.12);
+          osc.stop(now + offset + i * 0.12 + 0.1);
+        });
+      });
+    } catch (e) {}
+  }
+
+  function stopAlarm() {
+    if (_alarmInterval) { clearInterval(_alarmInterval); _alarmInterval = null; }
+  }
+
+  function startAlarm() {
+    stopAlarm();
+    playAlarmSound();
+    let count = 0;
+    _alarmInterval = setInterval(() => {
+      if (count++ < 5) playAlarmSound(); // toca até 6 vezes (30 segundos)
+      else stopAlarm();
+    }, 5000);
+  }
+
+  /**
+   * Alerta de tela cheia para o TUTOR — impossível de não ver.
+   * Cobre toda a tela com overlay pulsante + detalhes do avistamento.
+   */
+  function showUrgentTutorAlert(notif) {
+    // Evitar duplicatas
+    if (document.getElementById('urgent-tutor-alert')) return;
+
+    const petNome = Security.sanitize(notif.pet_nome || 'seu pet');
+    const isContact = notif.tipo === 'avistamento_contato';
+    const titulo = isContact ? '📱 Alguém quer falar com você!' : '🚨 Possível avistamento do seu pet!';
+    const subtitulo = isContact
+      ? `Um avistador enviou o contato sobre «${petNome}». Clique agora para ver!`
+      : `Um avistamento compatível com «${petNome}» foi registrado. Verifique agora!`;
+    const cor = isContact ? '#e65100' : '#b71c1c';
+    const corClaro = isContact ? '#ff6d00' : '#e53935';
+
+    // Push Notification do browser (se permitido)
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(titulo, {
+          body: subtitulo,
+          icon: 'icons/icon-192.png',
+          badge: 'icons/icon-192.png',
+          requireInteraction: true,
+          vibrate: [300, 100, 300, 100, 300]
+        });
+      } catch (e) {}
+    } else if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    // Flash contínuo do título da aba
+    const originalTitle = document.title;
+    let flashCount = 0;
+    const titleFlash = setInterval(() => {
+      document.title = flashCount++ % 2 === 0 ? `🚨 ${titulo}` : originalTitle;
+      if (flashCount > 60) { clearInterval(titleFlash); document.title = originalTitle; }
+    }, 600);
+
+    // Overlay de tela cheia
+    const overlay = document.createElement('div');
+    overlay.id = 'urgent-tutor-alert';
+    overlay.setAttribute('role', 'alertdialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.style.cssText = [
+      'position:fixed', 'inset:0', 'z-index:99999',
+      `background:${cor}`,
+      'display:flex', 'flex-direction:column', 'align-items:center', 'justify-content:center',
+      'padding:24px', 'animation:urgentPulse 1s ease-in-out infinite alternate'
+    ].join(';');
+
+    overlay.innerHTML = `
+      <style>
+        @keyframes urgentPulse {
+          from { background: ${cor}; }
+          to   { background: ${corClaro}; }
+        }
+        @keyframes urgentBounce {
+          0%,100% { transform: scale(1); }
+          50%      { transform: scale(1.15); }
+        }
+        #urgent-tutor-alert .urgent-icon { animation: urgentBounce 0.8s ease infinite; }
+      </style>
+
+      <div class="urgent-icon" style="font-size:80px;margin-bottom:16px">🐾</div>
+
+      <h2 style="color:#fff;font-size:1.5rem;font-weight:800;text-align:center;margin:0 0 12px;text-shadow:0 2px 8px rgba(0,0,0,0.3)">
+        ${titulo}
+      </h2>
+
+      <p style="color:rgba(255,255,255,0.95);font-size:1rem;text-align:center;margin:0 0 28px;max-width:360px;line-height:1.5">
+        ${subtitulo}
+      </p>
+
+      <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:320px">
+        <button id="urgent-ver-btn"
+          style="background:#fff;color:${cor};border:none;border-radius:14px;padding:16px;font-size:1.1rem;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.2)">
+          👉 Ver agora
+        </button>
+        <button id="urgent-dismiss-btn"
+          style="background:rgba(255,255,255,0.2);color:#fff;border:2px solid rgba(255,255,255,0.5);border-radius:14px;padding:12px;font-size:0.9rem;cursor:pointer">
+          Fechar (verei mais tarde)
+        </button>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Focar no overlay para acessibilidade
+    overlay.focus?.();
+
+    // Botão "Ver agora" → vai para notificações e fecha
+    document.getElementById('urgent-ver-btn')?.addEventListener('click', () => {
+      clearInterval(titleFlash);
+      document.title = originalTitle;
+      stopAlarm();
+      overlay.remove();
+      navigateTo('notificacoes');
+    });
+
+    // Botão dismiss
+    document.getElementById('urgent-dismiss-btn')?.addEventListener('click', () => {
+      clearInterval(titleFlash);
+      document.title = originalTitle;
+      stopAlarm();
+      overlay.remove();
+    });
+
+    // Auto-fechar depois de 60 segundos se não interagir
+    setTimeout(() => {
+      clearInterval(titleFlash);
+      document.title = originalTitle;
+      stopAlarm();
+      const el = document.getElementById('urgent-tutor-alert');
+      if (el) el.remove();
+    }, 60000);
+  }
+
+  /**
+   * Feedback imediato para o AVISTADOR — mostra que encontrou pets compatíveis.
+   */
+  function showAvistadorMatchFeedback(petsList, avistamentoId) {
+    const existing = document.getElementById('avistador-match-feedback');
+    if (existing) existing.remove();
+
+    if (!petsList || petsList.length === 0) return;
+    const count = petsList.length;
+    const firstPet = petsList[0];
+    const petNome = Security.sanitize(firstPet.nome_pet || 'um pet');
+    const msg = count === 1
+      ? `Seu avistamento pode ser o pet «${petNome}»! O tutor foi avisado.`
+      : `Seu avistamento pode corresponder a ${count} pets perdidos! Os tutores foram avisados.`;
+
+    const modal = document.createElement('div');
+    modal.id = 'avistador-match-feedback';
+    modal.setAttribute('role', 'alert');
+    modal.style.cssText = [
+      'position:fixed', 'inset:0', 'z-index:99998',
+      'background:rgba(0,0,0,0.6)',
+      'display:flex', 'align-items:flex-end', 'justify-content:center',
+      'padding:0 0 70px'
+    ].join(';');
+
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:20px 20px 0 0;padding:28px 24px;width:100%;max-width:480px;
+                  box-shadow:0 -4px 30px rgba(0,0,0,0.2);animation:slideUp 0.35s ease">
+        <div style="text-align:center;margin-bottom:16px">
+          <span style="font-size:52px">🎉</span>
+        </div>
+        <h3 style="text-align:center;margin:0 0 10px;font-size:1.2rem;color:#1b5e20;font-weight:800">
+          Avistamento registrado com sucesso!
+        </h3>
+        <p style="text-align:center;margin:0 0 20px;color:#555;font-size:0.95rem;line-height:1.5">
+          ${msg}
+        </p>
+        <div style="background:#e8f5e9;border-radius:12px;padding:12px 16px;margin-bottom:20px;
+                    border-left:4px solid #43a047;font-size:0.9rem;color:#2e7d32">
+          <strong>📲 Notificação enviada!</strong> O tutor receberá um alerta em tempo real.
+        </div>
+        <button onclick="document.getElementById('avistador-match-feedback')?.remove();"
+          style="width:100%;background:#43a047;color:#fff;border:none;border-radius:12px;
+                 padding:14px;font-size:1rem;font-weight:700;cursor:pointer">
+          Entendido ✓
+        </button>
+      </div>`;
+
+    // Fechar ao clicar no overlay escuro
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+
+    // Auto-fechar em 20s
+    setTimeout(() => {
+      const el = document.getElementById('avistador-match-feedback');
+      if (el) el.remove();
+    }, 20000);
+  }
+
+  let _chatUnsubscribe = null;
+
+  function closeChatModal() {
+    if (_chatUnsubscribe) {
+      _chatUnsubscribe();
+      _chatUnsubscribe = null;
+    }
+    document.getElementById('internal-chat-modal')?.remove();
+  }
+
+  async function openInternalChat(conversaId, title = '') {
+    if (!conversaId) {
+      showToast(I18n.t('chat.unavailable'), 'warning');
+      return;
+    }
+
+    closeChatModal();
+    const modal = document.createElement('div');
+    modal.id = 'internal-chat-modal';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-overlay" id="chat-modal-overlay"></div>
+      <div class="modal-content" style="max-width:520px;height:min(680px,90vh);display:flex;flex-direction:column">
+        <div class="modal-header">
+          <h3><i class="fas fa-comments"></i> ${Security.sanitize(title || I18n.t('chat.title'))}</h3>
+          <button id="chat-modal-close" class="btn-close-modal"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="chat-messages" style="flex:1;overflow:auto;padding:12px;background:var(--bg);border-radius:8px;margin:0 0 12px">
+          <div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>${I18n.t('chat.loading')}</p></div>
+        </div>
+        <form id="chat-form" style="display:flex;gap:8px">
+          <input id="chat-input" class="form-control" maxlength="1000" autocomplete="off" placeholder="${I18n.t('chat.placeholder')}" style="flex:1">
+          <button class="btn-primary" type="submit" title="${I18n.t('chat.send')}"><i class="fas fa-paper-plane"></i></button>
+        </form>
+      </div>`;
+    document.body.appendChild(modal);
+
+    document.getElementById('chat-modal-close')?.addEventListener('click', closeChatModal);
+    document.getElementById('chat-modal-overlay')?.addEventListener('click', closeChatModal);
+
+    const messagesEl = document.getElementById('chat-messages');
+    const myFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+
+    _chatUnsubscribe = DB.watchMensagensConversa(conversaId, (messages) => {
+      if (!messagesEl) return;
+      if (!messages.length) {
+        messagesEl.innerHTML = `<div class="empty-state"><i class="fas fa-comment-dots"></i><p>${I18n.t('chat.empty')}</p></div>`;
+        return;
+      }
+
+      messagesEl.innerHTML = messages.map(msg => {
+        const mine = msg.autor_firebase_uid === myFirebaseUid;
+        const when = getTimeAgo(msg.createdAt);
+        return `
+          <div style="display:flex;justify-content:${mine ? 'flex-end' : 'flex-start'};margin:8px 0">
+            <div style="max-width:82%;background:${mine ? 'var(--primary)' : '#fff'};color:${mine ? '#fff' : 'var(--text)'};padding:10px 12px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+              ${!mine ? `<div style="font-size:.72rem;font-weight:700;margin-bottom:4px;color:var(--text-muted)">${Security.sanitize(msg.autor_nome || '')}</div>` : ''}
+              <div style="white-space:pre-wrap;word-break:break-word">${Security.sanitize(msg.texto || '')}</div>
+              <div style="font-size:.68rem;opacity:.75;margin-top:4px;text-align:right">${when}</div>
+            </div>
+          </div>`;
+      }).join('');
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
+
+    document.getElementById('chat-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('chat-input');
+      const text = input?.value?.trim() || '';
+      if (!text) return;
+      const submitBtn = e.currentTarget.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      try {
+        await DB.enviarMensagemConversa(conversaId, text);
+        input.value = '';
+      } catch (err) {
+        console.error('[App] enviarMensagemConversa error:', err);
+        showToast(err.message || I18n.t('chat.send_error'), 'error');
+      } finally {
+        submitBtn.disabled = false;
+        input?.focus();
+      }
+    });
+  }
+
+  function safeWaHref(url) {
+    const value = String(url || '').trim();
+    if (!/^https:\/\/wa\.me\/\d+/i.test(value)) return '';
+    return value.replace(/"/g, '&quot;');
   }
 
   // ====== INICIALIZAÇÃO ======
@@ -217,9 +597,11 @@ const App = (() => {
       const myIds = DB.getMyReports()
         .filter(r => (r.type || r._reportType) === 'pet_perdido')
         .map(r => r.id);
+      const myFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
 
       const notifs = docs.filter(n =>
         (n.destinatario_uid && n.destinatario_uid === uid) ||
+        (myFirebaseUid && n.destinatario_firebase_uid && n.destinatario_firebase_uid === myFirebaseUid) ||
         (n.pet_perdido_id && myIds.includes(n.pet_perdido_id)) ||
         (n.pet_id && myIds.includes(n.pet_id))
       );
@@ -232,11 +614,29 @@ const App = (() => {
       }
 
       if (_lastKnownUnread >= 0 && unread > _lastKnownUnread) {
-        playNotificationSound();
+        const hasContactNotif = notifs.some(n => !n.lida && n.tipo === 'avistamento_contato');
+        const hasMatchNotif   = notifs.some(n => !n.lida && n.tipo === 'match_ia');
+        const newNotif = notifs.find(n => !n.lida && (n.tipo === 'match_ia' || n.tipo === 'avistamento_contato'));
+
+        // Som e flash do sino
+        if (hasContactNotif) playContactAlertSound();
+        else playNotificationSound();
+
         const bellBtn = document.getElementById('btn-notificacoes');
         if (bellBtn) {
           bellBtn.classList.add('notif-bell-flash');
           setTimeout(() => bellBtn.classList.remove('notif-bell-flash'), 40000);
+        }
+
+        // Alerta impossível de ignorar: tela cheia + alarme repetido
+        if ((hasMatchNotif || hasContactNotif) && newNotif) {
+          startAlarm();
+          showUrgentTutorAlert(newNotif);
+        }
+
+        // Banner na home como reforço adicional
+        if (state.currentPage === 'home' && newNotif) {
+          showHomeSightingBanner(newNotif);
         }
       }
       _lastKnownUnread = unread;
@@ -268,11 +668,31 @@ const App = (() => {
           }
         }
       }
+      // Atualiza stat-pets no hero em tempo real
+      animateCounter('stat-pets', pets.length);
       _lastKnownFeedIds = currentIds;
     });
 
+    // --- Avistamentos em tempo real — atualiza stat-avistamentos no hero ---
+    const unsubAvistamentos = DB.watchAvistamentos((avistamentos) => {
+      const count = avistamentos.length;
+      if (_lastKnownAvistamentosCount >= 0 && count > _lastKnownAvistamentosCount) {
+        animateCounter('stat-avistamentos', count);
+        if (state.currentPage === 'home') {
+          const el = document.getElementById('stat-avistamentos');
+          if (el) {
+            el.classList.add('feed-card-flash');
+            setTimeout(() => el.classList.remove('feed-card-flash'), 3000);
+          }
+        }
+      } else if (_lastKnownAvistamentosCount < 0) {
+        animateCounter('stat-avistamentos', count);
+      }
+      _lastKnownAvistamentosCount = count;
+    });
+
     // Guardar unsubscribers para limpeza no logout
-    _notifPollTimer = { unsubNotif, unsubFeed };
+    _notifPollTimer = { unsubNotif, unsubFeed, unsubAvistamentos };
 
     // Fallback: se Firestore indisponível, onSnapshot retorna no-op e o badge
     // só atualiza quando o usuário navega — fazer uma checagem inicial manual
@@ -300,7 +720,9 @@ const App = (() => {
 
       // Play sound + flash if there are NEW unread notifications
       if (_lastKnownUnread >= 0 && unread > _lastKnownUnread) {
-        playNotificationSound();
+        const hasContactNotif = notifs.some(n => !n.lida && n.tipo === 'avistamento_contato');
+        if (hasContactNotif) playContactAlertSound();
+        else playNotificationSound();
         // Flash the bell icon
         const bellBtn = document.getElementById('btn-notificacoes');
         if (bellBtn) {
@@ -446,8 +868,18 @@ const App = (() => {
       if (_notifPollTimer) {
         try { _notifPollTimer.unsubNotif?.(); } catch {}
         try { _notifPollTimer.unsubFeed?.(); } catch {}
+        try { _notifPollTimer.unsubAvistamentos?.(); } catch {}
         _notifPollTimer = null;
       }
+      // [FIX C8] Cancelar listener do chat (se aberto) para evitar memory leak
+      // e erros firestore/permission-denied apos logout.
+      if (_chatUnsubscribe) {
+        try { _chatUnsubscribe(); } catch {}
+        _chatUnsubscribe = null;
+      }
+      _lastKnownUnread = -1;
+      _lastKnownFeedIds = null;
+      _lastKnownAvistamentosCount = -1;
       authScreen?.classList.remove('hidden');
       showAuthForm('login');
       updateAdminMenuVisibility();
@@ -863,8 +1295,8 @@ const App = (() => {
           showUpdateBanner();
         }
 
-        // Verificar atualizações a cada 15 minutos + ao voltar do background
-        setInterval(() => { reg.update().catch(() => {}); }, 900000);
+        // [FIX C8] Guardar handle do interval para clearInterval no logout
+        _swUpdateInterval = setInterval(() => { reg.update().catch(() => {}); }, 900000);
         document.addEventListener('visibilitychange', () => {
           if (document.visibilityState === 'visible') reg.update().catch(() => {});
         });
@@ -874,31 +1306,43 @@ const App = (() => {
 
       }).catch(err => console.error('[App] SW Error:', err));
 
-      navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload());
+      // [FIX C6] Guard contra reload duplo: se o usuario clicou em "Atualizar",
+      // ja agendamos um reload via SKIP_WAITING + fallback setTimeout. Quando o
+      // controllerchange chegar, ignorar para nao recarregar duas vezes.
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (_isReloading) return;
+        _isReloading = true;
+        window.location.reload();
+      });
     }
   }
 
   function showUpdateBanner() {
     const banner = document.getElementById('update-banner');
     if (!banner) return;
-    
-    // Mostrar modal de atualização
+
+    // Mostrar modal de atualizacao
     banner.classList.remove('hidden');
 
-    // Botão principal
+    // Botao principal
     const btnUpdate = document.getElementById('btn-update');
     if (btnUpdate) {
       btnUpdate.onclick = () => {
+        // [FIX C6] Marca que reload foi solicitado para guard em controllerchange
+        if (_isReloading) return;
+        _isReloading = true;
         btnUpdate.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Atualizando...';
         btnUpdate.disabled = true;
         navigator.serviceWorker.ready.then(reg => {
           if (reg.waiting) {
             reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            // controllerchange vai disparar o reload (guarded por _isReloading)
           } else {
-            window.location.reload(true);
+            window.location.reload();
           }
         });
-        setTimeout(() => window.location.reload(true), 3000);
+        // Fallback se controllerchange nao disparar em 3s
+        setTimeout(() => window.location.reload(), 3000);
       };
     }
 
@@ -1184,8 +1628,8 @@ const App = (() => {
     if (!container) return;
     if (stories.length === 0) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-heart"></i>
-        <p>Nenhuma história de reencontro ainda.</p>
-        <p class="text-muted">Quando um pet for marcado como encontrado, ele aparecerá aqui!</p></div>`;
+        <p>${I18n.t('home.stories.empty')}</p>
+        <p class="text-muted">${I18n.t('home.stories.empty.hint')}</p></div>`;
       return;
     }
     container.innerHTML = stories.map(pet => {
@@ -1778,6 +2222,7 @@ const App = (() => {
       state.matchedScore = 0;
       state.matchedEngine = '';
       state.matchedPetOwnerFirebaseUid = null;
+      state.matchedPetOwnerUid = null;
       document.getElementById('foto-avistamento').value = '';
       document.getElementById('upload-preview-avistamento')?.classList.add('hidden');
       document.getElementById('upload-placeholder-avistamento')?.classList.remove('hidden');
@@ -1962,18 +2407,18 @@ const App = (() => {
     const emailTutor = document.getElementById('email-tutor')?.value.trim() || '';
     if (emailTutor) {
       try { Auth.validateEmail(emailTutor); } catch (e) {
-        showToast('E-mail de contato inválido.', 'error');
+        showToast(I18n.t('complete.validation.invalid_contact_email'), 'error');
         return;
       }
     }
     const dataPerda = document.getElementById('data-perda')?.value || '';
     if (dataPerda && new Date(dataPerda) > new Date()) {
-      showToast('A data de perda não pode ser no futuro.', 'error');
+      showToast(I18n.t('complete.validation.date_future'), 'error');
       return;
     }
     const descricaoCompleta = document.getElementById('descricao-completa')?.value.trim() || '';
     if (descricaoCompleta.length > 1000) {
-      showToast('Descrição muito longa (máximo 1000 caracteres).', 'error');
+      showToast(I18n.t('complete.validation.description_too_long', { max: 1000 }), 'error');
       return;
     }
 
@@ -2145,10 +2590,10 @@ const App = (() => {
         aiMatches.innerHTML = matches.slice(0, 5).map(match => {
           const pet = match.pet;
           const name = pet.nome_pet || I18n.t('sighting.ai.pet_unnamed');
-          const emoji = match.totalScore >= 92 ? '🎉' : match.totalScore >= 75 ? '👀' : '🤔';
+          const emoji = match.totalScore >= 70 ? '🎉' : match.totalScore >= 55 ? '👀' : '🤔';
           const isLinked = state.matchedLostPetId === pet.id;
           return `
-            <div class="ai-match-item ${isLinked ? 'linked' : ''}" data-pet-id="${pet.id}" data-pet-name="${Security.sanitize(name)}" data-score="${match.totalScore}" data-engine="${engineUsed}" data-owner-uid="${pet.owner_firebase_uid || ''}">
+            <div class="ai-match-item ${isLinked ? 'linked' : ''}" data-pet-id="${pet.id}" data-pet-name="${Security.sanitize(name)}" data-score="${match.totalScore}" data-engine="${engineUsed}" data-owner-uid="${pet.owner_firebase_uid || ''}" data-owner-custom-uid="${pet.owner_uid || ''}">
               ${pet.foto_comprimida ? `<img class="ai-match-photo" src="${fixCorruptedDataUrl(pet.foto_comprimida)}" alt="">` :
                 `<div class="ai-match-photo" style="display:flex;align-items:center;justify-content:center;background:var(--bg);"><i class="fas fa-paw" style="font-size:1.5rem;color:var(--text-muted)"></i></div>`}
               <div class="ai-match-info">
@@ -2157,7 +2602,7 @@ const App = (() => {
               </div>
               <div class="ai-match-score">
                 <span class="match-percentage">${match.totalScore}%</span>
-                <span class="match-label">${match.totalScore >= 92 ? I18n.t('sighting.ai.match_label') : I18n.t('sighting.ai.possible_label')}</span>
+                <span class="match-label">${match.totalScore >= 70 ? I18n.t('sighting.ai.match_label') : I18n.t('sighting.ai.possible_label')}</span>
               </div>
               <div class="ai-match-actions">
                 <button class="btn-link-pet ${isLinked ? 'linked' : ''}" data-action="link">
@@ -2187,6 +2632,7 @@ const App = (() => {
               state.matchedScore = 0;
               state.matchedEngine = '';
               state.matchedPetOwnerFirebaseUid = null;
+              state.matchedPetOwnerUid = null;
               document.getElementById('matched-pet-banner')?.classList.add('hidden');
               item.classList.remove('linked');
               const btn = item.querySelector('[data-action="link"]');
@@ -2210,6 +2656,7 @@ const App = (() => {
               state.matchedScore = score;
               state.matchedEngine = engine;
               state.matchedPetOwnerFirebaseUid = item.dataset.ownerUid || null;
+              state.matchedPetOwnerUid = item.dataset.ownerCustomUid || null;
               item.classList.add('linked');
               const btn = item.querySelector('[data-action="link"]');
               if (btn) {
@@ -2228,10 +2675,9 @@ const App = (() => {
         });
 
         if (matches.some(m => m.totalScore >= 70)) {
-          if (matches.some(m => m.totalScore >= 92)) showToast(I18n.t('toast.match_found'), 'match');
-          for (const m of matches.filter(x => x.totalScore >= 70)) {
-            try { await DB.criarNotificacao(AIMatch.generateMatchNotification(m, sightingData)); } catch (e) {}
-          }
+          if (matches.some(m => m.totalScore >= 70)) showToast(I18n.t('toast.match_found'), 'match');
+          // Notificações serão criadas APÓS o avistamento ser salvo (handleReportarAvistamento)
+          // para garantir avistamento_id correto e evitar notificações de formulários não enviados.
         }
       } else {
         aiMatches.innerHTML = `<div class="ai-no-match"><i class="fas fa-search"></i><p>${I18n.t('sighting.ai.no_match')}</p></div>`;
@@ -2272,6 +2718,7 @@ const App = (() => {
       state.matchedScore = 0;
       state.matchedEngine = '';
       state.matchedPetOwnerFirebaseUid = null;
+      state.matchedPetOwnerUid = null;
       banner.classList.add('hidden');
       document.querySelectorAll('.ai-match-item.linked').forEach(item => {
         item.classList.remove('linked');
@@ -2356,10 +2803,14 @@ const App = (() => {
         telefone_publico_ativo: telefonePublicoAtivoAv,
         cor: document.getElementById('cor-avistamento')?.value || '',
         porte: document.getElementById('porte-avistamento')?.value || '',
-        // Vinculação opcional a pet perdido (match IA)
+        reportado_por: Auth.getUserData()?.displayName || '',
+        // Vinculação opcional a pet perdido (match IA ou manual)
+        pet_perdido_id: state.matchedLostPetId || '',
         matchedLostPetId: state.matchedLostPetId || '',
         matchedScore: state.matchedScore || 0,
-        matchedEngine: state.matchedEngine || ''
+        matchedEngine: state.matchedEngine || '',
+        // UID do dono do pet (auxilia linked_pet_owner_firebase_uid se Firestore falhar)
+        matchedPetOwnerFirebaseUid: state.matchedPetOwnerFirebaseUid || ''
       };
 
       // imageHash será gerado server-side pela Cloud Function
@@ -2375,22 +2826,57 @@ const App = (() => {
         startPostSubmitDuplicatePipeline('avistamento', createdAlert.id, state.avistamentoPhotoData);
       }
 
-      // Notificar tutor quando avistamento é salvo com vinculação manual
-      // (o fluxo automático só dispara se score >= 70; vinculação manual não tem score)
-      if (state.matchedLostPetId && state.matchedPetOwnerFirebaseUid && !createdAlert?._localOnly) {
+      const submittedMatchScore = state.matchedScore || 0;
+
+      // Notificar tutores de pets perdidos próximos ao avistamento (sem match explícito)
+      // Garante que tutores são avisados mesmo quando o avistador não vinculou ao pet deles
+      let _petsNotificados = []; // para feedback ao avistador
+      if (!state.matchedLostPetId && createdAlert?.id && payload.latitude && payload.longitude && !createdAlert?._localOnly) {
         try {
-          await DB.criarNotificacao({
-            tipo: 'match_ia',
-            pet_perdido_id: state.matchedLostPetId,
-            avistamento_id: createdAlert?.id || '',
-            mensagem: `👀 Um avistamento foi vinculado manualmente ao seu pet perdido.`,
-            similaridade: state.matchedScore || 0,
-            lida: false,
-            owner_firebase_uid: state.matchedPetOwnerFirebaseUid,
-            destinatario_firebase_uid: state.matchedPetOwnerFirebaseUid,
-            data: new Date().toISOString()
+          const tipoAvistado = payload.tipo_animal || 'outro';
+          const raioKm = GeoUtils.getSearchRadius(tipoAvistado);
+          const petsResult = await DB.list(DB.COLLECTIONS.PETS, { limit: 100 });
+          const petsPerdidos = petsResult?.data || [];
+
+          const proximos = petsPerdidos.filter(pet => {
+            if (pet.status !== 'ativo') return false;
+            if (!pet.latitude_publica && !pet.latitude) return false;
+            if (pet.tipo_animal && pet.tipo_animal !== tipoAvistado) return false;
+            const petLat = pet.latitude_publica || pet.latitude;
+            const petLng = pet.longitude_publica || pet.longitude;
+            return GeoUtils.isWithinRadius(payload.latitude, payload.longitude, petLat, petLng, raioKm);
           });
-        } catch (_) {}
+
+          // Notificar até 5 tutores próximos para não sobrecarregar
+          for (const pet of proximos.slice(0, 5)) {
+            if (!pet.owner_firebase_uid && !pet.owner_uid) continue;
+            await DB.criarNotificacao({
+              tipo: 'match_ia',
+              pet_perdido_id: pet.id,
+              avistamento_id: createdAlert.id,
+              mensagem: `📍 Um avistamento de ${tipoAvistado === 'cao' ? 'cão' : tipoAvistado === 'gato' ? 'gato' : 'animal'} foi registrado a menos de ${raioKm}km do local de perda do seu pet.`,
+              similaridade: 0,
+              lida: false,
+              owner_firebase_uid: pet.owner_firebase_uid || '',
+              destinatario_firebase_uid: pet.owner_firebase_uid || '',
+              destinatario_uid: pet.owner_uid || '',
+              data: new Date().toISOString()
+            }).catch(() => {});
+          }
+          _petsNotificados = proximos.slice(0, 5);
+        } catch (_) { /* não bloqueia o fluxo principal */ }
+      }
+
+      // Feedback imediato para o avistador quando há pets compatíveis encontrados
+      if (state.matchedLostPetId && !createdAlert?._localOnly) {
+        if (submittedMatchScore >= 70) {
+          showToast(I18n.t('sighting.match_high_contact_sent'), 'success');
+          setTimeout(() => navigateTo('notificacoes'), 1500);
+        } else {
+          showToast(I18n.t('sighting.registered_low_match', { score: submittedMatchScore }), 'info');
+        }
+      } else if (_petsNotificados.length > 0 && !createdAlert?._localOnly) {
+        setTimeout(() => showAvistadorMatchFeedback(_petsNotificados, createdAlert?.id), 600);
       }
 
       const linkedPetId = state.matchedLostPetId;
@@ -2399,10 +2885,11 @@ const App = (() => {
       state.matchedScore = 0;
       state.matchedEngine = '';
       state.matchedPetOwnerFirebaseUid = null;
+      state.matchedPetOwnerUid = null;
 
       if (createdAlert?._localOnly) {
         showToast('⚠️ Sem conexão. Avistamento salvo localmente e enviado quando voltar online.', 'warning');
-      } else {
+      } else if (!linkedPetId) {
         showToast(I18n.t('toast.sighting_thanks'), 'success');
       }
       incrementarContadorPerfil('avistamentos_count');
@@ -2474,9 +2961,17 @@ const App = (() => {
         : (pet.contato_email_publico || '');
 
       if (ownerEmail && !isOwner) {
+        // [FIX M3] Encodar email + construir querystring de forma consistente
+        // para nao quebrar mailto com emails contendo +, &, ? ou caracteres especiais.
+        const safeEmail = encodeURIComponent(Security.sanitizeEmail(ownerEmail));
+        const safeNameForMail = encodeURIComponent(name);
+        const mailParams = new URLSearchParams({
+          subject: `Vi seu pet no Encontre Pet - ${name}`,
+          body: `Ola! Vi o alerta do ${name} no app Encontre Pet e gostaria de ajudar.`
+        }).toString();
         phoneActions += `
-          <a href="mailto:${ownerEmail}?subject=Vi%20seu%20pet%20no%20Encontre%20Pet%20-%20${encodeURIComponent(Security.sanitize(name))}&body=Ol%C3%A1!%20Vi%20o%20alerta%20do%20${encodeURIComponent(Security.sanitize(name))}%20no%20app%20Encontre%20Pet%20e%20gostaria%20de%20ajudar."
-             class="btn-email" target="_blank">
+          <a href="mailto:${safeEmail}?${mailParams}"
+             class="btn-email" target="_blank" rel="noopener noreferrer">
             <i class="fas fa-envelope"></i> E-mail
           </a>`;
       }
@@ -2536,6 +3031,12 @@ const App = (() => {
         }
 
         if (!hasPublicPhone && pet.contato_email_publico && isLoggedIn) {
+          // [FIX M3] mailto com encoding consistente via URLSearchParams.
+          const safeEmail2 = encodeURIComponent(Security.sanitizeEmail(pet.contato_email_publico));
+          const ctaParams = new URLSearchParams({
+            subject: `Encontrei seu pet - ${name}`,
+            body: `Ola! Vi o alerta no Encontre Pet e tenho informacoes sobre ${name}.`
+          }).toString();
           contactBanner = `
             <div class="contact-cta-banner">
               <div class="contact-cta-header">
@@ -2543,8 +3044,8 @@ const App = (() => {
                 <span>${I18n.t('details.found_this_pet')}</span>
               </div>
               <div class="contact-cta-actions">
-                <a href="mailto:${pet.contato_email_publico}?subject=Encontrei%20seu%20pet%20-%20${encodeURIComponent(Security.sanitize(name))}&body=Ol%C3%A1!%20Vi%20o%20alerta%20no%20Encontre%20Pet%20e%20tenho%20informa%C3%A7%C3%B5es%20sobre%20${encodeURIComponent(Security.sanitize(name))}."
-                   class="btn-email btn-cta-big" target="_blank">
+                <a href="mailto:${safeEmail2}?${ctaParams}"
+                   class="btn-email btn-cta-big" target="_blank" rel="noopener noreferrer">
                   <i class="fas fa-envelope"></i> ${I18n.t('details.email_tutor')}
                 </a>
               </div>
@@ -2595,6 +3096,7 @@ const App = (() => {
         state.matchedScore = 0;
         state.matchedEngine = 'manual';
         state.matchedPetOwnerFirebaseUid = displayPet.owner_firebase_uid || pet.owner_firebase_uid || null;
+        state.matchedPetOwnerUid = displayPet.owner_uid || pet.owner_uid || null;
         navigateTo('avistamento');
         // Show banner after navigation
         setTimeout(() => showMatchedPetBanner(name, '-'), 100);
@@ -2750,69 +3252,17 @@ const App = (() => {
     btn.classList.remove('loading');
   }
 
-  /**
-   * Buscar contato do avistador via Firestore direto (sem Cloud Function).
-   * Acesso autorizado pelas Firestore Rules:
-   *   alert_privado do avistamento permite leitura se
-   *   linked_pet_owner_firebase_uid == request.auth.uid (tutor do pet).
-   */
   async function getSighterContact(sightingId, petId) {
     if (!sightingId) throw new Error('sightingId obrigatorio.');
-
-    // Buscar avistamento público para notificação e fallback de nome
-    let sightingDoc = null;
-    try { sightingDoc = await DB.get('avistamentos', sightingId); } catch (_) {}
-
-    // Log LGPD client-side (create-only — rules permitem)
-    try {
-      const db = FirebaseConfig.getDB?.();
-      if (db) {
-        await db.collection('lgpd_access_log').add({
-          tipo: 'contato_avistador_acesso',
-          petId: petId || '',
-          sightingId,
-          tutorFirebaseUid: FirebaseConfig.getFirebaseUID?.() || '',
-          via: 'firestore_direto',
-          timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      }
-    } catch (_) {}
-
-    // Ler dados privados do avistador (rule verifica linked_pet_owner_firebase_uid)
-    const privateData = await DB.getPrivateAlertData('avistamentos', sightingId);
-    if (!privateData) throw new Error('Dados privados do avistamento não encontrados.');
-
-    // Notificar avistador que tutor acessou seu contato
-    if (sightingDoc?.owner_uid || sightingDoc?.owner_firebase_uid) {
-      try {
-        await DB.criarNotificacao({
-          tipo: 'contato_acessado_pelo_tutor',
-          pet_id: petId || '',
-          avistamento_id: sightingId,
-          mensagem: 'O tutor do pet acessou seu contato referente ao avistamento',
-          data: new Date().toISOString(),
-          lida: false,
-          destinatario_uid: sightingDoc.owner_uid || '',
-          destinatario_firebase_uid: sightingDoc.owner_firebase_uid || ''
-        });
-      } catch (_) {}
+    const functions = FirebaseConfig.getFunctions?.();
+    if (!functions?.httpsCallable) {
+      throw new Error('Cloud Functions indisponível.');
     }
-
-    const telefone = privateData.contato_telefone || '';
-    const email    = privateData.contato_email    || '';
-    // Nome: primeiro do alert_privado (salvo no cadastro), depois do documento público
-    const nome     = privateData.reportado_por || sightingDoc?.reportado_por || '';
-    return { telefone, email, nome, available: !!(telefone || email) };
+    const callable = functions.httpsCallable('getSighterContact');
+    const response = await callable({ sightingId, petId });
+    return response?.data || {};
   }
 
-  /**
-   * Buscar contato do tutor via Firestore direto (sem Cloud Function).
-   * Fluxo:
-   *  1. Criar autorização sighter→pet se ainda não existe
-   *  2. Ler alert_privado do pet (rule verifica sighter_authorizations/{uid}_{petId})
-   *  3. Log LGPD client-side
-   *  4. Notificar tutor
-   */
   /**
    * Abre modal para o avistador informar seu celular ao tutor.
    * O número é enviado via notificação — sem precisar ler alert_privado do tutor.
@@ -2886,20 +3336,18 @@ const App = (() => {
       submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
 
       try {
-        const sighterNome = Security.sanitize(Auth.getUserData()?.displayName || 'Avistador');
+        const rawNome = Auth.getUserData()?.displayName || 'Avistador';
         const phone = phoneResult.normalized || rawPhone;
-        const cleanPhone = phone.replace(/\D/g, '');
-        const waMsg = encodeURIComponent(`Olá! Vi o alerta do pet "${petNome}" no Encontre Pet e quero ajudar. Pode entrar em contato comigo.`);
-        const waLink = `https://wa.me/55${cleanPhone}?text=${waMsg}`;
 
         await DB.criarNotificacao({
           tipo: 'avistamento_contato',
           pet_id: petId,
-          pet_nome: Security.sanitize(petNome),
-          sighter_nome: sighterNome,
+          pet_nome: petNome,
+          sighter_nome: rawNome,
           sighter_phone: phone,
-          sighter_wa_link: waLink,
-          mensagem: `${sighterNome} viu "${Security.sanitize(petNome)}" e quer entrar em contato: ${phone}`,
+          // sighter_wa_link não é armazenado — URLs sofrem encoding em sanitizeObject.
+          // O link é construído em tempo de renderização a partir de sighter_phone.
+          mensagem: `${rawNome} viu «${petNome}» e quer entrar em contato: ${phone}`,
           data: new Date().toISOString(),
           lida: false,
           destinatario_uid: pet.owner_uid || '',
@@ -2928,67 +3376,14 @@ const App = (() => {
   }
 
   async function getTutorContact(petId) {
-    const myFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
-
-    // Buscar pet uma única vez (reutilizado em todas as etapas)
-    let pet = null;
-    try { pet = await DB.get('pets_perdidos', petId); } catch (_) {}
-
-    // 1. Garantir que a autorização existe (permite a regra Firestore liberar a leitura)
-    if (pet?.owner_firebase_uid) {
-      try { await DB.createSighterAuthorization(petId, pet.owner_firebase_uid, null); } catch (_) {}
+    if (!petId) throw new Error('petId obrigatorio.');
+    const functions = FirebaseConfig.getFunctions?.();
+    if (!functions?.httpsCallable) {
+      throw new Error('Cloud Functions indisponível.');
     }
-
-    // 2. Ler dados privados do tutor (rule verifica sighter_authorizations)
-    let privateData = null;
-    try { privateData = await DB.getPrivateAlertData('pets_perdidos', petId); } catch (_) {}
-
-    if (!privateData) {
-      // Fallback: dados públicos do documento principal
-      if (pet) {
-        const nome     = pet.contato_nome || '';
-        const telefone = pet.telefone_publico || '';
-        const email    = pet.contato_email_publico || '';
-        if (nome || telefone || email) return { nome, telefone, email, available: !!(telefone || email) };
-      }
-      throw new Error('Dados de contato não encontrados');
-    }
-
-    // 3. Log LGPD client-side
-    try {
-      const db = FirebaseConfig.getDB?.();
-      if (db) {
-        await db.collection('lgpd_access_log').add({
-          tipo: 'contato_tutor_acesso',
-          petId,
-          requesterFirebaseUid: myFirebaseUid,
-          via: 'firestore_direto',
-          timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      }
-    } catch (_) {}
-
-    // 4. Notificar tutor
-    if (pet?.owner_uid || pet?.owner_firebase_uid) {
-      try {
-        await DB.criarNotificacao({
-          tipo: 'contato_acessado',
-          pet_id: petId,
-          pet_nome: pet.nome_pet || 'Pet',
-          mensagem: `Alguém visualizou seu contato referente a "${pet.nome_pet || 'seu pet'}"`,
-          data: new Date().toISOString(),
-          lida: false,
-          destinatario_uid: pet.owner_uid || '',
-          destinatario_firebase_uid: pet.owner_firebase_uid || ''
-        });
-      } catch (_) {}
-    }
-
-    const telefone = privateData.contato_telefone || '';
-    const email    = privateData.contato_email || '';
-    // Nome: primeiro do alert_privado, depois do documento público do pet
-    const nome     = privateData.contato_nome || pet?.contato_nome || '';
-    return { telefone, email, nome, available: !!(telefone || email) };
+    const callable = functions.httpsCallable('getTutorContact');
+    const response = await callable({ petId });
+    return response?.data || {};
   }
 
   function contactWhatsApp(phone, name) {
@@ -3172,13 +3567,15 @@ const App = (() => {
       // Incluir por destinatario_uid OU pet_perdido_id OU pet_id
       const notifs = (result.data || []).filter(n =>
         (n.destinatario_uid && n.destinatario_uid === uid) ||
+        (n.destinatario_firebase_uid && n.destinatario_firebase_uid === FirebaseConfig.getFirebaseUID?.()) ||
         (n.pet_perdido_id && myIds.includes(n.pet_perdido_id)) ||
-        (n.pet_id && myIds.includes(n.pet_id))
+        (n.pet_id && myIds.includes(n.pet_id)) ||
+        (n.petId && myIds.includes(n.petId))
       );
       // Ordenar mais recentes primeiro
       notifs.sort((a, b) => {
-        const tA = a.created_at?.toMillis ? a.created_at.toMillis() : new Date(a.created_at || 0).getTime();
-        const tB = b.created_at?.toMillis ? b.created_at.toMillis() : new Date(b.created_at || 0).getTime();
+        const tA = a.timestamp?.toMillis ? a.timestamp.toMillis() : (a.created_at?.toMillis ? a.created_at.toMillis() : new Date(a.timestamp || a.created_at || 0).getTime());
+        const tB = b.timestamp?.toMillis ? b.timestamp.toMillis() : (b.created_at?.toMillis ? b.created_at.toMillis() : new Date(b.timestamp || b.created_at || 0).getTime());
         return tB - tA;
       });
       
@@ -3198,6 +3595,67 @@ const App = (() => {
       }
 
       container.innerHTML = notifs.map(n => {
+        if (n.tipo === 'match_alto_para_avistador') {
+          const petNomeRaw = n.petNome || n.pet_nome || '';
+          const score = Math.round(Number(n.matchScore || n.similaridade || 0));
+          const safeWa = safeWaHref(n.whatsapp_link);
+          const whatsappBtn = safeWa
+            ? `<a href="${safeWa}" target="_blank" rel="noopener noreferrer" class="btn-whatsapp btn-small" style="text-decoration:none"><i class="fab fa-whatsapp"></i> ${I18n.t('notif.contact_tutor_whatsapp')}</a>`
+            : '';
+          const emailBtn = n.contato_email_tutor
+            ? `<a href="mailto:${Security.sanitizeEmail(n.contato_email_tutor)}" class="btn-email-notif btn-small" style="text-decoration:none"><i class="fas fa-envelope"></i> ${I18n.t('notif.contact_tutor_email')}</a>`
+            : '';
+          const chatBtn = n.conversaId || n.conversa_id
+            ? `<button class="btn-chat-notif btn-small" data-chat-id="${Security.sanitize(n.conversaId || n.conversa_id)}" data-chat-title="${Security.sanitize(petNomeRaw)}"><i class="fas fa-comments"></i> ${I18n.t('chat.open')}</button>`
+            : '';
+          return `
+        <div class="notif-item ${!n.lida ? 'unread notif-flash' : ''}" data-nid="${n.id}">
+          <div class="notif-icon match"><i class="fas fa-bullseye"></i></div>
+          <div class="notif-text">
+            <div class="notif-title">${Security.sanitize(I18n.t('notif.match_found', { score, pet: petNomeRaw }))}</div>
+            <div class="notif-desc">${Security.sanitize(I18n.t('notif.tutor_name', { nome: n.tutorNome || 'Tutor' }))}</div>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${whatsappBtn}${emailBtn}${chatBtn}</div>
+            <div class="notif-time">${getTimeAgo(n.timestamp || n.created_at)}</div>
+          </div>
+        </div>`;
+        }
+
+        if (n.tipo === 'match_alto_para_tutor') {
+          const petNomeRaw = n.petNome || n.pet_nome || '';
+          const score = Math.round(Number(n.matchScore || n.similaridade || 0));
+          const safeWa = safeWaHref(n.whatsapp_link);
+          const whatsappBtn = safeWa
+            ? `<a href="${safeWa}" target="_blank" rel="noopener noreferrer" class="btn-whatsapp btn-small" style="text-decoration:none"><i class="fab fa-whatsapp"></i> ${I18n.t('notif.contact_finder_whatsapp')}</a>`
+            : '';
+          const chatBtn = n.conversaId || n.conversa_id
+            ? `<button class="btn-chat-notif btn-small" data-chat-id="${Security.sanitize(n.conversaId || n.conversa_id)}" data-chat-title="${Security.sanitize(petNomeRaw)}"><i class="fas fa-comments"></i> ${I18n.t('chat.open')}</button>`
+            : '';
+          return `
+        <div class="notif-item ${!n.lida ? 'unread notif-flash' : ''}" data-nid="${n.id}">
+          <div class="notif-icon match"><i class="fas fa-paw"></i></div>
+          <div class="notif-text">
+            <div class="notif-title">${Security.sanitize(I18n.t('notif.sighting_match', { score, pet: petNomeRaw }))}</div>
+            <div class="notif-desc">${Security.sanitize(I18n.t('notif.finder_name', { nome: n.avistadorNome || 'Avistador' }))}</div>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${whatsappBtn}${chatBtn}</div>
+            <div class="notif-time">${getTimeAgo(n.timestamp || n.created_at)}</div>
+          </div>
+        </div>`;
+        }
+
+        if (n.tipo === 'avistamento_registrado') {
+          const petNomeRaw = n.petNome || n.pet_nome || '';
+          const score = Math.round(Number(n.matchScore || n.similaridade || 0));
+          return `
+        <div class="notif-item ${!n.lida ? 'unread notif-flash' : ''}" data-nid="${n.id}">
+          <div class="notif-icon alert"><i class="fas fa-eye"></i></div>
+          <div class="notif-text">
+            <div class="notif-title">${Security.sanitize(I18n.t('notif.new_sighting', { pet: petNomeRaw }))}</div>
+            <div class="notif-desc">${Security.sanitize(I18n.t('notif.sighting_score', { score }))}</div>
+            <div class="notif-time">${getTimeAgo(n.timestamp || n.created_at)}</div>
+          </div>
+        </div>`;
+        }
+
         const tipoConfig = {
           match_ia:           { icon: 'fa-robot',         cls: 'match',   titulo: I18n.t('notif.match_title') },
           contato_solicitado: { icon: 'fa-hands-helping', cls: 'contact', titulo: '👋 Alguém quer contato!' },
@@ -3212,17 +3670,26 @@ const App = (() => {
           : '';
 
         // Botões de contato direto para avistamento_contato
-        const contactActions = n.tipo === 'avistamento_contato' && n.sighter_phone ? `
+        // Link WhatsApp construído aqui — nunca armazenado no Firestore para evitar
+        // encoding duplo de URLs pelo sanitizeObject.
+        let contactActions = '';
+        if (n.tipo === 'avistamento_contato' && n.sighter_phone) {
+          const _clean = n.sighter_phone.replace(/\D/g, '');
+          const _waNum = _clean.startsWith('55') ? _clean : '55' + _clean;
+          const _waMsg = encodeURIComponent(`Olá! Sou o tutor de «${n.pet_nome || 'meu pet'}» no Encontre Pet. Vi que você quer entrar em contato!`);
+          const _waUrl = `https://wa.me/${_waNum}?text=${_waMsg}`;
+          contactActions = `
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-            <a href="${Security.sanitize(n.sighter_wa_link || '')}" target="_blank" rel="noopener"
+            <a href="${_waUrl}" target="_blank" rel="noopener noreferrer"
                class="btn-whatsapp btn-small" style="text-decoration:none">
               <i class="fab fa-whatsapp"></i> WhatsApp
             </a>
-            <a href="tel:${Security.sanitize(n.sighter_phone.replace(/\D/g,''))}"
+            <a href="tel:+${_waNum}"
                class="btn-phone btn-small" style="text-decoration:none">
               <i class="fas fa-phone"></i> Ligar
             </a>
-          </div>` : '';
+          </div>`;
+        }
 
         return `
         <div class="notif-item ${!n.lida ? 'unread notif-flash' : ''}" data-nid="${n.id}">
@@ -3235,7 +3702,7 @@ const App = (() => {
             <div class="notif-desc">${Security.sanitize(n.mensagem || '')}</div>
             ${n.similaridade ? `<div style="color:var(--success);font-weight:700;font-size:0.85rem">${I18n.t('notif.similarity', {pct: n.similaridade})}</div>` : ''}
             ${contactActions}
-            <div class="notif-time">${getTimeAgo(n.created_at)}</div>
+            <div class="notif-time">${getTimeAgo(n.timestamp || n.created_at)}</div>
             ${viewLink}
           </div>
         </div>`;
@@ -3249,7 +3716,7 @@ const App = (() => {
       container.querySelectorAll('.notif-item').forEach(item => {
         item.addEventListener('click', async (e) => {
           // Não marcar como lida se clicar no botão "Ver pet" (tem seu próprio handler)
-          if (e.target.closest('.notif-view-btn')) return;
+          if (e.target.closest('.notif-view-btn') || e.target.closest('.btn-chat-notif')) return;
           try {
             await DB.marcarNotificacaoLida(item.dataset.nid);
             item.classList.remove('unread', 'notif-flash');
@@ -3277,6 +3744,17 @@ const App = (() => {
             try { await DB.marcarNotificacaoLida(item.dataset.nid); item.classList.remove('unread', 'notif-flash'); } catch {}
           }
           showPetDetails(petId);
+        });
+      });
+
+      container.querySelectorAll('.btn-chat-notif').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const item = btn.closest('.notif-item');
+          if (item) {
+            try { await DB.marcarNotificacaoLida(item.dataset.nid); item.classList.remove('unread', 'notif-flash'); } catch {}
+          }
+          openInternalChat(btn.dataset.chatId, btn.dataset.chatTitle || I18n.t('chat.title'));
         });
       });
     } catch { container.innerHTML = `<div class="empty-state"><p>${I18n.t('notif.load_error')}</p></div>`; }

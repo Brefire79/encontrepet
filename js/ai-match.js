@@ -7,7 +7,15 @@
 const AIMatch = (() => {
 
   // ─── Configuração ───
-  const MATCH_THRESHOLD = 92;
+  // Limiar de match padrao do produto (recall > precisao): 70%.
+  const MATCH_THRESHOLD =
+    (window.AppConfig && typeof window.AppConfig.MATCH_THRESHOLD === 'number')
+      ? window.AppConfig.MATCH_THRESHOLD
+      : 70;
+  const HASH_MATCH_THRESHOLD =
+    (window.AppConfig && typeof window.AppConfig.HASH_MATCH_THRESHOLD === 'number')
+      ? window.AppConfig.HASH_MATCH_THRESHOLD
+      : MATCH_THRESHOLD;
   const GATE_MAX_DISTANCE_KM = 50;          // G2: descarta se > 50 km
   const GATE_HASH_REPOST_HAMMING = 5;       // G3: hamming <= 5 = imagem quase idêntica
   const GATE_HASH_REPOST_GEO_KM  = 20;     // G3: se dist geo > 20 km + hash ≈ → fraude
@@ -156,13 +164,15 @@ const AIMatch = (() => {
   function findMatches(sighting, pets, engine) {
     if (!sighting || !pets || pets.length === 0) return [];
     const eng = engine || 'HASH';
+    // Threshold varia por engine.
+    const threshold = eng === 'AI' ? MATCH_THRESHOLD : HASH_MATCH_THRESHOLD;
 
     return pets
       .map(pet => {
         const gateReason = shouldDiscardCandidate(sighting, pet);
         if (gateReason) return null;
         const sc = calculateScore(sighting, pet, eng);
-        return { pet, totalScore: sc.total, details: sc, isMatch: sc.total >= MATCH_THRESHOLD };
+        return { pet, totalScore: sc.total, details: sc, isMatch: sc.total >= threshold };
       })
       .filter(r => r !== null && r.totalScore > 40)
       .sort((a, b) => b.totalScore - a.totalScore)
@@ -236,10 +246,12 @@ const AIMatch = (() => {
     };
   }
 
-  function formatScore(score) {
-    if (score >= 92) return { text: 'Match Forte!', class: 'high', emoji: '🎉' };
-    if (score >= 75) return { text: 'Provável', class: 'medium', emoji: '👀' };
-    if (score >= 60) return { text: 'Possível', class: 'low', emoji: '🤔' };
+  function formatScore(score, engine) {
+    // Usa threshold correto por engine para exibir labels coerentes com isMatch
+    const highThreshold = (engine === 'AI') ? MATCH_THRESHOLD : HASH_MATCH_THRESHOLD;
+    if (score >= highThreshold) return { text: 'Match Forte!', class: 'high', emoji: '🎉' };
+    if (score >= 60)            return { text: 'Provável',     class: 'medium', emoji: '👀' };
+    if (score >= 45)            return { text: 'Possível',     class: 'low', emoji: '🤔' };
     return { text: 'Improvável', class: 'none', emoji: '❌' };
   }
 
@@ -255,6 +267,7 @@ const AIMatch = (() => {
     generateMatchNotification,
     formatScore,
     MATCH_THRESHOLD,
+    HASH_MATCH_THRESHOLD,
     GATE_MAX_DISTANCE_KM,
     AI_TIMEOUT_MS
   };
