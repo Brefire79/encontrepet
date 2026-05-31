@@ -3,7 +3,7 @@
 // [FIX C5] CACHE_VERSION bumpado para forcar re-cache com os novos icones.
 // [FIX C5] icons/icon-192.png e icons/icon-512.png agora pre-cacheados para
 // que o PWA funcione corretamente offline no launcher do dispositivo.
-const CACHE_VERSION = 'encontre-pet-v1.15.0';
+const CACHE_VERSION = 'encontre-pet-v1.16.0';
 const DYNAMIC_CACHE = 'encontre-pet-dynamic-v1.1';
 const API_CACHE = 'encontre-pet-api-v1.0';
 
@@ -11,6 +11,7 @@ const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/css/style.css',
+  '/js/app-config.js',
   '/js/i18n/locales/pt.js',
   '/js/i18n/locales/en.js',
   '/js/i18n/locales/es.js',
@@ -121,6 +122,9 @@ async function cacheFirst(request) {
     }
     return response;
   } catch (err) {
+    if (request.mode !== 'navigate' && request.destination !== 'document') {
+      return new Response('', { status: 503, statusText: 'Offline asset unavailable' });
+    }
     return new Response('<h1>Sem conexão</h1><p>Verifique sua internet e tente novamente.</p>', {
       headers: { 'Content-Type': 'text/html; charset=utf-8' }
     });
