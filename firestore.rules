@@ -35,6 +35,23 @@ service cloud.firestore {
         && !changed.hasAny(hashFields());
     }
 
+    // Confirmação BILATERAL de reunião (North Star).
+    // O tutor (dono) marca o pet como 'aguardando_confirmacao' e registra a
+    // contraparte em reuniao.avistador_firebase_uid. APENAS essa contraparte
+    // pode transicionar para 'encontrado'/desfecho 'reuniao_confirmada',
+    // alterando somente os campos de encerramento (nunca dados do alerta).
+    function canConfirmReunion() {
+      let changed = request.resource.data.diff(resource.data).changedKeys();
+      return isSignedIn()
+        && resource.data.status == 'aguardando_confirmacao'
+        && resource.data.reuniao.avistador_firebase_uid == request.auth.uid
+        && request.resource.data.reuniao.confirmado_por_firebase_uid == request.auth.uid
+        && request.resource.data.desfecho == 'reuniao_confirmada'
+        && request.resource.data.status == 'encontrado'
+        && changed.hasOnly(['status', 'desfecho', 'data_encerrado', 'reuniao'])
+        && !changed.hasAny(hashFields());
+    }
+
     // Admin identificado por documento em admin_roles/{firebaseAuthUID}
     // (criado manualmente via Firebase Console — clientes não podem escrever)
     function isFirestoreAdmin() {
@@ -60,7 +77,7 @@ service cloud.firestore {
     match /pets_perdidos/{alertId} {
       allow read: if true;
       allow create: if canCreateAlert();
-      allow update: if canUpdateOwnAlert() || isFirestoreAdmin();
+      allow update: if canUpdateOwnAlert() || isFirestoreAdmin() || canConfirmReunion();
       allow delete: if isOwner(resource.data) || isFirestoreAdmin();
     }
 

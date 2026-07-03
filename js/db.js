@@ -516,6 +516,27 @@ const DB = (() => {
     }
   }
 
+  /**
+   * Grava um evento na coleção de auditoria LGPD (lgpd_access_log).
+   * Rules: create liberado para autenticados; ninguém lê pelo cliente.
+   * Best-effort — nunca deve bloquear o fluxo principal.
+   */
+  async function registrarLogLGPD(tipo, dados = {}) {
+    try {
+      if (!useFirestore) return;
+      const db = FirebaseConfig.getDB();
+      await db.collection('lgpd_access_log').add({
+        tipo,
+        ...dados,
+        actor_firebase_uid: FirebaseConfig.getFirebaseUID?.() || '',
+        actor_uid: Auth.getUID() || '',
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('[DB] registrarLogLGPD falhou:', e.message);
+    }
+  }
+
   async function marcarEncontrado(petId, feedback = {}) {
     const desfecho = feedback.desfecho || 'encontrado_vivo';
     const statusMap = {
@@ -523,16 +544,117 @@ const DB = (() => {
       'encontrado_morto': 'encerrado_falecido',
       'desistencia': 'encerrado_desistencia'
     };
-    const updateData = {
-      status: statusMap[desfecho] || 'encontrado',
-      desfecho: desfecho,
-      data_encerrado: new Date().toISOString(),
+
+    const baseFeedback = {
       feedback_como_encontrou: feedback.como || '',
       feedback_app_ajudou: feedback.appAjudou || false,
       feedback_mensagem: Security.sanitize(feedback.mensagem || ''),
       feedback_nota: feedback.nota || 0
     };
-    return await update(TABLES.PETS, petId, updateData);
+
+    // Confirmação BILATERAL (North Star): quando o reencontro foi com uma
+    // contraparte conhecida (avistador de um avistamento vinculado), o alerta
+    // entra em 'aguardando_confirmacao' e a contraparte confirma para virar
+    // 'reuniao_confirmada'. Sem contraparte → fluxo unilateral (como antes).
+    const myFbUid = FirebaseConfig.getFirebaseUID?.() || '';
+    const temContraparte = desfecho === 'encontrado_vivo'
+      && !!feedback.avistadorFirebaseUid
+      && feedback.avistadorFirebaseUid !== myFbUid;
+
+    if (temContraparte) {
+      const avistamentoId = feedback.avistamentoId || '';
+      const reuniao = {
+        marcado_por_uid: Auth.getUID() || '',
+        marcado_por_firebase_uid: myFbUid,
+        marcado_em: new Date().toISOString(),
+        avistamento_id: avistamentoId,
+        conversa_id: avistamentoId ? `${petId}_${avistamentoId}` : '',
+        avistador_uid: feedback.avistadorUid || '',
+        avistador_firebase_uid: feedback.avistadorFirebaseUid,
+        confirmado_por_uid: '',
+        confirmado_por_firebase_uid: '',
+        confirmado_em: '',
+        confirmacao_unilateral: false
+      };
+      const res = await update(TABLES.PETS, petId, {
+        status: 'aguardando_confirmacao',
+        desfecho: 'encontrado_vivo',
+        reuniao,
+        ...baseFeedback
+      });
+      // Notifica a contraparte (avistador) para confirmar o reencontro.
+      try {
+        await criarNotificacao({
+          tipo: 'confirmar_reuniao',
+          pet_perdido_id: petId,
+          pet_nome: feedback.petNome || '',
+          avistamento_id: avistamentoId,
+          conversaId: reuniao.conversa_id,
+          lida: false,
+          destinatario_uid: feedback.avistadorUid || '',
+          destinatario_firebase_uid: feedback.avistadorFirebaseUid,
+          data: new Date().toISOString()
+        });
+      } catch (e) { console.warn('[DB] notif confirmar_reuniao falhou:', e.message); }
+      return res;
+    }
+
+    // Fluxo unilateral (sem contraparte conhecida) — comportamento histórico.
+    const res = await update(TABLES.PETS, petId, {
+      status: statusMap[desfecho] || 'encontrado',
+      desfecho: desfecho,
+      data_encerrado: new Date().toISOString(),
+      ...baseFeedback
+    });
+    if (desfecho === 'encontrado_vivo') {
+      registrarLogLGPD('pet_encontrado', { petId, sem_contraparte: true });
+    }
+    return res;
+  }
+
+  /**
+   * A contraparte (avistador designado em reuniao.avistador_firebase_uid)
+   * confirma que o reencontro aconteceu → status vira 'reuniao_confirmada'
+   * (alimenta a North Star). Rules: canConfirmReunion permite a escrita cruzada
+   * apenas do avistador designado e só dos campos de encerramento.
+   */
+  async function confirmarReuniao(petId) {
+    const pet = await get(TABLES.PETS, petId);
+    if (!pet) throw new Error('Pet não encontrado.');
+    if (pet.status !== 'aguardando_confirmacao') {
+      throw new Error('Este reencontro não está aguardando confirmação.');
+    }
+    const myFbUid = FirebaseConfig.getFirebaseUID?.() || '';
+    const reuniao = { ...(pet.reuniao || {}) };
+    reuniao.confirmado_por_uid = Auth.getUID() || '';
+    reuniao.confirmado_por_firebase_uid = myFbUid;
+    reuniao.confirmado_em = new Date().toISOString();
+    reuniao.confirmacao_unilateral = false;
+
+    const res = await update(TABLES.PETS, petId, {
+      status: 'encontrado',
+      desfecho: 'reuniao_confirmada',
+      data_encerrado: new Date().toISOString(),
+      reuniao
+    });
+    registrarLogLGPD('pet_encontrado', {
+      petId,
+      avistamentoId: reuniao.avistamento_id || '',
+      bilateral: true
+    });
+    // Notifica o tutor que a reunião foi confirmada.
+    try {
+      await criarNotificacao({
+        tipo: 'reuniao_confirmada',
+        pet_perdido_id: petId,
+        pet_nome: pet.nome_pet || '',
+        lida: false,
+        destinatario_uid: reuniao.marcado_por_uid || pet.owner_uid || '',
+        destinatario_firebase_uid: reuniao.marcado_por_firebase_uid || pet.owner_firebase_uid || '',
+        data: new Date().toISOString()
+      });
+    } catch (e) { console.warn('[DB] notif reuniao_confirmada falhou:', e.message); }
+    return res;
   }
 
   /**
@@ -1453,6 +1575,7 @@ const DB = (() => {
     reportarPetPerdido,
     completarCadastro,
     marcarEncontrado,
+    confirmarReuniao,
     reabrirReporte,
     countUsersInRadius,
     listarPetsAtivos,

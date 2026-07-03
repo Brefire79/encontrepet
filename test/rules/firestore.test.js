@@ -249,6 +249,65 @@ describe('conversas (chat interno)', () => {
   });
 });
 
+describe('confirmação bilateral de reunião (canConfirmReunion)', () => {
+  // OTHER é a contraparte (avistador designado); OWNER é o tutor.
+  const reuniaoBase = {
+    avistador_firebase_uid: OTHER,
+    avistador_uid: 'u_other',
+    marcado_por_firebase_uid: OWNER,
+    marcado_em: '2026-07-02T00:00:00Z',
+    confirmado_por_firebase_uid: '',
+    confirmacao_unilateral: false,
+  };
+
+  beforeEach(async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'pets_perdidos', 'pr'), petPublic({
+        status: 'aguardando_confirmacao',
+        reuniao: reuniaoBase,
+      }));
+    });
+  });
+
+  const confirmPayload = (extra = {}) => ({
+    status: 'encontrado',
+    desfecho: 'reuniao_confirmada',
+    data_encerrado: '2026-07-03T00:00:00Z',
+    reuniao: { ...reuniaoBase, confirmado_por_firebase_uid: OTHER, confirmado_em: '2026-07-03T00:00:00Z' },
+    ...extra,
+  });
+
+  it('contraparte designada confirma o reencontro', async () => {
+    await assertSucceeds(updateDoc(doc(asOther(), 'pets_perdidos', 'pr'), confirmPayload()));
+  });
+
+  it('terceiro (não designado, sem privilégio) NÃO confirma', async () => {
+    const stranger = testEnv.authenticatedContext('fbuid_stranger').firestore();
+    await assertFails(updateDoc(doc(stranger, 'pets_perdidos', 'pr'), confirmPayload()));
+  });
+
+  it('contraparte NÃO pode alterar campos além do encerramento', async () => {
+    await assertFails(updateDoc(doc(asOther(), 'pets_perdidos', 'pr'), confirmPayload({ nome_pet: 'Hackeado' })));
+  });
+
+  it('confirmação bloqueada se o pet não está aguardando_confirmacao', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'pets_perdidos', 'pr2'), petPublic({ status: 'ativo', reuniao: reuniaoBase }));
+    });
+    await assertFails(updateDoc(doc(asOther(), 'pets_perdidos', 'pr2'), confirmPayload()));
+  });
+
+  it('tutor ainda pode marcar aguardando_confirmacao (não regressão de update do dono)', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'pets_perdidos', 'pr3'), petPublic({ status: 'ativo' }));
+    });
+    await assertSucceeds(updateDoc(doc(asOwner(), 'pets_perdidos', 'pr3'), {
+      status: 'aguardando_confirmacao',
+      reuniao: reuniaoBase,
+    }));
+  });
+});
+
 describe('fallback global', () => {
   it('coleção desconhecida é negada', async () => {
     await assertFails(getDoc(doc(asOwner(), 'coisa_aleatoria', 'x')));
