@@ -453,7 +453,7 @@ showToast('Tutor encontrado mas sem telefone cadastrado.', 'warning');
 
 ### Médio prazo
 
-- [ ] **S-08** — Remover `owner_firebase_uid` de docs públicos. ⚠️ **PENDENTE (gated)** — bloqueio: ownership nas rules depende do campo (`owner_uid` `u_xxx` ≠ Firebase UID). `backfill` pronto (`scripts/migrate-s08-owner-firebase-uid.js`); `strip` aguarda redesenho das rules + testes no emulator.
+- [ ] **S-08** — Remover `owner_firebase_uid` de docs públicos. ⚠️ **PENDENTE (gated — 2 bloqueios)** — (1) ownership nas rules depende do campo (`owner_uid` `u_xxx` ≠ Firebase UID); (2) **descoberto em 2026-07-02:** o campo também **endereça notificações de match cliente-a-cliente** (`app.js` ~2860/3360 usam `destinatario_firebase_uid = pet.owner_firebase_uid`, e a regra de `notificacoes` só entrega via `destinatario_firebase_uid == auth.uid`) e alimenta `linked_pet_owner_firebase_uid` (`app.js` ~3104). Um *strip* cego **quebraria a entrega de matches (North Star)**. Ordem segura: (a) `backfill` (`scripts/migrate-s08-owner-firebase-uid.js`, pronto) → (b) rerotear notificação de match para não exigir que o avistador conheça o Firebase UID do tutor (via CF `onAvistamentoCreate`, que já lê `alert_privado`) → (c) reescrever rules (ownership via `get()` no `alert_privado`) → (d) rodar `npm run test:rules` (harness novo) → (e) `strip`.
 - [x] **S-11** — `isOwner` no cliente unificado (`owner_uid` OU `owner_firebase_uid`), `app.js` `showPetDetails`. ✅ 2026-06
 - [ ] ~~Fluxo de revelação mútua ≥ 92%~~ — **descontinuado** (decisão 2026-06: threshold único de 70%; ver `ESTADO_ATUAL.md` §2).
 - [ ] Adicionar notificação ao tutor quando alguém acessa seu contato
@@ -498,3 +498,4 @@ A coleção `lgpd_access_log` deve registrar todos os eventos abaixo:
 | 2026-02-17 | Pre-audit | SECURITY.md | Baseline |
 | 2026-03-21 | db2ec51 | Análise automatizada | 2 Crítico, 2 Alto, 4 Médio, 3 Baixo |
 | 2026-06-12 | Fase 0 (re-auditoria) | Verificação código real | 9/11 já corrigidos. Pendentes: S-08 (médio, gated), S-11 (corrigido nesta sessão). Threshold/raio: divergências já inexistentes (fonte única `app-config.js`). Ver `ESTADO_ATUAL.md`. |
+| 2026-07-02 | Validação por emulator | Harness `test/rules/` (28 testes) | Matriz de Acesso validada no emulator (S-01/S-02/S-03 verdes). S-11 finalizado no cliente. S-08 confirmado como gated + 2º bloqueio descoberto (endereçamento de notificações depende do campo público). `strip` do S-08 permanece pendente até rerotear notificações. |
