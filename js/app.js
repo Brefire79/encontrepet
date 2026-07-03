@@ -3662,6 +3662,36 @@ const App = (() => {
         </div>`;
         }
 
+        if (n.tipo === 'confirmar_reuniao') {
+          const petNomeRaw = n.pet_nome || n.petNome || '';
+          const petId = n.pet_perdido_id || n.pet_id || '';
+          return `
+        <div class="notif-item ${!n.lida ? 'unread notif-flash' : ''}" data-nid="${n.id}">
+          <div class="notif-icon match"><i class="fas fa-handshake"></i></div>
+          <div class="notif-text">
+            <div class="notif-title">${Security.sanitize(I18n.t('notif.confirm_reunion_title', { pet: petNomeRaw }))}</div>
+            <div class="notif-desc">${Security.sanitize(I18n.t('notif.confirm_reunion_desc'))}</div>
+            <div style="margin-top:8px">
+              <button class="btn-confirm-reunion btn-small" data-pet-id="${petId}"><i class="fas fa-check"></i> ${I18n.t('notif.confirm_reunion_btn')}</button>
+            </div>
+            <div class="notif-time">${getTimeAgo(n.timestamp || n.created_at)}</div>
+          </div>
+        </div>`;
+        }
+
+        if (n.tipo === 'reuniao_confirmada') {
+          const petNomeRaw = n.pet_nome || n.petNome || '';
+          return `
+        <div class="notif-item ${!n.lida ? 'unread notif-flash' : ''}" data-nid="${n.id}">
+          <div class="notif-icon match"><i class="fas fa-circle-check"></i></div>
+          <div class="notif-text">
+            <div class="notif-title">${Security.sanitize(I18n.t('notif.reunion_confirmed_title', { pet: petNomeRaw }))}</div>
+            <div class="notif-desc">${Security.sanitize(I18n.t('notif.reunion_confirmed_desc'))}</div>
+            <div class="notif-time">${getTimeAgo(n.timestamp || n.created_at)}</div>
+          </div>
+        </div>`;
+        }
+
         const tipoConfig = {
           match_ia:           { icon: 'fa-robot',         cls: 'match',   titulo: I18n.t('notif.match_title') },
           contato_solicitado: { icon: 'fa-hands-helping', cls: 'contact', titulo: '👋 Alguém quer contato!' },
@@ -3721,8 +3751,8 @@ const App = (() => {
 
       container.querySelectorAll('.notif-item').forEach(item => {
         item.addEventListener('click', async (e) => {
-          // Não marcar como lida se clicar no botão "Ver pet" (tem seu próprio handler)
-          if (e.target.closest('.notif-view-btn') || e.target.closest('.btn-chat-notif')) return;
+          // Não marcar como lida se clicar em botões com handler próprio
+          if (e.target.closest('.notif-view-btn') || e.target.closest('.btn-chat-notif') || e.target.closest('.btn-confirm-reunion')) return;
           try {
             await DB.marcarNotificacaoLida(item.dataset.nid);
             item.classList.remove('unread', 'notif-flash');
@@ -3761,6 +3791,29 @@ const App = (() => {
             try { await DB.marcarNotificacaoLida(item.dataset.nid); item.classList.remove('unread', 'notif-flash'); } catch {}
           }
           openInternalChat(btn.dataset.chatId, btn.dataset.chatTitle || I18n.t('chat.title'));
+        });
+      });
+
+      // Confirmação bilateral: a contraparte confirma o reencontro.
+      container.querySelectorAll('.btn-confirm-reunion').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const petId = btn.dataset.petId;
+          if (!petId) return;
+          btn.disabled = true;
+          try {
+            showLoading('Salvando...');
+            await DB.confirmarReuniao(petId);
+            const item = btn.closest('.notif-item');
+            if (item) { try { await DB.marcarNotificacaoLida(item.dataset.nid); } catch {} }
+            hideLoading();
+            showToast(I18n.t('toast.reunion_confirmed'), 'success');
+            loadNotifications();
+          } catch (err) {
+            hideLoading();
+            btn.disabled = false;
+            showToast(err?.message || I18n.t('toast.save_error'), 'error');
+          }
         });
       });
     } catch { container.innerHTML = `<div class="empty-state"><p>${I18n.t('notif.load_error')}</p></div>`; }
@@ -4117,14 +4170,21 @@ const App = (() => {
   let foundPetId = null;
   let foundNota = 0;
   let foundDesfecho = '';
+  let foundContraparte = null;   // avistador escolhido p/ confirmação bilateral
+  let foundContrapartes = [];    // avistamentos vinculados candidatos
 
   function openFoundFeedbackModal(petId) {
     foundPetId = petId;
     foundNota = 0;
     foundDesfecho = '';
+    foundContraparte = null;
+    foundContrapartes = [];
     const modal = document.getElementById('found-feedback-modal');
     if (!modal) return;
     // Reset
+    const cpList = document.getElementById('found-contraparte-list');
+    if (cpList) cpList.innerHTML = '';
+    document.getElementById('fg-contraparte')?.classList.add('hidden');
     document.getElementById('found-como').value = '';
     document.querySelectorAll('input[name="found-app-ajudou"]').forEach(r => r.checked = false);
     document.getElementById('found-mensagem').value = '';
@@ -4179,8 +4239,65 @@ const App = (() => {
       if (fgApp) fgApp.style.display = '';
     }
 
+    // Confirmação bilateral: só faz sentido em reencontro com vida.
+    foundContraparte = null;
+    if (desfecho === 'encontrado_vivo' && foundPetId) {
+      loadContraparteSelector(foundPetId);
+    } else {
+      document.getElementById('fg-contraparte')?.classList.add('hidden');
+    }
+
     step1.classList.add('hidden');
     step2.classList.remove('hidden');
+  }
+
+  /**
+   * Popula o seletor de contraparte com os avistadores vinculados ao pet.
+   * Se não houver contraparte conhecida, esconde o bloco → fluxo unilateral.
+   */
+  async function loadContraparteSelector(petId) {
+    const fg = document.getElementById('fg-contraparte');
+    const list = document.getElementById('found-contraparte-list');
+    if (!fg || !list) return;
+    fg.classList.remove('hidden');
+    list.innerHTML = `<div class="contraparte-loading">${I18n.t('feedback.reunion_loading')}</div>`;
+    try {
+      const myFbUid = FirebaseConfig.getFirebaseUID?.() || '';
+      const sightings = await DB.getLinkedSightings(petId);
+      // Só serve como contraparte quem tem Firebase UID e não é o próprio tutor.
+      const valid = (sightings || []).filter(s => s.owner_firebase_uid && s.owner_firebase_uid !== myFbUid);
+      foundContrapartes = valid;
+      if (valid.length === 0) {
+        fg.classList.add('hidden');
+        list.innerHTML = '';
+        return;
+      }
+      const items = valid.map((s, i) => {
+        const nome = Security.sanitize(s.avistador_nome || s.contato_nome || I18n.t('feedback.reunion_finder_default'));
+        const quando = getTimeAgo(s.created_at || s.data_avistamento);
+        return `<button type="button" class="contraparte-option" data-idx="${i}">
+          <i class="fas fa-user"></i>
+          <span class="contraparte-nome">${nome}</span>
+          <span class="contraparte-quando">${quando}</span>
+        </button>`;
+      }).join('');
+      const alone = `<button type="button" class="contraparte-option contraparte-alone" data-idx="-1">
+        <i class="fas fa-house-user"></i>
+        <span class="contraparte-nome">${I18n.t('feedback.reunion_alone')}</span>
+      </button>`;
+      list.innerHTML = items + alone;
+      list.querySelectorAll('.contraparte-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          foundContraparte = idx >= 0 ? foundContrapartes[idx] : null;
+          list.querySelectorAll('.contraparte-option').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+        });
+      });
+    } catch (e) {
+      fg.classList.add('hidden');
+      list.innerHTML = '';
+    }
   }
 
   function initFoundFeedbackModal() {
@@ -4214,22 +4331,30 @@ const App = (() => {
 
       try {
         showLoading('Salvando...');
+        const cp = foundContraparte;
         await DB.marcarEncontrado(foundPetId, {
           desfecho: foundDesfecho,
           como,
           appAjudou,
           mensagem,
-          nota: foundNota
+          nota: foundNota,
+          ...(cp ? {
+            avistamentoId: cp.id,
+            avistadorUid: cp.owner_uid || '',
+            avistadorFirebaseUid: cp.owner_firebase_uid || ''
+          } : {})
         });
         incrementarContadorPerfil('pets_encontrados');
         hideLoading();
         closeFoundFeedbackModal();
-        const toastMsg = foundDesfecho === 'encontrado_vivo'
-          ? I18n.t('toast.found_alive')
-          : foundDesfecho === 'encontrado_morto'
-            ? I18n.t('toast.found_dead')
-            : I18n.t('toast.search_closed');
-        showToast(toastMsg, foundDesfecho === 'encontrado_vivo' ? 'success' : 'info');
+        const toastMsg = cp
+          ? I18n.t('toast.awaiting_confirmation')
+          : foundDesfecho === 'encontrado_vivo'
+            ? I18n.t('toast.found_alive')
+            : foundDesfecho === 'encontrado_morto'
+              ? I18n.t('toast.found_dead')
+              : I18n.t('toast.search_closed');
+        showToast(toastMsg, (cp || foundDesfecho === 'encontrado_vivo') ? 'success' : 'info');
         loadMyReports();
       } catch (err) {
         hideLoading();
@@ -4242,10 +4367,18 @@ const App = (() => {
       if (!foundPetId) return;
       try {
         showLoading('Salvando...');
-        await DB.marcarEncontrado(foundPetId, { desfecho: foundDesfecho });
+        const cp = foundContraparte;
+        await DB.marcarEncontrado(foundPetId, {
+          desfecho: foundDesfecho,
+          ...(cp ? {
+            avistamentoId: cp.id,
+            avistadorUid: cp.owner_uid || '',
+            avistadorFirebaseUid: cp.owner_firebase_uid || ''
+          } : {})
+        });
         hideLoading();
         closeFoundFeedbackModal();
-        showToast(I18n.t('toast.report_closed'), 'info');
+        showToast(cp ? I18n.t('toast.awaiting_confirmation') : I18n.t('toast.report_closed'), cp ? 'success' : 'info');
         loadMyReports();
       } catch (err) {
         hideLoading();

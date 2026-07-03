@@ -209,6 +209,19 @@ window.I18nLocales.en = {
   'match.notify_high': '🎉 Possible match found! An animal with {score}% similarity to {name} was spotted!',
   'match.notify_low': '👀 An animal similar to {name} was spotted ({score}% similarity).',
 
+  // — Bilateral reunion confirmation (North Star) —
+  'feedback.reunion_who': 'Who did you reunite with?',
+  'feedback.reunion_loading': 'Loading sightings...',
+  'feedback.reunion_finder_default': 'Finder',
+  'feedback.reunion_alone': 'I found them on my own',
+  'notif.confirm_reunion_title': 'Confirm the reunion of {pet}',
+  'notif.confirm_reunion_desc': 'The owner marked that the reunion happened with your help. Confirm to record it.',
+  'notif.confirm_reunion_btn': 'Confirm reunion',
+  'notif.reunion_confirmed_title': "{pet}'s reunion confirmed!",
+  'notif.reunion_confirmed_desc': 'The other party confirmed the reunion. Thanks for using Encontre Pet!',
+  'toast.awaiting_confirmation': 'Marked! Waiting for the other party to confirm.',
+  'toast.reunion_confirmed': 'Reunion confirmed! 🎉',
+
   // — Validation —
   'validation.phone_invalid': 'Invalid phone. Use Brazilian format: (XX) XXXXX-XXXX',
 

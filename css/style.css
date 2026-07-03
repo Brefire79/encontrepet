@@ -5136,3 +5136,26 @@ a { color: var(--primary); text-decoration: none; }
   .admin-btn.btn-view { background: rgba(99,102,241,0.15); color: #A5B4FC; }
   .admin-loading, .admin-empty { color: #A0A0B0; }
 }
+
+/* ===== Confirmação bilateral — seletor de contraparte ===== */
+.contraparte-list { display: flex; flex-direction: column; gap: 8px; }
+.contraparte-option {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 10px 12px; text-align: left;
+  background: var(--bg-card); color: inherit;
+  border: 1.5px solid var(--border); border-radius: var(--radius);
+  cursor: pointer; transition: border-color .15s, background .15s;
+}
+.contraparte-option:hover { border-color: var(--primary-light); }
+.contraparte-option.selected { border-color: var(--primary); background: var(--primary-light); }
+.contraparte-option i { color: var(--primary); }
+.contraparte-option .contraparte-nome { font-weight: 600; flex: 1; }
+.contraparte-option .contraparte-quando { font-size: .8rem; color: var(--text-muted); }
+.contraparte-option.contraparte-alone { opacity: .85; }
+.contraparte-loading { font-size: .85rem; color: var(--text-muted); padding: 6px 2px; }
+.btn-confirm-reunion {
+  background: var(--primary); color: #fff; border: none;
+  padding: 7px 14px; border-radius: var(--radius-sm);
+  font-weight: 600; cursor: pointer;
+}
+.btn-confirm-reunion:disabled { opacity: .6; cursor: default; }
