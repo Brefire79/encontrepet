@@ -1,6 +1,7 @@
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as logger from 'firebase-functions/logger';
 import * as admin from 'firebase-admin';
 import sharp from 'sharp';
@@ -1000,5 +1001,83 @@ export const getSighterContact = onCall(
       });
       throw new HttpsError('internal', 'Erro ao buscar contato do avistador.');
     }
+  }
+);
+
+/**
+ * Auto-confirmação de reuniões (North Star).
+ * Job diário: pets em 'aguardando_confirmacao' há mais de 7 dias são
+ * confirmados automaticamente com reuniao.confirmacao_unilateral = true.
+ * Custo: 1 execução/dia + reads apenas dos pendentes (baixíssimo).
+ */
+export const autoConfirmarReunioes = onSchedule(
+  {
+    schedule: 'every 24 hours',
+    region: 'southamerica-east1',
+    timeZone: 'America/Sao_Paulo',
+  },
+  async () => {
+    const db = admin.firestore();
+    const SETE_DIAS_MS = 7 * 24 * 60 * 60 * 1000;
+    const limite = Date.now() - SETE_DIAS_MS;
+
+    const snap = await db
+      .collection('pets_perdidos')
+      .where('status', '==', 'aguardando_confirmacao')
+      .limit(200)
+      .get();
+
+    let confirmados = 0;
+    for (const doc of snap.docs) {
+      const data = doc.data() || {};
+      const reuniao = data.reuniao || {};
+      const marcadoEm = Date.parse(reuniao.marcado_em || '') || 0;
+      if (!marcadoEm || marcadoEm > limite) continue; // ainda dentro da janela de 7 dias
+
+      const agora = new Date().toISOString();
+      const novaReuniao = {
+        ...reuniao,
+        confirmado_em: agora,
+        confirmacao_unilateral: true,
+      };
+      try {
+        await doc.ref.update({
+          status: 'encontrado',
+          desfecho: 'reuniao_confirmada',
+          data_encerrado: agora,
+          reuniao: novaReuniao,
+        });
+        await db.collection('lgpd_access_log').add({
+          tipo: 'pet_encontrado',
+          petId: doc.id,
+          avistamentoId: reuniao.avistamento_id || '',
+          bilateral: true,
+          confirmacao_unilateral: true,
+          timestamp: agora,
+        });
+        // Notifica o tutor sobre a confirmação automática.
+        await db.collection('notificacoes').add({
+          tipo: 'reuniao_confirmada',
+          pet_perdido_id: doc.id,
+          pet_nome: data.nome_pet || '',
+          lida: false,
+          destinatario_uid: reuniao.marcado_por_uid || data.owner_uid || '',
+          destinatario_firebase_uid: reuniao.marcado_por_firebase_uid || data.owner_firebase_uid || '',
+          confirmacao_unilateral: true,
+          data: agora,
+        });
+        confirmados++;
+      } catch (error) {
+        logger.error('Falha ao auto-confirmar reunião.', {
+          error: error instanceof Error ? error.message : String(error),
+          petId: doc.id,
+        });
+      }
+    }
+
+    logger.info('autoConfirmarReunioes concluído.', {
+      pendentesVarridos: snap.size,
+      confirmados,
+    });
   }
 );
