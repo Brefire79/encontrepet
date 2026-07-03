@@ -5,6 +5,7 @@
     "dev": "firebase emulators:start --only hosting",
     "serve": "firebase serve --only hosting",
     "deploy:functions": "firebase deploy --only functions",
-    "deploy": "firebase deploy"
+    "deploy": "firebase deploy",
+    "test:rules": "firebase emulators:exec --only firestore --project encontrepet-rules-test \"npm --prefix test/rules test\""
   }
 }
