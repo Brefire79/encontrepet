@@ -205,6 +205,9 @@ window.I18nLocales.en = {
   'sighting.ai.error': 'Comparison error. Send anyway.',
   'sighting.match_high_contact_sent': 'Match found! Owner contact has been sent to your notifications.',
   'sighting.registered_low_match': 'Sighting registered ({score}% compatibility). The owner was notified.',
+  'match.your_pet': 'your pet',
+  'match.notify_high': '🎉 Possible match found! An animal with {score}% similarity to {name} was spotted!',
+  'match.notify_low': '👀 An animal similar to {name} was spotted ({score}% similarity).',
 
   // — Validation —
   'validation.phone_invalid': 'Invalid phone. Use Brazilian format: (XX) XXXXX-XXXX',

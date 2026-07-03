@@ -205,6 +205,9 @@ window.I18nLocales.pt = {
   'sighting.ai.error': 'Erro na comparação. Envie mesmo assim.',
   'sighting.match_high_contact_sent': 'Match encontrado! O contato do tutor foi enviado para suas notificações.',
   'sighting.registered_low_match': 'Avistamento registrado ({score}% de compatibilidade). O tutor foi notificado.',
+  'match.your_pet': 'seu pet',
+  'match.notify_high': '🎉 Possível match encontrado! Um animal com {score}% de similaridade com {name} foi avistado!',
+  'match.notify_low': '👀 Um animal parecido com {name} foi avistado ({score}% de similaridade).',
 
   // — Validação —
   'validation.phone_invalid': 'Telefone inválido. Use formato brasileiro: (XX) XXXXX-XXXX',

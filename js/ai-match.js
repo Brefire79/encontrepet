@@ -228,13 +228,21 @@ const AIMatch = (() => {
   function generateMatchNotification(match, sighting) {
     const pet = match.pet;
     const score = match.totalScore;
+    // i18n: usa I18n.t quando disponível; fallback PT mantém comportamento antigo.
+    const hasI18n = typeof window !== 'undefined' && window.I18n && typeof window.I18n.t === 'function';
+    const petName = pet.nome_pet || (hasI18n ? window.I18n.t('match.your_pet') : 'seu pet');
+    const mensagem = hasI18n
+      ? (score >= MATCH_THRESHOLD
+          ? window.I18n.t('match.notify_high', { score, name: petName })
+          : window.I18n.t('match.notify_low', { score, name: petName }))
+      : (score >= MATCH_THRESHOLD
+          ? `🎉 Possível match encontrado! Um animal com ${score}% de similaridade com ${petName} foi avistado!`
+          : `👀 Um animal parecido com ${petName} foi avistado (${score}% de similaridade).`);
     return {
       pet_perdido_id: pet.id,
       avistamento_id: sighting.id || '',
       tipo: 'match_ia',
-      mensagem: score >= MATCH_THRESHOLD
-        ? `🎉 Possível match encontrado! Um animal com ${score}% de similaridade com ${pet.nome_pet || 'seu pet'} foi avistado!`
-        : `👀 Um animal parecido com ${pet.nome_pet || 'seu pet'} foi avistado (${score}% de similaridade).`,
+      mensagem,
       similaridade: score,
       lida: false,
       // Campos obrigatórios para as regras do Firestore conseguirem entregar ao tutor
