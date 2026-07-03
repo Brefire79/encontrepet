@@ -2911,7 +2911,13 @@ const App = (() => {
     showLoading('Carregando...');
     try {
       const pet = await DB.get(DB.COLLECTIONS.PETS, petId);
-      const isOwner = !!(pet.owner_uid && pet.owner_uid === Auth.getUID());
+      // S-11: ownership unificado — aceita ID customizado (u_xxx) E Firebase Auth UID,
+      // espelhando a regra isOwner() do firestore.rules (owner_uid || owner_firebase_uid).
+      const myFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+      const isOwner = !!(
+        (pet.owner_uid && pet.owner_uid === Auth.getUID()) ||
+        (pet.owner_firebase_uid && myFirebaseUid && pet.owner_firebase_uid === myFirebaseUid)
+      );
       const isLoggedIn = Auth.isLoggedIn();
       const settings = Auth.getUserSettings();
       const displayPet = isOwner ? pet : (Security.sanitizeForPublic(pet, settings) || pet);
