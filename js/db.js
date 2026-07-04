@@ -415,6 +415,9 @@ const DB = (() => {
       porte: data.porte || '',
       sexo: data.sexo || '',
       foto_comprimida: data.foto_comprimida || '',
+      // Thumbnail pequeno (~10KB) fica no doc para o feed; a imagem cheia vai
+      // pro Storage e o base64 grande é removido do doc após o upload (custo).
+      foto_thumb: data.foto_thumb || '',
       foto_hash: data.foto_hash || '',
       embedding: data.embedding || null,
       // Apenas localização pública (ofuscada)
@@ -484,7 +487,10 @@ const DB = (() => {
           await update(TABLES.PETS, uploadId, {
             imageStoragePath: upload.path,
             imageStorageUrl: upload.downloadURL,
-            imageHashProcessed: false
+            imageHashProcessed: false,
+            // Imagem cheia agora vive no Storage — remove o base64 do doc
+            // público para não pagar egress/reads por ele no feed (custo).
+            foto_comprimida: ''
           });
           console.log('[DB] Upload Storage pet_perdido concluído em background');
         } catch (err) {
@@ -736,6 +742,8 @@ const DB = (() => {
       tipo_animal: data.tipo_animal || 'cao',
       subtipo_animal: Security.sanitize(data.subtipo_animal || ''),
       foto_comprimida: data.foto_comprimida || '',
+      // Thumbnail pequeno para o feed; base64 grande sai do doc após upload
+      foto_thumb: data.foto_thumb || '',
       foto_hash: data.foto_hash || '',
       embedding: data.embedding || null,
       // Apenas localização pública (ofuscada)
@@ -827,7 +835,9 @@ const DB = (() => {
           await update(TABLES.AVISTAMENTOS, uploadId, {
             imageStoragePath: upload.path,
             imageStorageUrl: upload.downloadURL,
-            imageHashProcessed: false
+            imageHashProcessed: false,
+            // Imagem cheia no Storage — base64 sai do doc público (custo)
+            foto_comprimida: ''
           });
           console.log('[DB] Upload Storage avistamento concluído em background');
         } catch (err) {

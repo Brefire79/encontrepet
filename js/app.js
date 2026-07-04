@@ -1633,7 +1633,7 @@ const App = (() => {
       return;
     }
     container.innerHTML = stories.map(pet => {
-      const foto = pet.foto_comprimida ? fixCorruptedDataUrl(pet.foto_comprimida) : '';
+      const foto = photoThumbSrc(pet);
       const nome = Security.sanitize(pet.nome_pet || 'Pet');
       const como = pet.feedback_como_encontrou || '';
       const comoTexto = {
@@ -1799,7 +1799,7 @@ const App = (() => {
       const status = p.status || 'ativo';
       const statusLabel = { ativo: 'Ativo', encontrado: 'Encontrado', encerrado: 'Encerrado', desistencia: 'Desistência' }[status] || status;
       const data = p.data_reporte ? new Date(p.data_reporte).toLocaleDateString('pt-BR') : '';
-      const foto = p.foto_comprimida ? fixCorruptedDataUrl(p.foto_comprimida) : '';
+      const foto = photoThumbSrc(p);
       const avatar = foto ? `<img src="${foto}" alt="${nome}">` : `<i class="fas fa-paw"></i>`;
       return `<div class="admin-card" data-pet-id="${p.id}">
         <div class="admin-card-avatar">${avatar}</div>
@@ -1825,7 +1825,7 @@ const App = (() => {
     container.innerHTML = sightings.map(s => {
       const desc = Security.sanitize(s.descricao || s.observacoes || 'Avistamento');
       const data = s.data_avistamento ? new Date(s.data_avistamento).toLocaleDateString('pt-BR') : '';
-      const foto = s.foto_comprimida ? fixCorruptedDataUrl(s.foto_comprimida) : '';
+      const foto = photoThumbSrc(s);
       const avatar = foto ? `<img src="${foto}" alt="Avistamento">` : `<i class="fas fa-camera"></i>`;
       return `<div class="admin-card" data-sighting-id="${s.id}">
         <div class="admin-card-avatar">${avatar}</div>
@@ -2006,6 +2006,23 @@ const App = (() => {
     return ''; // Retorna vazio para não quebrar o <img>
   }
 
+  // Foto para cards/listas: prioriza o thumbnail leve gravado no doc (barato),
+  // depois o base64 legado, por fim a imagem do Storage (docs já migrados).
+  function photoThumbSrc(p) {
+    if (!p) return '';
+    return p.foto_thumb
+      || (p.foto_comprimida ? fixCorruptedDataUrl(p.foto_comprimida) : '')
+      || p.imageStorageUrl || '';
+  }
+
+  // Foto em tamanho cheio (detalhe/comparação de match): Storage primeiro.
+  function photoFullSrc(p) {
+    if (!p) return '';
+    return p.imageStorageUrl
+      || (p.foto_comprimida ? fixCorruptedDataUrl(p.foto_comprimida) : '')
+      || p.foto_thumb || '';
+  }
+
   function renderAlertCard(pet) {
     const labels = { cao: I18n.t('animal.dog'), gato: I18n.t('animal.cat'), outro: I18n.t('animal.other') };
     const badges = { cao: 'badge-cao', gato: 'badge-gato', outro: 'badge-outro' };
@@ -2015,7 +2032,7 @@ const App = (() => {
     const time = getTimeAgo(pet.created_at);
     const name = pet.nome_pet || `${labels[pet.tipo_animal] || 'Pet'} ${I18n.t('card.pet_lost').split(' ').pop()}`;
     const loc = pet.endereco_publico || pet.endereco || I18n.t('card.region_unknown');
-    const photo = fixCorruptedDataUrl(pet.foto_comprimida);
+    const photo = photoThumbSrc(pet);
     const isApprox = pet.localizacao_aproximada;
 
     return `
@@ -2325,6 +2342,7 @@ const App = (() => {
         tipo_animal: tipo,
         subtipo_animal: subtipo,
         foto_comprimida: state.photoData?.dataUrl || '',
+        foto_thumb: state.photoData?.thumbnail || '',
         foto_hash: state.photoData?.hash || '',
         embedding: state.photoData?.embedding || null,
         cor, porte,
@@ -2594,7 +2612,7 @@ const App = (() => {
           const isLinked = state.matchedLostPetId === pet.id;
           return `
             <div class="ai-match-item ${isLinked ? 'linked' : ''}" data-pet-id="${pet.id}" data-pet-name="${Security.sanitize(name)}" data-score="${match.totalScore}" data-engine="${engineUsed}" data-owner-uid="${pet.owner_firebase_uid || ''}" data-owner-custom-uid="${pet.owner_uid || ''}">
-              ${pet.foto_comprimida ? `<img class="ai-match-photo" src="${fixCorruptedDataUrl(pet.foto_comprimida)}" alt="">` :
+              ${photoFullSrc(pet) ? `<img class="ai-match-photo" src="${photoFullSrc(pet)}" alt="">` :
                 `<div class="ai-match-photo" style="display:flex;align-items:center;justify-content:center;background:var(--bg);"><i class="fas fa-paw" style="font-size:1.5rem;color:var(--text-muted)"></i></div>`}
               <div class="ai-match-info">
                 <div class="ai-match-name">${emoji} ${Security.sanitize(name)}</div>
@@ -2794,6 +2812,7 @@ const App = (() => {
         tipo_animal: tipoAv,
         subtipo_animal: subtipoAv,
         foto_comprimida: state.avistamentoPhotoData?.dataUrl || '',
+        foto_thumb: state.avistamentoPhotoData?.thumbnail || '',
         foto_hash: state.avistamentoPhotoData?.hash || '',
         embedding: state.avistamentoPhotoData?.embedding || null,
         latitude: parseFloat(document.getElementById('lat-avistamento')?.value) || 0,
@@ -3059,10 +3078,10 @@ const App = (() => {
         }
       }
 
-      const fixedFoto = fixCorruptedDataUrl(displayPet.foto_comprimida);
-      
+      const fixedFoto = photoFullSrc(displayPet);
+
       container.innerHTML = `
-        ${fixedFoto && fixedFoto.startsWith('data:image/') ? `<img class="detalhes-photo" src="${fixedFoto}" alt="">` :
+        ${fixedFoto ? `<img class="detalhes-photo" src="${fixedFoto}" alt="">` :
           `<div class="detalhes-photo" style="height:200px;display:flex;align-items:center;justify-content:center;background:var(--bg);"><i class="fas fa-paw" style="font-size:4rem;color:var(--text-muted)"></i></div>`}
         <div class="detalhes-body">
           <div class="detalhes-badges">
@@ -3167,8 +3186,9 @@ const App = (() => {
         const loc = Security.sanitize(s.endereco_publico || '');
         const score = s.matchedScore ? `${Math.round(s.matchedScore)}%` : '';
         const linkType = s.pet_perdido_id === petId ? 'manual' : 'ia';
-        const photoHtml = s.foto_comprimida && s.foto_comprimida.startsWith('data:image/')
-          ? `<img class="sighting-thumb" src="${s.foto_comprimida}" alt="">`
+        const sightingPhoto = photoThumbSrc(s);
+        const photoHtml = sightingPhoto
+          ? `<img class="sighting-thumb" src="${sightingPhoto}" alt="">`
           : `<div class="sighting-thumb-placeholder"><i class="fas fa-paw"></i></div>`;
         return `
           <div class="sighting-card" data-id="${s.id}">
@@ -3472,7 +3492,7 @@ const App = (() => {
     const dataEncerrado = r.data_encerrado ? new Date(r.data_encerrado).toLocaleDateString(localeLang) : '';
 
     return `<div class="reporte-item ${!isActive ? 'reporte-encerrado' : ''}" data-id="${r.id}" data-type="${r._reportType}">
-      ${r.foto_comprimida ? `<img class="reporte-photo" src="${fixCorruptedDataUrl(r.foto_comprimida)}" alt="">` :
+      ${photoThumbSrc(r) ? `<img class="reporte-photo" src="${photoThumbSrc(r)}" alt="">` :
         `<div class="reporte-photo" style="display:flex;align-items:center;justify-content:center;"><i class="fas fa-${isPet ? 'paw' : 'eye'}" style="font-size:1.8rem;color:var(--text-muted)"></i></div>`}
       <div class="reporte-info">
         <div style="font-weight:700">${Security.sanitize(name)}</div>
@@ -3843,7 +3863,7 @@ const App = (() => {
         html += `<div class="mapa-section-header"><i class="fas fa-exclamation-circle" style="color:var(--danger)"></i> ${I18n.t('map.pets_count', {count: pets.length})}</div>`;
         html += pets.map(p => {
           const pub = Security.sanitizeForPublic(p, settings) || p;
-          const photo = fixCorruptedDataUrl(pub.foto_comprimida);
+          const photo = photoThumbSrc(pub);
           const name = Security.sanitize(pub.nome_pet || 'Pet');
           const loc = Security.sanitize(pub.endereco_publico || pub.endereco || I18n.t('map.region'));
           const desc = Security.sanitize(pub.descricao || '');
@@ -3873,7 +3893,7 @@ const App = (() => {
       if (avistamentos.length > 0) {
         html += `<div class="mapa-section-header" style="margin-top:16px"><i class="fas fa-eye" style="color:var(--success)"></i> ${I18n.t('map.sightings_count', {count: avistamentos.length})}</div>`;
         html += avistamentos.map((a, idx) => {
-          const photo = fixCorruptedDataUrl(a.foto_comprimida);
+          const photo = photoThumbSrc(a);
           const desc = Security.sanitize(a.descricao || I18n.t('map.sighting_desc'));
           const fullDesc = Security.sanitize(a.descricao || '');
           const time = getTimeAgo(a.created_at || a.data_avistamento);
