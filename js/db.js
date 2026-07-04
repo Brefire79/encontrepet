@@ -456,6 +456,7 @@ const DB = (() => {
     };
 
     const result = await create(TABLES.PETS, record);
+    _feedCache.pets.at = 0; // novo alerta aparece no próximo load do feed
 
     // Salvar dados PRIVADOS em collection separada (LGPD)
     if (result?.id) {
@@ -687,7 +688,29 @@ const DB = (() => {
    * para evitar necessidade de índice composto.
    * Ordenação feita em JS pelo fsList().
    */
-  async function listarPetsAtivos(page = 1) {
+  // ============================================================
+  //  CACHE TTL DO FEED (custo)
+  //  O feed, o matching de IA e o polling de novidades pedem a MESMA
+  //  lista — compartilham um único get() por até FEED_CACHE_TTL_MS,
+  //  em vez de cada chamador pagar os reads de novo.
+  // ============================================================
+  const FEED_CACHE_TTL_MS = 60 * 1000;
+  const _feedCache = { pets: { at: 0, promise: null }, avist: { at: 0, promise: null } };
+
+  function cachedFeedFetch(slot, fetcher, force) {
+    const c = _feedCache[slot];
+    const now = Date.now();
+    if (!force && c.promise && (now - c.at) < FEED_CACHE_TTL_MS) return c.promise;
+    c.at = now;
+    c.promise = fetcher().catch(err => { c.at = 0; c.promise = null; throw err; });
+    return c.promise;
+  }
+
+  async function listarPetsAtivos(opts = {}) {
+    return cachedFeedFetch('pets', () => _fetchPetsAtivos(), opts.force === true);
+  }
+
+  async function _fetchPetsAtivos() {
     if (useFirestore) {
       try {
         return await fsList(TABLES.PETS, {
@@ -781,6 +804,7 @@ const DB = (() => {
     };
 
     const result = await create(TABLES.AVISTAMENTOS, record);
+    _feedCache.avist.at = 0; // novo avistamento aparece no próximo load
 
     // Salvar dados PRIVADOS em collection separada (LGPD)
     if (result?.id) {
@@ -850,8 +874,8 @@ const DB = (() => {
     return result;
   }
 
-  async function listarAvistamentos(page = 1) {
-    return await list(TABLES.AVISTAMENTOS, { limit: 50 });
+  async function listarAvistamentos(opts = {}) {
+    return cachedFeedFetch('avist', () => list(TABLES.AVISTAMENTOS, { limit: 50 }), opts.force === true);
   }
 
   async function listRecentAlertsForSimilarity(tipoAnimal, recentDays = 30, limitPerCollection = 250) {
@@ -1536,44 +1560,60 @@ const DB = (() => {
     }
   }
 
+  // ============================================================
+  //  POLLING DO FEED (custo — substitui os onSnapshot de 200 docs)
+  //  O feed não exige tempo real: um poll periódico via cache TTL
+  //  compartilhado detecta novidades (som/contadores) sem manter dois
+  //  listeners permanentes. Pausa com a aba oculta e revalida ao voltar.
+  //  Realtime permanece apenas em notificações/chat/doc de detalhe.
+  // ============================================================
+  const FEED_POLL_MS = 5 * 60 * 1000;
+
+  function pollFeed(fetcher, onChange) {
+    let stopped = false;
+    let timer = null;
+
+    const schedule = () => {
+      if (stopped) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (document.hidden) { schedule(); return; }
+        tick(true);
+      }, FEED_POLL_MS);
+    };
+
+    const tick = async (force) => {
+      if (stopped) return;
+      try {
+        const result = await fetcher(force);
+        if (!stopped) onChange(result.data || []);
+      } catch (err) {
+        console.warn('[DB] pollFeed error:', err.message);
+      }
+      schedule();
+    };
+
+    const onVisible = () => { if (!document.hidden && !stopped) tick(false); };
+    document.addEventListener('visibilitychange', onVisible);
+
+    tick(false);
+
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }
+
   function watchPetsAtivos(onChange) {
-    if (!useFirestore) return () => {};
-    try {
-      const db = FirebaseConfig.getDB();
-      // [FIX M6] Adicionado .limit(200) para evitar memory bomb conforme a
-      // colecao cresce. Antes baixava TODOS os ativos a cada update.
-      const unsubscribe = db.collection(TABLES.PETS)
-        .where('status', '==', 'ativo')
-        .limit(200)
-        .onSnapshot(
-          (snapshot) => {
-            const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            onChange(docs);
-          },
-          (err) => console.error('[DB] watchPetsAtivos error:', err)
-        );
-      return unsubscribe;
-    } catch (err) {
-      console.error('[DB] watchPetsAtivos init error:', err);
-      return () => {};
-    }
+    return pollFeed(
+      (force) => listarPetsAtivos({ force }),
+      (docs) => onChange(docs.filter(p => p.status === 'ativo'))
+    );
   }
 
   function watchAvistamentos(onChange) {
-    if (!useFirestore) return () => {};
-    try {
-      const db = FirebaseConfig.getDB();
-      const unsubscribe = db.collection(TABLES.AVISTAMENTOS)
-        .limit(200)
-        .onSnapshot(
-          (snapshot) => onChange(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
-          (err) => console.error('[DB] watchAvistamentos error:', err)
-        );
-      return unsubscribe;
-    } catch (err) {
-      console.error('[DB] watchAvistamentos init error:', err);
-      return () => {};
-    }
+    return pollFeed((force) => listarAvistamentos({ force }), onChange);
   }
 
   // API pública
