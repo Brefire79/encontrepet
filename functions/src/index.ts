@@ -838,6 +838,138 @@ export const verifyUserPassword = onCall(
 );
 
 // ============================================================
+//  loginUser — login por email sem listar a colecao usuarios (N-01)
+//  Substitui o findByEmail client-side (que exigia allow list aberto
+//  em usuarios e permitia enumerar nome/email/telefone de todos).
+//  Retorna o perfil APENAS com credencial valida:
+//    - senha verificada contra senhas_usuarios (ou senha_hash legado), OU
+//    - request.auth.token.email igual ao email pedido (Firebase Auth
+//      ja autenticou este usuario por email/senha).
+//  senha_hash nunca sai na resposta.
+// ============================================================
+
+const emailLookupRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkEmailLookupRateLimit(key: string, max = 10): void {
+  const now = Date.now();
+  const entry = emailLookupRateLimitMap.get(key);
+  if (!entry || now > entry.resetAt) {
+    emailLookupRateLimitMap.set(key, { count: 1, resetAt: now + 60_000 });
+    return;
+  }
+  entry.count++;
+  if (entry.count > max) {
+    throw new HttpsError('resource-exhausted', 'Muitas tentativas. Aguarde 1 minuto.');
+  }
+}
+
+async function findUserDocByEmail(email: string) {
+  const db = admin.firestore();
+  const snap = await db.collection('usuarios')
+    .where('email', '==', email)
+    .limit(1)
+    .get();
+  return snap.empty ? null : snap.docs[0];
+}
+
+function verifySha256SaltHash(password: string, storedHash: string, nodeCrypto: typeof import('node:crypto')): boolean {
+  if (!storedHash || !storedHash.includes(':')) return false;
+  const [salt, hash] = storedHash.split(':');
+  const encoded = Buffer.from(salt + password + salt, 'utf8');
+  const hash1 = nodeCrypto.createHash('sha256').update(encoded).digest();
+  const hash2 = nodeCrypto.createHash('sha256').update(hash1).digest('hex');
+  return hash2 === hash;
+}
+
+export const loginUser = onCall(
+  {
+    region: 'southamerica-east1',
+    maxInstances: 10,
+    cors: ALLOWED_CORS_ORIGINS,
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Autenticacao necessaria.');
+    }
+    const { email, password } = request.data as { email: string; password?: string };
+    if (!email || typeof email !== 'string') {
+      throw new HttpsError('invalid-argument', 'email e obrigatorio.');
+    }
+    checkLoginRateLimit(request.auth.uid);
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const GENERIC = 'Credenciais invalidas.';
+
+    const doc = await findUserDocByEmail(normalizedEmail);
+    if (!doc) throw new HttpsError('unauthenticated', GENERIC);
+    const data = doc.data();
+
+    // 1) Firebase Auth ja verificou este email (login por email/senha)
+    const tokenEmail = (request.auth.token?.email || '').toLowerCase();
+    let valid = !!tokenEmail && tokenEmail === normalizedEmail;
+
+    // 2) Caso contrario, verificar a senha (senhas_usuarios; fallback legado)
+    if (!valid) {
+      if (!password || typeof password !== 'string') {
+        throw new HttpsError('unauthenticated', GENERIC);
+      }
+      const nodeCrypto = await import('node:crypto');
+      const db = admin.firestore();
+      const senhaDoc = await db.collection('senhas_usuarios').doc(doc.id).get();
+      const storedHash: string = senhaDoc.exists
+        ? (senhaDoc.data()?.senhaHash || '')
+        : (data.senha_hash || ''); // docs legados pre-S-03
+      valid = verifySha256SaltHash(password, storedHash, nodeCrypto);
+    }
+
+    if (!valid) throw new HttpsError('unauthenticated', GENERIC);
+    if (data.status === 'bloqueado') {
+      throw new HttpsError('permission-denied', 'Esta conta foi bloqueada.');
+    }
+
+    // Vincula o Firebase Auth UID atual ao doc — habilita o get direto do
+    // próprio perfil nas rules (isBoundUser) sem listagem (N-01).
+    try {
+      await doc.ref.update({
+        firebase_auth_uids: admin.firestore.FieldValue.arrayUnion(request.auth.uid),
+      });
+    } catch (e) {
+      logger.warn('Falha ao vincular firebase_auth_uid (nao-fatal).', { uid: doc.id.substring(0, 8) });
+    }
+
+    const profile: Record<string, unknown> = { id: doc.id, ...data };
+    delete profile.senha_hash;
+    logger.info('Login via CF concluido.', { uid: doc.id.substring(0, 8) });
+    return { user: profile };
+  }
+);
+
+// ============================================================
+//  checkEmailExists — unicidade de email no cadastro/recuperacao
+//  sem listar usuarios (N-01). Retorna somente um booleano.
+// ============================================================
+
+export const checkEmailExists = onCall(
+  {
+    region: 'southamerica-east1',
+    maxInstances: 10,
+    cors: ALLOWED_CORS_ORIGINS,
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Autenticacao necessaria.');
+    }
+    const { email } = request.data as { email: string };
+    if (!email || typeof email !== 'string') {
+      throw new HttpsError('invalid-argument', 'email e obrigatorio.');
+    }
+    checkEmailLookupRateLimit(request.auth.uid);
+    const doc = await findUserDocByEmail(email.trim().toLowerCase());
+    return { exists: !!doc };
+  }
+);
+
+// ============================================================
 //  getSighterContact — retorna contato do avistador para o tutor
 //  Fluxo bidirecional: tutor pode contatar quem avistou seu pet
 //  Requer: Firebase Auth + ser dono do pet + avistamento vinculado

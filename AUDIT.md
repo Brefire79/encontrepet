@@ -491,6 +491,17 @@ A coleção `lgpd_access_log` deve registrar todos os eventos abaixo:
 
 ---
 
+## Achados novos — revisão pré-lançamento (2026-07-04)
+
+| # | Severidade | Componente | Título | Status |
+|---|-----------|------------|--------|--------|
+| N-01 | 🟠 ALTO | `firestore.rules` | `usuarios` listável por qualquer autenticado (limit ≤200) — enumeração de nome/email/telefone (LGPD) | ✅ Corrigido: list em massa só admin; `limit<=1` transitório. Login/cadastro/recuperação via CFs `loginUser`/`checkEmailExists`; get do próprio doc via vínculo `firebase_auth_uids` (`isBoundUser`). **Fechar `limit<=1` → admin-only após deploy das CFs + 1 ciclo.** |
+| N-02 | 🟡 MÉDIO | `firestore.rules` | `notificacoes` create sem validação — spam/phishing interno se passando pelo sistema | ✅ Corrigido: `tipo` restrito à lista permitida, destinatário obrigatório, `mensagem` ≤500 |
+| N-03 | 🔵 BAIXO | `firestore.rules` | `lgpd_access_log` create sem amarrar o ator — poluição do log de auditoria | ✅ Corrigido: `actor_firebase_uid == request.auth.uid` + `tipo` obrigatório |
+| N-04 | 🟠 ALTO | `js/auth.js` | **Regressão S-03:** cadastro ainda gravava `senha_hash` no doc público `usuarios` (comentário defasado "Spark plan") | ✅ Corrigido: hash vai só p/ `senhas_usuarios` via CF; doc público só recebe hash como fallback se a CF estiver indisponível. `changePassword` idem (verifica atual via CF, limpa hash legado do doc) |
+
+Validação: harness `test/rules/` — 43/43 verdes no emulator (2026-07-04).
+
 ## Histórico de Auditorias
 
 | Data | Versão | Auditor | Severidades encontradas |

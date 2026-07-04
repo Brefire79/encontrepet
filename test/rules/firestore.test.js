@@ -166,11 +166,37 @@ describe('notificacoes (S-02)', () => {
     await assertFails(getDoc(doc(asOther(), 'notificacoes', 'n1')));
   });
 
-  it('qualquer autenticado pode CRIAR notificação (sistema)', async () => {
+  it('autenticado cria notificação com tipo permitido (sistema)', async () => {
     await assertSucceeds(setDoc(doc(asOther(), 'notificacoes', 'n2'), {
       destinatario_firebase_uid: OWNER,
       destinatario_uid: 'u_owner_custom',
       tipo: 'match_ia',
+      lida: false,
+    }));
+  });
+
+  it('create com tipo fora da lista é negado (N-02)', async () => {
+    await assertFails(setDoc(doc(asOther(), 'notificacoes', 'n3'), {
+      destinatario_firebase_uid: OWNER,
+      destinatario_uid: 'u_owner_custom',
+      tipo: 'phishing_livre',
+      lida: false,
+    }));
+  });
+
+  it('create sem destinatário é negado (N-02)', async () => {
+    await assertFails(setDoc(doc(asOther(), 'notificacoes', 'n4'), {
+      tipo: 'match_ia',
+      lida: false,
+    }));
+  });
+
+  it('create com mensagem acima de 500 chars é negado (N-02)', async () => {
+    await assertFails(setDoc(doc(asOther(), 'notificacoes', 'n5'), {
+      destinatario_firebase_uid: OWNER,
+      destinatario_uid: 'u_owner_custom',
+      tipo: 'match_ia',
+      mensagem: 'x'.repeat(501),
       lida: false,
     }));
   });
@@ -184,10 +210,15 @@ describe('notificacoes (S-02)', () => {
   });
 });
 
-describe('usuarios / senhas_usuarios (S-03)', () => {
+describe('usuarios / senhas_usuarios (S-03, N-01)', () => {
   beforeEach(async () => {
     await seed(async (db) => {
       await setDoc(doc(db, 'usuarios', OWNER), { email: 'owner@x.com', role: 'user', status: 'ativo' });
+      // Doc com ID customizado u_xxx vinculado ao Firebase Auth UID do OWNER
+      await setDoc(doc(db, 'usuarios', 'u_custom_1'), {
+        email: 'custom@x.com', role: 'user', status: 'ativo',
+        firebase_auth_uids: [OWNER],
+      });
       await setDoc(doc(db, 'senhas_usuarios', OWNER), { senha_hash: 'deadbeef' });
     });
   });
@@ -196,8 +227,28 @@ describe('usuarios / senhas_usuarios (S-03)', () => {
     await assertSucceeds(getDoc(doc(asOwner(), 'usuarios', OWNER)));
   });
 
-  it('list com limit <= 200 permitido (findByEmail)', async () => {
-    await assertSucceeds(getDocs(query(collection(asOther(), 'usuarios'), limit(200))));
+  it('get do doc u_xxx vinculado via firebase_auth_uids permitido (N-01)', async () => {
+    await assertSucceeds(getDoc(doc(asOwner(), 'usuarios', 'u_custom_1')));
+  });
+
+  it('get de doc u_xxx alheio (sem vínculo) é negado', async () => {
+    await assertFails(getDoc(doc(asOther(), 'usuarios', 'u_custom_1')));
+  });
+
+  it('update do doc u_xxx vinculado permitido (sem campos protegidos)', async () => {
+    await assertSucceeds(updateDoc(doc(asOwner(), 'usuarios', 'u_custom_1'), { telefone: '11999998888' }));
+  });
+
+  it('list em massa (limit 200) NEGADO para não-admin (N-01)', async () => {
+    await assertFails(getDocs(query(collection(asOther(), 'usuarios'), limit(200))));
+  });
+
+  it('list com limit 1 permitido (compat transitória fsGetUser/findByEmail)', async () => {
+    await assertSucceeds(getDocs(query(collection(asOther(), 'usuarios'), limit(1))));
+  });
+
+  it('admin lista usuarios sem restrição', async () => {
+    await assertSucceeds(getDocs(query(collection(asAdmin(), 'usuarios'), limit(200))));
   });
 
   it('senhas_usuarios: leitura sempre negada (S-03)', async () => {
@@ -214,8 +265,22 @@ describe('usuarios / senhas_usuarios (S-03)', () => {
 });
 
 describe('lgpd_access_log', () => {
-  it('autenticado pode criar log', async () => {
-    await assertSucceeds(setDoc(doc(asOther(), 'lgpd_access_log', 'l1'), { tipo: 'x', ts: 1 }));
+  it('autenticado cria log em nome próprio (N-03)', async () => {
+    await assertSucceeds(setDoc(doc(asOther(), 'lgpd_access_log', 'l1'), {
+      tipo: 'x', ts: 1, actor_firebase_uid: OTHER,
+    }));
+  });
+
+  it('create em nome de OUTRO ator é negado (N-03)', async () => {
+    await assertFails(setDoc(doc(asOther(), 'lgpd_access_log', 'l1b'), {
+      tipo: 'x', ts: 1, actor_firebase_uid: OWNER,
+    }));
+  });
+
+  it('create sem tipo é negado (N-03)', async () => {
+    await assertFails(setDoc(doc(asOther(), 'lgpd_access_log', 'l1c'), {
+      ts: 1, actor_firebase_uid: OTHER,
+    }));
   });
 
   it('leitura de log é negada a clientes', async () => {

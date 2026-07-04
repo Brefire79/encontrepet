@@ -49,8 +49,15 @@ const Auth = (() => {
    */
   async function fsGetUser(uid) {
     const db = FirebaseConfig.getDB();
-    // Usa query (allow list) ao invés de get direto (allow get exige uid == auth.uid)
-    // porque o app usa IDs customizados (u_xxx) que não coincidem com Firebase Auth UID
+    // 1) get direto — permitido quando o doc tem o Firebase Auth UID atual
+    //    vinculado (firebase_auth_uids: preenchido no cadastro e no login via CF)
+    try {
+      const doc = await db.collection(COLLECTION).doc(uid).get();
+      if (doc.exists) return { id: doc.id, ...doc.data() };
+    } catch (e) {
+      // permission-denied → doc legado sem vínculo; tenta query abaixo
+    }
+    // 2) Query por documentId (compat legado — rules permitem list com limit<=1)
     const snapshot = await db.collection(COLLECTION)
       .where(firebase.firestore.FieldPath.documentId(), '==', uid)
       .limit(1)
@@ -143,6 +150,27 @@ const Auth = (() => {
       if (!response.ok) return null;
       return await response.json();
     } catch { restAvailable = false; return null; }
+  }
+
+  // ====== HELPERS CLOUD FUNCTIONS (N-01) ======
+  // Login/cadastro/recuperação resolvem email via CF (Admin SDK) para não
+  // depender de `allow list` aberto na coleção usuarios. Enquanto as CFs
+  // não estiverem deployadas, os fluxos caem no caminho legado (findByEmail).
+
+  async function cfCall(name, payload) {
+    const functions = FirebaseConfig.getFunctions?.();
+    if (!functions) {
+      const err = new Error('Cloud Functions indisponível');
+      err.code = 'unavailable';
+      throw err;
+    }
+    const fn = functions.httpsCallable(name);
+    const res = await fn(payload);
+    return res.data;
+  }
+
+  function cfErrorCode(err) {
+    return String(err?.code || '').replace('functions/', '');
   }
 
   // ====== OPERAÇÕES UNIFICADAS (Firestore → REST fallback) ======
@@ -271,8 +299,15 @@ const Auth = (() => {
     validatePassword(password);
     validateName(displayName);
 
-    // Verificar se email já existe (Firestore ou REST)
-    const existing = await findByEmail(email);
+    // Verificar se email já existe — via CF (não exige listar usuarios; N-01)
+    let existing = null;
+    try {
+      const check = await cfCall('checkEmailExists', { email: Security.sanitizeEmail(email) });
+      existing = check?.exists === true ? { exists: true } : null;
+    } catch (cfErr) {
+      // CF indisponível (deploy pendente/offline) — fallback legado por listagem
+      existing = await findByEmail(email);
+    }
     if (existing) throw new Error('Este e-mail já está cadastrado. Tente fazer login.');
 
     // Gerar hash da senha
@@ -282,13 +317,18 @@ const Auth = (() => {
     const uid = generateUID();
 
     // Dados do perfil
-    // senha_hash incluído como fallback para login cross-origin (hash SHA-256+salt).
-    // Idealmente ficaria em senhas_usuarios via CF (S-03), mas CF não está disponível
-    // no Spark plan, então vai no documento onde só usuários autenticados podem ler.
+    // senha_hash NÃO vai no doc público usuarios (S-03): o hash vive em
+    // senhas_usuarios via CF saveUserPassword. Só se a CF estiver indisponível
+    // o hash é gravado no doc como fallback legado (ver abaixo).
     const userData = {
       nome: Security.sanitize(displayName),
       email: Security.sanitizeEmail(email),
-      senha_hash: senhaHash,
+      // Vínculo com o Firebase Auth UID atual — habilita get direto do próprio
+      // doc nas rules (isBoundUser) sem depender de listagem (N-01)
+      firebase_auth_uids: (() => {
+        const fbUid = FirebaseConfig.getFirebaseUID?.() || '';
+        return fbUid ? [fbUid] : [];
+      })(),
       telefone: '',
       cidade: '',
       foto_perfil: '',
@@ -307,18 +347,23 @@ const Auth = (() => {
     const created = await createUser(uid, userData);
     const finalUID = created.id || uid;
 
-    // Tentar salvar hash na CF (segura, admin SDK) — não disponível no Spark plan
+    // Salvar hash na CF (segura, admin SDK — coleção senhas_usuarios)
+    let hashSalvoNaCF = false;
     try {
       const functions = FirebaseConfig.getFunctions?.();
       if (functions) {
         const savePass = functions.httpsCallable('saveUserPassword');
         await savePass({ uid: finalUID, senhaHash });
+        hashSalvoNaCF = true;
       }
     } catch (cfErr) {
-      console.warn('[Auth] saveUserPassword CF indisponível (Spark plan):', cfErr.message);
+      console.warn('[Auth] saveUserPassword CF indisponível:', cfErr.message);
+    }
+    if (!hashSalvoNaCF) {
+      // Fallback legado: sem CF, o login SHA-256 precisa do hash no doc
+      try { await updateUser(finalUID, { senha_hash: senhaHash }); } catch {}
     }
     // NOTA DE SEGURANÇA: hash nunca salvo em localStorage (risco XSS).
-    // Fallback de verificação usa apenas user.senha_hash do Firestore.
 
     // Criar conta no Firebase Auth (necessário para recuperação de senha)
     if (typeof firebase !== 'undefined' && firebase.auth) {
@@ -376,43 +421,61 @@ const Auth = (() => {
       await FirebaseConfig.waitForAuthUID(3000);
     }
 
-    // 3. Buscar perfil no Firestore/REST
+    // 3. Buscar + verificar via Cloud Function loginUser (N-01: não lista usuarios).
     // [FIX B2] Mensagem de erro generica em login fail evita enumeracao de emails.
     const GENERIC_LOGIN_ERROR = 'E-mail ou senha incorretos.';
-    const user = await findByEmail(normalizedEmail);
-    if (!user) throw new Error(GENERIC_LOGIN_ERROR);
-    if (user.status === 'bloqueado') throw new Error('Esta conta foi bloqueada.');
+    let user = null;
+    let cfResolveu = false;
+    try {
+      const data = await cfCall('loginUser', { email: normalizedEmail, password });
+      user = data?.user || null;
+      cfResolveu = !!user;
+    } catch (cfErr) {
+      const code = cfErrorCode(cfErr);
+      if (code === 'unauthenticated') throw new Error(GENERIC_LOGIN_ERROR);
+      if (code === 'permission-denied') throw new Error('Esta conta foi bloqueada.');
+      if (code === 'resource-exhausted') throw new Error('Muitas tentativas de login. Aguarde 1 minuto.');
+      // not-found/unavailable/internal → CF ainda não deployada ou offline
+      console.warn('[Auth] loginUser CF indisponível, usando fluxo legado:', cfErr.message);
+    }
 
-    // 4. Se Firebase Auth falhou, verificar senha via Cloud Function (S-03)
-    // A CF lê de senhas_usuarios — o hash nunca fica exposto no cliente
-    if (!fbAuthOk) {
-      let senhaCorreta = false;
+    if (!cfResolveu) {
+      // Fluxo legado (pré-deploy das CFs): busca por listagem + verificação
+      user = await findByEmail(normalizedEmail);
+      if (!user) throw new Error(GENERIC_LOGIN_ERROR);
+      if (user.status === 'bloqueado') throw new Error('Esta conta foi bloqueada.');
 
-      try {
-        const functions = FirebaseConfig.getFunctions?.();
-        if (functions) {
-          const verifyPass = functions.httpsCallable('verifyUserPassword');
-          const result = await verifyPass({ uid: user.id, password });
-          senhaCorreta = result.data?.valid === true;
-        }
-      } catch (cfErr) {
-        // Fallback: verificação via senha_hash no Firestore (não usa localStorage — risco XSS)
-        const storedHash = user.senha_hash || '';
-        if (storedHash) {
-          senhaCorreta = await Security.verifyPassword(password, storedHash);
-        }
-        console.warn('[Auth] verifyUserPassword CF falhou, fallback Firestore:', cfErr.message);
-      }
+      // Se Firebase Auth falhou, verificar senha via Cloud Function (S-03).
+      // A CF lê de senhas_usuarios — o hash nunca fica exposto no cliente
+      if (!fbAuthOk) {
+        let senhaCorreta = false;
 
-      // [FIX B2] Erro generico nao revela se eh email-nao-existe ou senha-errada.
-      if (!senhaCorreta) throw new Error(GENERIC_LOGIN_ERROR);
-
-      // Migrar: criar conta Firebase Auth para habilitar recuperação de senha futura
-      if (typeof firebase !== 'undefined' && firebase.auth) {
         try {
-          await firebase.auth().createUserWithEmailAndPassword(normalizedEmail, password);
-        } catch {} // silencioso — pode já existir com outro estado
+          const functions = FirebaseConfig.getFunctions?.();
+          if (functions) {
+            const verifyPass = functions.httpsCallable('verifyUserPassword');
+            const result = await verifyPass({ uid: user.id, password });
+            senhaCorreta = result.data?.valid === true;
+          }
+        } catch (cfErr) {
+          // Fallback: verificação via senha_hash no Firestore (não usa localStorage — risco XSS)
+          const storedHash = user.senha_hash || '';
+          if (storedHash) {
+            senhaCorreta = await Security.verifyPassword(password, storedHash);
+          }
+          console.warn('[Auth] verifyUserPassword CF falhou, fallback Firestore:', cfErr.message);
+        }
+
+        // [FIX B2] Erro generico nao revela se eh email-nao-existe ou senha-errada.
+        if (!senhaCorreta) throw new Error(GENERIC_LOGIN_ERROR);
       }
+    }
+
+    // Migrar: criar conta Firebase Auth para habilitar recuperação de senha futura
+    if (!fbAuthOk && typeof firebase !== 'undefined' && firebase.auth) {
+      try {
+        await firebase.auth().createUserWithEmailAndPassword(normalizedEmail, password);
+      } catch {} // silencioso — pode já existir com outro estado
     }
 
     // Atualizar último login
@@ -565,7 +628,14 @@ const Auth = (() => {
       // retornando a mesma mensagem para email inexistente.
       if (fbErr.code === 'auth/user-not-found') {
         try {
-          const existing = await findByEmail(normalizedEmail);
+          // Existência via CF (N-01); fallback legado por listagem
+          let existing = null;
+          try {
+            const check = await cfCall('checkEmailExists', { email: normalizedEmail });
+            existing = check?.exists === true ? { exists: true } : null;
+          } catch (cfErr) {
+            existing = await findByEmail(normalizedEmail);
+          }
           if (existing) {
             // Conta existe so no Firestore — orientar usuario a fazer login antes
             throw new Error(
@@ -596,16 +666,49 @@ const Auth = (() => {
 
     validatePassword(newPassword);
 
-    // Verificar senha atual
-    if (userProfile?.senha_hash) {
-      const ok = await Security.verifyPassword(currentPassword, userProfile.senha_hash);
-      if (!ok) throw new Error('Senha atual incorreta.');
+    // Verificar senha atual — CF (senhas_usuarios) primeiro; fallback hash local
+    let currentOk = false;
+    let verificado = false;
+    try {
+      const res = await cfCall('verifyUserPassword', { uid: currentUser.uid, password: currentPassword });
+      currentOk = res?.valid === true;
+      verificado = true;
+    } catch (cfErr) {
+      // 'unauthenticated' sem hash local = senha realmente errada.
+      // Com hash local (conta legada sem doc em senhas_usuarios), verifica abaixo.
+      if (cfErrorCode(cfErr) === 'unauthenticated' && !userProfile?.senha_hash) {
+        verificado = true;
+      }
     }
+    if (!verificado && userProfile?.senha_hash) {
+      currentOk = await Security.verifyPassword(currentPassword, userProfile.senha_hash);
+      verificado = true;
+    }
+    if (verificado && !currentOk) throw new Error('Senha atual incorreta.');
 
     const novoHash = await Security.createPasswordHash(newPassword);
-    // Atualizar Firestore
-    await updateUser(currentUser.uid, { senha_hash: novoHash });
-    userProfile = { ...userProfile, senha_hash: novoHash };
+    // Salvar via CF (senhas_usuarios); fallback legado: doc usuarios
+    let salvoNaCF = false;
+    try {
+      const functions = FirebaseConfig.getFunctions?.();
+      if (functions) {
+        await functions.httpsCallable('saveUserPassword')({ uid: currentUser.uid, senhaHash: novoHash });
+        salvoNaCF = true;
+      }
+    } catch (cfErr) {
+      console.warn('[Auth] saveUserPassword CF indisponível:', cfErr.message);
+    }
+    if (salvoNaCF) {
+      // Limpar hash legado do doc público, se existir (S-03)
+      if (userProfile?.senha_hash) {
+        try { await updateUser(currentUser.uid, { senha_hash: '' }); } catch {}
+      }
+      userProfile = { ...userProfile };
+      delete userProfile.senha_hash;
+    } else {
+      await updateUser(currentUser.uid, { senha_hash: novoHash });
+      userProfile = { ...userProfile, senha_hash: novoHash };
+    }
     // Sincronizar Firebase Auth (habilita recuperação de senha por e-mail)
     if (typeof firebase !== 'undefined' && firebase.auth?.()?.currentUser) {
       try {

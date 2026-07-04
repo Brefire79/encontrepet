@@ -135,11 +135,16 @@ service cloud.firestore {
 
     // ========================================
     //  LOG DE AUDITORIA LGPD
-    //  Apenas create — nenhum cliente lê ou altera logs.
+    //  Apenas create, amarrado ao ator autenticado (N-03) — impede
+    //  poluir o log em nome de terceiros. CFs gravam via Admin SDK.
+    //  Nenhum cliente lê ou altera logs.
     // ========================================
 
     match /lgpd_access_log/{docId} {
-      allow create: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.actor_firebase_uid == request.auth.uid
+        && request.resource.data.tipo is string
+        && request.resource.data.tipo.size() <= 60;
       allow read, update, delete: if false;
     }
 
@@ -170,20 +175,25 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
 
+    // Vínculo doc u_xxx ↔ Firebase Auth UID: firebase_auth_uids é preenchido
+    // no cadastro (cliente) e a cada login via CF loginUser (Admin SDK).
+    function isBoundUser(data) {
+      return request.auth.uid in data.get('firebase_auth_uids', []);
+    }
+
     match /usuarios/{uid} {
-      // list: necessário para findByEmail (login/cadastro) e painel admin.
-      // fsList() usa limit 200 por padrão — regra bloqueia queries acima disso para users normais.
-      // Admin (isFirestoreAdmin) lista sem restrição de limite.
-      // Limitação conhecida: sem Cloud Functions (Spark plan) não há como
-      // fazer projeção de campos ou mover senha_hash para collection protegida.
-      allow list: if isSignedIn() && (
-        isFirestoreAdmin() ||
-        request.query.limit <= 200
-      );
-      // get direto por ID: próprio UID ou email do Firebase Auth bate com o doc
+      // list (N-01): bulk listing SOMENTE admin. limit<=1 permanece como
+      // compatibilidade transitória (fsGetUser legado por documentId e
+      // findByEmail pré-deploy das CFs loginUser/checkEmailExists).
+      // Antes: limit<=200 — qualquer autenticado enumerava nome/email/telefone
+      // de toda a base (LGPD). Fechar para admin-only após deploy das CFs.
+      allow list: if isFirestoreAdmin() || (isSignedIn() && request.query.limit <= 1);
+      // get direto por ID: próprio UID, email do Firebase Auth bate com o doc,
+      // ou Firebase Auth UID vinculado (firebase_auth_uids)
       allow get: if isSignedIn() && (
         uid == request.auth.uid ||
         isUserOwner(resource.data.email) ||
+        isBoundUser(resource.data) ||
         isFirestoreAdmin()
       );
       // create: qualquer auth válida (app garante unicidade de email)
@@ -193,7 +203,7 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         isFirestoreAdmin() ||
         (
-          (uid == request.auth.uid || isUserOwner(resource.data.email)) &&
+          (uid == request.auth.uid || isUserOwner(resource.data.email) || isBoundUser(resource.data)) &&
           !request.resource.data.diff(resource.data).changedKeys().hasAny(protectedUserFields())
         )
       );
@@ -203,8 +213,10 @@ service cloud.firestore {
     // ========================================
     //  NOTIFICAÇÕES
     //  Leitura/alteração restritas ao destinatário.
-    //  Escrita aberta para autenticados (sistema gera notificações).
-    //  Auditoria: S-02 (2026-03-21)
+    //  Criação validada (N-02): tipo permitido + limites de tamanho —
+    //  evita spam/phishing interno se passando pelo sistema.
+    //  CFs criam notificações via Admin SDK (não passam por aqui).
+    //  Auditoria: S-02 (2026-03-21), N-02 (2026-07-04)
     // ========================================
 
     match /notificacoes/{docId} {
@@ -212,7 +224,13 @@ service cloud.firestore {
         resource.data.destinatario_firebase_uid == request.auth.uid ||
         resource.data.destinatario_uid == request.auth.uid
       );
-      allow create: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.tipo in ['match_ia', 'avistamento_contato', 'confirmar_reuniao', 'reuniao_confirmada']
+        && (request.resource.data.destinatario_uid is string
+            || request.resource.data.destinatario_firebase_uid is string)
+        && (!('mensagem' in request.resource.data)
+            || (request.resource.data.mensagem is string
+                && request.resource.data.mensagem.size() <= 500));
       allow update, delete: if isSignedIn() && (
         resource.data.destinatario_firebase_uid == request.auth.uid ||
         resource.data.destinatario_uid == request.auth.uid
