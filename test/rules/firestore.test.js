@@ -373,6 +373,66 @@ describe('confirmação bilateral de reunião (canConfirmReunion)', () => {
   });
 });
 
+describe('S-08 — ownership via alert_privado (docs sem owner_firebase_uid)', () => {
+  const petSemFbUid = (extra = {}) => ({
+    tipo_animal: 'cao', nome_pet: 'Rex', status: 'ativo',
+    owner_uid: 'u_owner_custom', ...extra,
+  });
+
+  beforeEach(async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'pets_perdidos', 's1'), petSemFbUid());
+      await setDoc(doc(db, 'alert_privado', 'pets_perdidos_s1'), {
+        owner_firebase_uid: OWNER, owner_uid: 'u_owner_custom',
+      });
+      await setDoc(doc(db, 'avistamentos', 'av1'), petSemFbUid());
+      await setDoc(doc(db, 'alert_privado', 'avistamentos_av1'), {
+        owner_firebase_uid: OWNER, owner_uid: 'u_owner_custom',
+      });
+    });
+  });
+
+  it('create SEM owner_firebase_uid no público é permitido', async () => {
+    await assertSucceeds(setDoc(doc(asOwner(), 'pets_perdidos', 's2'), petSemFbUid()));
+  });
+
+  it('create sem owner_uid é negado', async () => {
+    await assertFails(setDoc(doc(asOwner(), 'pets_perdidos', 's3'), { tipo_animal: 'cao', status: 'ativo' }));
+  });
+
+  it('create com owner_firebase_uid ALHEIO é negado (anti-spoof)', async () => {
+    await assertFails(setDoc(doc(asOther(), 'pets_perdidos', 's4'),
+      petSemFbUid({ owner_firebase_uid: OWNER })));
+  });
+
+  it('dono ATUALIZA pet stripado via alert_privado', async () => {
+    await assertSucceeds(updateDoc(doc(asOwner(), 'pets_perdidos', 's1'), { descricao: 'nova' }));
+  });
+
+  it('terceiro NÃO atualiza pet stripado', async () => {
+    await assertFails(updateDoc(doc(asOther(), 'pets_perdidos', 's1'), { descricao: 'hack' }));
+  });
+
+  it('dono DELETA pet stripado via alert_privado', async () => {
+    await assertSucceeds(deleteDoc(doc(asOwner(), 'pets_perdidos', 's1')));
+  });
+
+  it('dono ATUALIZA avistamento stripado via alert_privado', async () => {
+    await assertSucceeds(updateDoc(doc(asOwner(), 'avistamentos', 'av1'), { descricao: 'nova' }));
+  });
+
+  it('terceiro NÃO deleta avistamento stripado', async () => {
+    await assertFails(deleteDoc(doc(asOther(), 'avistamentos', 'av1')));
+  });
+
+  it('update de doc órfão (sem alert_privado, sem campo público) é negado', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'pets_perdidos', 'sorf'), petSemFbUid());
+    });
+    await assertFails(updateDoc(doc(asOwner(), 'pets_perdidos', 'sorf'), { descricao: 'x' }));
+  });
+});
+
 describe('fallback global', () => {
   it('coleção desconhecida é negada', async () => {
     await assertFails(getDoc(doc(asOwner(), 'coisa_aleatoria', 'x')));

@@ -2866,22 +2866,9 @@ const App = (() => {
             return GeoUtils.isWithinRadius(payload.latitude, payload.longitude, petLat, petLng, raioKm);
           });
 
-          // Notificar até 5 tutores próximos para não sobrecarregar
-          for (const pet of proximos.slice(0, 5)) {
-            if (!pet.owner_firebase_uid && !pet.owner_uid) continue;
-            await DB.criarNotificacao({
-              tipo: 'match_ia',
-              pet_perdido_id: pet.id,
-              avistamento_id: createdAlert.id,
-              mensagem: `📍 Um avistamento de ${tipoAvistado === 'cao' ? 'cão' : tipoAvistado === 'gato' ? 'gato' : 'animal'} foi registrado a menos de ${raioKm}km do local de perda do seu pet.`,
-              similaridade: 0,
-              lida: false,
-              owner_firebase_uid: pet.owner_firebase_uid || '',
-              destinatario_firebase_uid: pet.owner_firebase_uid || '',
-              destinatario_uid: pet.owner_uid || '',
-              data: new Date().toISOString()
-            }).catch(() => {});
-          }
+          // [S-08] A notificação dos tutores é criada pela CF onAvistamentoCreate
+          // (o cliente não conhece mais o owner_firebase_uid dos tutores).
+          // Aqui só calculamos a lista para o feedback visual do avistador.
           _petsNotificados = proximos.slice(0, 5);
         } catch (_) { /* não bloqueia o fluxo principal */ }
       }
@@ -3365,20 +3352,36 @@ const App = (() => {
         const rawNome = Auth.getUserData()?.displayName || 'Avistador';
         const phone = phoneResult.normalized || rawPhone;
 
-        await DB.criarNotificacao({
-          tipo: 'avistamento_contato',
-          pet_id: petId,
-          pet_nome: petNome,
-          sighter_nome: rawNome,
-          sighter_phone: phone,
+        // [S-08] Preferir a CF notifyTutorContact: resolve o destinatário via
+        // alert_privado (o doc público não carrega mais owner_firebase_uid).
+        let enviadoViaCF = false;
+        try {
+          const functions = FirebaseConfig.getFunctions?.();
+          if (functions) {
+            await functions.httpsCallable('notifyTutorContact')({ petId, phone, nome: rawNome });
+            enviadoViaCF = true;
+          }
+        } catch (cfErr) {
+          console.warn('[App] notifyTutorContact CF indisponível, fallback direto:', cfErr.message);
+        }
+
+        if (!enviadoViaCF) {
+          // Fallback legado (pré-deploy da CF): endereça pelos campos do doc
           // sighter_wa_link não é armazenado — URLs sofrem encoding em sanitizeObject.
           // O link é construído em tempo de renderização a partir de sighter_phone.
-          mensagem: `${rawNome} viu «${petNome}» e quer entrar em contato: ${phone}`,
-          data: new Date().toISOString(),
-          lida: false,
-          destinatario_uid: pet.owner_uid || '',
-          destinatario_firebase_uid: pet.owner_firebase_uid || ''
-        });
+          await DB.criarNotificacao({
+            tipo: 'avistamento_contato',
+            pet_id: petId,
+            pet_nome: petNome,
+            sighter_nome: rawNome,
+            sighter_phone: phone,
+            mensagem: `${rawNome} viu «${petNome}» e quer entrar em contato: ${phone}`,
+            data: new Date().toISOString(),
+            lida: false,
+            destinatario_uid: pet.owner_uid || '',
+            destinatario_firebase_uid: pet.owner_firebase_uid || ''
+          });
+        }
 
         // Guardar no localStorage para não duplicar
         localStorage.setItem(storageKey, new Date().toISOString());

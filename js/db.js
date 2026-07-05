@@ -449,8 +449,8 @@ const DB = (() => {
       suspiciousFlag: data.suspiciousFlag || false,
       suspiciousReason: Security.sanitize(data.suspiciousReason || ''),
       flaggedByUid: data.flaggedByUid || '',
-      // [FIX C12] Usa ensuredFirebaseUid (garantido via waitForAuthUID) como fallback
-      owner_firebase_uid: data.owner_firebase_uid || ensuredFirebaseUid || FirebaseConfig.getFirebaseUID?.() || '',
+      // [S-08] owner_firebase_uid NÃO vai mais no doc público — vive apenas no
+      // alert_privado (savePrivateAlertData), fonte de ownership das rules.
       similarCandidates: Array.isArray(data.similarCandidates) ? data.similarCandidates.slice(0, 5) : [],
       owner_uid: Auth.getUID()
     };
@@ -797,8 +797,7 @@ const DB = (() => {
       suspiciousFlag: data.suspiciousFlag || false,
       suspiciousReason: Security.sanitize(data.suspiciousReason || ''),
       flaggedByUid: data.flaggedByUid || '',
-      // [FIX C12] Usa ensuredFirebaseUid (garantido via waitForAuthUID) como fallback
-      owner_firebase_uid: data.owner_firebase_uid || ensuredFirebaseUid || FirebaseConfig.getFirebaseUID?.() || '',
+      // [S-08] owner_firebase_uid só no alert_privado (ownership das rules)
       similarCandidates: Array.isArray(data.similarCandidates) ? data.similarCandidates.slice(0, 5) : [],
       owner_uid: Auth.getUID()
     };

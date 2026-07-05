@@ -24,14 +24,33 @@ service cloud.firestore {
       ];
     }
 
-    function canCreateAlert() {
-      return isOwner(request.resource.data)
-        && !request.resource.data.keys().hasAny(hashFields());
+    // [S-08] Ownership derivado do alert_privado (o doc público deixa de
+    // carregar owner_firebase_uid). Custo: +2 reads (exists+get) por
+    // update/delete de docs já "stripados"; docs legados continuam casando
+    // por isOwner() sem custo extra durante a transição.
+    function ownsAlertViaPrivate(collection, alertId) {
+      let pid = collection + '_' + alertId;
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/alert_privado/$(pid))
+        && get(/databases/$(database)/documents/alert_privado/$(pid)).data.owner_firebase_uid == request.auth.uid;
     }
 
-    function canUpdateOwnAlert() {
+    // [S-08] create sem owner_firebase_uid no público: exige owner_uid; se o
+    // campo legado vier (cliente antigo em cache), precisa ser o próprio UID.
+    // Integridade real do ownership: alert_privado (create exige
+    // owner_firebase_uid == auth.uid lá).
+    function canCreateAlert() {
+      return isSignedIn()
+        && request.resource.data.owner_uid is string
+        && request.resource.data.owner_uid.size() > 0
+        && !request.resource.data.keys().hasAny(hashFields())
+        && (!('owner_firebase_uid' in request.resource.data)
+            || request.resource.data.owner_firebase_uid == request.auth.uid);
+    }
+
+    function canUpdateOwnAlert(collection, alertId) {
       let changed = request.resource.data.diff(resource.data).changedKeys();
-      return isOwner(resource.data)
+      return (isOwner(resource.data) || ownsAlertViaPrivate(collection, alertId))
         && !changed.hasAny(hashFields());
     }
 
@@ -77,15 +96,15 @@ service cloud.firestore {
     match /pets_perdidos/{alertId} {
       allow read: if true;
       allow create: if canCreateAlert();
-      allow update: if canUpdateOwnAlert() || isFirestoreAdmin() || canConfirmReunion();
-      allow delete: if isOwner(resource.data) || isFirestoreAdmin();
+      allow update: if canUpdateOwnAlert('pets_perdidos', alertId) || isFirestoreAdmin() || canConfirmReunion();
+      allow delete: if isOwner(resource.data) || ownsAlertViaPrivate('pets_perdidos', alertId) || isFirestoreAdmin();
     }
 
     match /avistamentos/{alertId} {
       allow read: if true;
       allow create: if canCreateAlert();
-      allow update: if canUpdateOwnAlert() || isFirestoreAdmin();
-      allow delete: if isOwner(resource.data) || isFirestoreAdmin();
+      allow update: if canUpdateOwnAlert('avistamentos', alertId) || isFirestoreAdmin();
+      allow delete: if isOwner(resource.data) || ownsAlertViaPrivate('avistamentos', alertId) || isFirestoreAdmin();
     }
 
     // ========================================
