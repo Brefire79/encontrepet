@@ -70,13 +70,48 @@ Ordem do `AUDIT.md` §S-08, com o spike desta branch como base:
 
 ## Ordem de deploy em produção (manual, fora deste changeset)
 
+> **Atualização 2026-07-05:** o passo 3 (rules) **já está deployado em produção**
+> (verificado via API — as rules ativas são as novas, com `ownsAlertViaPrivate` +
+> N-01..N-03). Com as CFs ausentes (projeto ainda em **Spark**), isso deixa o app
+> em estado intermediário com regressões silenciosas — ver "Teste E2E" abaixo.
+> **O bloqueador nº 1 do lançamento é o upgrade para Blaze + deploy das functions.**
+
 1. `node scripts/migrate-s08-owner-firebase-uid.js --phase=backfill --apply`
-2. `npm run deploy:functions` (CFs novas: resolução de email + reroute do match)
-3. `firebase deploy --only firestore:rules` (N-01/02/03 + S-08) — **somente com o harness verde**
+2. **Upgrade Blaze** + `npm run deploy:functions` (CFs novas: resolução de email + reroute do match) — **URGENTE, ver teste E2E**
+3. ~~`firebase deploy --only firestore:rules`~~ ✅ **já em produção** (constatado 2026-07-05)
 4. `node scripts/migrate-p0-foto-thumb.js --apply` (thumbs + strip do base64)
 5. `node scripts/migrate-s08-owner-firebase-uid.js --phase=strip --apply --i-understand-risk`
 6. Publicar frontend (Netlify) e monitorar reads/egress no console por 1 semana.
 7. Configurar **alerta de orçamento** no GCP (budget baixo, alerta em 50%).
+
+## Teste E2E em produção (2026-07-05)
+
+Fluxo testado com dados reais (semeados e removidos ao final): avistamento anônimo →
+cadastro de tutor → pet perdido → avistamento vinculado via match IA → notificações.
+**Resultado: o tutor nunca recebe notificação em produção**, embora a UI afirme o
+contrário em 3 pontos. Achados, por gravidade:
+
+1. **Notificações de match/avistamento não são criadas** — dependem 100% da CF
+   `onAvistamentoCreate` (inexistente). O modal `showAvistadorMatchFeedback` e os
+   toasts dizem "O tutor foi notificado" (falso). North Star quebrado. → só resolve
+   com Blaze + deploy das functions.
+2. **Regressão S-03 no cadastro**: sem a CF `saveUserPassword`, o fallback grava
+   `senha_hash` dentro do doc `usuarios`. Re-rodar `migrate-s03-senha-hash.js` após
+   o deploy das CFs.
+3. **`countUsersInRadius` quebrado pela N-01** (`list limit 200` vs rule `limit <= 1`):
+   contador "pessoas alcançadas" e toast de alcance nunca funcionam. → CF de count
+   ou aceitar remoção do contador.
+4. **Bug `geoDistKm` (ai-match.js)**: lia `pet.latitude`, mas docs públicos só têm
+   `latitude_publica` → distância ∞; gate anti-fraude descartava foto idêntica ao
+   lado do pet e G2 (50 km) nunca descartava. ✅ **CORRIGIDO em 2026-07-05**
+   (fallback para `latitude_publica`; validado no app: match idêntico próximo = 100%,
+   60 km = `too_far`).
+5. **Acesso cruzado LGPD inoperante em docs novos**: `linked_pet_owner_firebase_uid`
+   fica vazio (público sem `owner_firebase_uid` + sem CF) → `sighter_authorization`
+   não é criada. → resolve com CF de reroute.
+6. Menores: detecção de duplicatas inativa (`imageHash` é CF-gerado); modal do
+   avistador hardcoded em PT (fora do i18n); upload Storage não ocorreu no teste
+   (base64 permaneceu nos docs; investigar storage.rules/auth anônima).
 
 ## Status de execução (2026-07-04)
 
@@ -90,8 +125,11 @@ Ordem do `AUDIT.md` §S-08, com o spike desta branch como base:
 - ✅ **Fase 4** — S-08 código completo: rules `ownsAlertViaPrivate`, reroute via
   `onAvistamentoCreate`/`notifyTutorContact`, cliente sem o campo público
   (commit `fix(security): S-08...`).
-- ✅ **Testes**: harness do emulator **52/52 verde**.
-- ⏳ **Pendente (produção, manual)**: seção "Ordem de deploy" abaixo.
+- ✅ **Testes**: harness do emulator **52/52 verde** (revalidado 2026-07-05).
+- ✅ **Rules em produção** (constatado 2026-07-05 — deploy já havia sido feito).
+- ✅ **Fix `geoDistKm`** (2026-07-05, achado do teste E2E — v1.19.1).
+- ⏳ **Pendente (produção, manual)**: Blaze + functions + migrações — seção
+  "Ordem de deploy" e achados do "Teste E2E" abaixo.
 
 > Nota de ambiente (Windows): o emulator do Firestore requer
 > `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:\PROJETOS\jtmp` nesta máquina
