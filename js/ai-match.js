@@ -60,10 +60,16 @@ const AIMatch = (() => {
   }
 
   function geoDistKm(a, b) {
-    if (!a.latitude || !b.latitude) return Number.POSITIVE_INFINITY;
+    // Docs públicos de alerta só carregam latitude_publica/longitude_publica
+    // (LGPD/S-06); latitude só existe no formulário local ou em alert_privado.
+    const aLat = a.latitude || a.latitude_publica;
+    const aLng = a.longitude || a.longitude_publica;
+    const bLat = b.latitude || b.latitude_publica;
+    const bLng = b.longitude || b.longitude_publica;
+    if (!aLat || !bLat) return Number.POSITIVE_INFINITY;
     return GeoUtils.calculateDistance(
-      Number(a.latitude), Number(a.longitude),
-      Number(b.latitude), Number(b.longitude)
+      Number(aLat), Number(aLng),
+      Number(bLat), Number(bLng)
     );
   }
 

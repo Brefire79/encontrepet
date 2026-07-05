@@ -5,7 +5,9 @@
 // que o PWA funcione corretamente offline no launcher do dispositivo.
 // v1.19.0: fase de lançamento — fotos via Storage/thumb, feed sem onSnapshot,
 // hardening N-01..N-04 e S-08 (auth/db/app novos).
-const CACHE_VERSION = 'encontre-pet-v1.19.0';
+// v1.19.1: fix geoDistKm — usa latitude_publica dos docs públicos (gates e
+// score de distância do match voltam a funcionar).
+const CACHE_VERSION = 'encontre-pet-v1.19.1';
 const DYNAMIC_CACHE = 'encontre-pet-dynamic-v1.1';
 const API_CACHE = 'encontre-pet-api-v1.0';
 
