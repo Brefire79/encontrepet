@@ -78,6 +78,25 @@ Ordem do `AUDIT.md` §S-08, com o spike desta branch como base:
 6. Publicar frontend (Netlify) e monitorar reads/egress no console por 1 semana.
 7. Configurar **alerta de orçamento** no GCP (budget baixo, alerta em 50%).
 
+## Status de execução (2026-07-04)
+
+- ✅ **Fase 1** — `foto_thumb` no doc + strip do base64 pós-upload + helpers de render +
+  `scripts/migrate-p0-foto-thumb.js` (commit `perf(custo): fotos...`).
+- ✅ **Fase 2** — feed via polling com cache TTL compartilhado; realtime só em
+  notificações/chat/detalhe (commit `perf(custo): feed...`).
+- ✅ **Fase 3** — N-01..N-04: CFs `loginUser`/`checkEmailExists`, vínculo
+  `firebase_auth_uids`, rules de `usuarios`/`notificacoes`/`lgpd_access_log`
+  (commit `fix(security): N-01..N-04...`).
+- ✅ **Fase 4** — S-08 código completo: rules `ownsAlertViaPrivate`, reroute via
+  `onAvistamentoCreate`/`notifyTutorContact`, cliente sem o campo público
+  (commit `fix(security): S-08...`).
+- ✅ **Testes**: harness do emulator **52/52 verde**.
+- ⏳ **Pendente (produção, manual)**: seção "Ordem de deploy" abaixo.
+
+> Nota de ambiente (Windows): o emulator do Firestore requer
+> `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:\PROJETOS\jtmp` nesta máquina
+> (o tmpdir padrão quebra o socket UDS interno do Java).
+
 ## Critérios de aceite
 
 - Feed renderiza com docs sem base64 (thumb) e detalhe com imagem do Storage.

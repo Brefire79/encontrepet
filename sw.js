@@ -3,7 +3,9 @@
 // [FIX C5] CACHE_VERSION bumpado para forcar re-cache com os novos icones.
 // [FIX C5] icons/icon-192.png e icons/icon-512.png agora pre-cacheados para
 // que o PWA funcione corretamente offline no launcher do dispositivo.
-const CACHE_VERSION = 'encontre-pet-v1.18.0';
+// v1.19.0: fase de lançamento — fotos via Storage/thumb, feed sem onSnapshot,
+// hardening N-01..N-04 e S-08 (auth/db/app novos).
+const CACHE_VERSION = 'encontre-pet-v1.19.0';
 const DYNAMIC_CACHE = 'encontre-pet-dynamic-v1.1';
 const API_CACHE = 'encontre-pet-api-v1.0';
 
