@@ -25,8 +25,18 @@ exports.handler = callable(async ({ data, auth, ip }) => {
     throw new HttpsError('permission-denied', 'Você é o dono deste pet. Use seus dados privados.');
   }
 
-  // S-05: exige avistamento vinculado (direto ou via match)
-  const sightingSnap = await db.collection('avistamentos')
+  // S-05: exige avistamento vinculado (direto ou via match).
+  // [S-08] Docs públicos novos não têm owner_firebase_uid, então a prova
+  // principal é o vínculo gravado só pelo backend (process-avistamento) —
+  // o cliente não consegue forjá-lo (rules: create false). As queries por
+  // owner_firebase_uid abaixo cobrem apenas avistamentos legados.
+  const vinculoSnap = await db.collection('vinculos_avistamento')
+    .where('sighter_firebase_uid', '==', requesterUid)
+    .where('pet_id', '==', petId)
+    .limit(1)
+    .get();
+
+  const sightingSnap = !vinculoSnap.empty ? vinculoSnap : await db.collection('avistamentos')
     .where('owner_firebase_uid', '==', requesterUid)
     .where('pet_perdido_id', '==', petId)
     .limit(1)

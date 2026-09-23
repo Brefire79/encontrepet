@@ -109,12 +109,9 @@ service cloud.firestore {
 
     // ========================================
     //  COLLECTION PRIVADA (LGPD)
-    //  Acesso direto: owner lê seus próprios dados.
-    //  Acesso cruzado (sem Cloud Function):
-    //    • Tutor lê alert_privado do avistamento se
-    //      linked_pet_owner_firebase_uid == request.auth.uid
-    //    • Avistador lê alert_privado do pet se existir
-    //      sighter_authorizations/{uid}_{petId}
+    //  Somente o dono lê. Contato de terceiros sai apenas pelo backend
+    //  (get-tutor-contact / get-sighter-contact, com lgpd_access_log);
+    //  o UID da contraparte vem de vinculos_avistamento (só UIDs).
     //  Auditoria: S-01 (2026-03-21), revisado plano Spark
     // ========================================
 
@@ -132,6 +129,17 @@ service cloud.firestore {
         resource.data.owner_firebase_uid == request.auth.uid ||
         resource.data.owner_uid == request.auth.uid
       );
+    }
+
+    // [S-08 leitura] Vínculo avistamento↔pet só com UIDs (sem contato nem
+    // localização). Gravado pelo backend (Admin SDK) no process-avistamento;
+    // o tutor usa para achar a contraparte da confirmação bilateral.
+    match /vinculos_avistamento/{avistamentoId} {
+      allow get: if isSignedIn() && (
+        resource.data.pet_owner_firebase_uid == request.auth.uid ||
+        resource.data.sighter_firebase_uid == request.auth.uid
+      );
+      allow list, create, update, delete: if false;
     }
 
     // ========================================

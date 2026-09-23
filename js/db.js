@@ -1579,6 +1579,28 @@ const DB = (() => {
         return tB - tA;
       });
 
+      // [S-08 leitura] O doc público do avistamento não carrega mais
+      // owner_firebase_uid (strip). A confirmação bilateral precisa desse UID
+      // (contraparte da reunião). O backend (process-avistamento) grava
+      // vinculos_avistamento/{avistamentoId} só com os UIDs — sem telefone nem
+      // localização do avistador (o alert_privado continua só do dono). Só
+      // busca quem estiver faltando e só roda no fluxo raro de fechamento.
+      const faltandoUid = results.filter(r => !r.owner_firebase_uid);
+      if (faltandoUid.length > 0) {
+        await Promise.all(faltandoUid.map(async (sighting) => {
+          try {
+            const vinc = await db.collection('vinculos_avistamento').doc(sighting.id).get();
+            if (vinc.exists) {
+              const v = vinc.data() || {};
+              if (v.sighter_firebase_uid) sighting.owner_firebase_uid = v.sighter_firebase_uid;
+              if (!sighting.owner_uid && v.sighter_owner_uid) sighting.owner_uid = v.sighter_owner_uid;
+            }
+          } catch (e) {
+            // Sem permissão / avistamento ainda não processado: contraparte não elegível.
+          }
+        }));
+      }
+
       return results;
     } catch (err) {
       console.error('[DB] getLinkedSightings error:', err);

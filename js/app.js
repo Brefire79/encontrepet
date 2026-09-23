@@ -2673,6 +2673,10 @@ const App = (() => {
               state.matchedLostPetName = petName;
               state.matchedScore = score;
               state.matchedEngine = engine;
+              // [S-08 leitura] Apenas hint do client: para alertas novos o doc
+              // público não carrega owner_firebase_uid, então este valor pode vir
+              // vazio. A identidade autoritativa do tutor é resolvida server-side
+              // pela CF onAvistamentoCreate via alert_privado — não depende disto.
               state.matchedPetOwnerFirebaseUid = item.dataset.ownerUid || null;
               state.matchedPetOwnerUid = item.dataset.ownerCustomUid || null;
               item.classList.add('linked');
@@ -3107,6 +3111,9 @@ const App = (() => {
         state.matchedLostPetName = name;
         state.matchedScore = 0;
         state.matchedEngine = 'manual';
+        // [S-08 leitura] Hint do client (pode vir vazio em alertas novos, sem
+        // owner_firebase_uid no doc público). Tutor resolvido server-side pela
+        // CF onAvistamentoCreate via alert_privado.
         state.matchedPetOwnerFirebaseUid = displayPet.owner_firebase_uid || pet.owner_firebase_uid || null;
         state.matchedPetOwnerUid = displayPet.owner_uid || pet.owner_uid || null;
         navigateTo('avistamento');

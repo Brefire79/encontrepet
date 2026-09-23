@@ -155,6 +155,15 @@ async function runCore(admin, db, avistSnapRef, avistamento, avistamentoId) {
       await db.collection('alert_privado').doc(avistadorPrivateDocId).set({
         linked_pet_owner_firebase_uid: tutorUid
       }, { merge: true });
+      // Só UIDs (sem contato/localização): o tutor precisa do UID do avistador
+      // para a confirmação bilateral de reunião (DB.getLinkedSightings).
+      await db.collection('vinculos_avistamento').doc(avistamentoId).set({
+        pet_id: petId,
+        pet_owner_firebase_uid: tutorUid,
+        sighter_firebase_uid: avistadorUid,
+        sighter_owner_uid: avistadorOwnerUid,
+        created_at: timestamp
+      }, { merge: true });
     } catch (e) {
       console.warn('[avistamento-core] vínculo avistador↔pet falhou (não-fatal):', petId, avistamentoId);
     }

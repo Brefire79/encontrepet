@@ -433,6 +433,59 @@ describe('S-08 — ownership via alert_privado (docs sem owner_firebase_uid)', (
   });
 });
 
+describe('S-08 leitura — vínculo avistamento↔pet só com UIDs (confirmação bilateral)', () => {
+  // O tutor (OWNER) precisa do UID do avistador (OTHER) para a confirmação
+  // bilateral de reunião. Ele vem de vinculos_avistamento (gravado pelo
+  // backend), NUNCA do alert_privado do avistador (telefone/localização).
+  beforeEach(async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'alert_privado', 'avistamentos_avlink'), {
+        owner_firebase_uid: OTHER,
+        owner_uid: 'u_sighter_custom',
+        linked_pet_owner_firebase_uid: OWNER,
+        contato_telefone: '11988887777',
+      });
+      await setDoc(doc(db, 'vinculos_avistamento', 'avlink'), {
+        pet_id: 'pet1',
+        pet_owner_firebase_uid: OWNER,
+        sighter_firebase_uid: OTHER,
+        sighter_owner_uid: 'u_sighter_custom',
+      });
+    });
+  });
+
+  it('tutor do pet vinculado NÃO lê o alert_privado do avistador (contato/LGPD)', async () => {
+    await assertFails(getDoc(doc(asOwner(), 'alert_privado', 'avistamentos_avlink')));
+  });
+
+  it('avistador (dono) LÊ o próprio alert_privado', async () => {
+    await assertSucceeds(getDoc(doc(asOther(), 'alert_privado', 'avistamentos_avlink')));
+  });
+
+  it('tutor LÊ o vínculo (só UIDs)', async () => {
+    await assertSucceeds(getDoc(doc(asOwner(), 'vinculos_avistamento', 'avlink')));
+  });
+
+  it('avistador LÊ o vínculo', async () => {
+    await assertSucceeds(getDoc(doc(asOther(), 'vinculos_avistamento', 'avlink')));
+  });
+
+  it('terceiro sem vínculo NÃO lê o vínculo', async () => {
+    await assertFails(getDoc(doc(asAdmin(), 'vinculos_avistamento', 'avlink')));
+  });
+
+  it('cliente NÃO cria/forja vínculo nem lista', async () => {
+    await assertFails(setDoc(doc(asOwner(), 'vinculos_avistamento', 'forjado'), {
+      pet_id: 'pet1', pet_owner_firebase_uid: OWNER, sighter_firebase_uid: OWNER,
+    }));
+    await assertFails(getDocs(collection(asOwner(), 'vinculos_avistamento')));
+  });
+
+  it('list do alert_privado continua sempre negado', async () => {
+    await assertFails(getDocs(collection(asOwner(), 'alert_privado')));
+  });
+});
+
 describe('fallback global', () => {
   it('coleção desconhecida é negada', async () => {
     await assertFails(getDoc(doc(asOwner(), 'coisa_aleatoria', 'x')));
