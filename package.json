@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "netlify dev",
+    "netlify": "node scripts/netlify-ep.js",
     "dev:firebase": "firebase emulators:start --only hosting",
     "serve": "firebase serve --only hosting",
     "deploy:functions": "firebase deploy --only functions",
