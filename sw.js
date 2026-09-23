@@ -10,7 +10,9 @@
 // v1.20.0: backend migrado para Netlify Functions (custo zero sem Blaze) —
 // novo js/services/backend.js (shim httpsCallable) + process-avistamento.
 const CACHE_VERSION = 'encontre-pet-v1.20.0';
-const DYNAMIC_CACHE = 'encontre-pet-dynamic-v1.1';
+// Versionado junto com o app: antes era fixo e sobrevivia a todos os deploys,
+// podendo servir cópias antigas de páginas/JS (caches.match procura em todos).
+const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';
 const API_CACHE = 'encontre-pet-api-v1.0';
 
 const STATIC_ASSETS = [
@@ -56,7 +58,11 @@ self.addEventListener('install', event => {
     caches.open(CACHE_VERSION)
       .then(cache => {
         console.log('[SW] Caching static assets');
-        return cache.addAll(STATIC_ASSETS.filter(url => !url.startsWith('http')));
+        // cache: 'reload' ignora o cache HTTP do navegador — sem isso o SW
+        // novo re-precacheava o JS antigo (servido antes como immutable/1 ano).
+        return cache.addAll(STATIC_ASSETS
+          .filter(url => !url.startsWith('http'))
+          .map(url => new Request(url, { cache: 'reload' })));
       })
       .then(() => self.skipWaiting())
   );
