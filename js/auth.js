@@ -360,8 +360,11 @@ const Auth = (() => {
       console.warn('[Auth] saveUserPassword CF indisponível:', cfErr.message);
     }
     if (!hashSalvoNaCF) {
-      // Fallback legado: sem CF, o login SHA-256 precisa do hash no doc
-      try { await updateUser(finalUID, { senha_hash: senhaHash }); } catch {}
+      // [E2E 2026-07-05, achado 2] O fallback que gravava senha_hash no doc
+      // público `usuarios` foi REMOVIDO — regredia o S-03. Com o backend
+      // Netlify no mesmo origin do site, "backend indisponível" ≈ offline;
+      // nesse caso o login usa Firebase Auth (que também guarda a senha).
+      console.warn('[Auth] saveUserPassword indisponível — hash NÃO gravado em usuarios (S-03).');
     }
     // NOTA DE SEGURANÇA: hash nunca salvo em localStorage (risco XSS).
 
@@ -706,8 +709,9 @@ const Auth = (() => {
       userProfile = { ...userProfile };
       delete userProfile.senha_hash;
     } else {
-      await updateUser(currentUser.uid, { senha_hash: novoHash });
-      userProfile = { ...userProfile, senha_hash: novoHash };
+      // Sem backend não há onde guardar o hash com segurança: gravar em
+      // `usuarios` regrediria o S-03 (mesma correção do cadastro).
+      throw new Error(I18n.t('toast.password_change_unavailable'));
     }
     // Sincronizar Firebase Auth (habilita recuperação de senha por e-mail)
     if (typeof firebase !== 'undefined' && firebase.auth?.()?.currentUser) {

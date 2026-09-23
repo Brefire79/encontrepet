@@ -473,6 +473,7 @@ window.I18nLocales.en = {
   'toast.privacy_saved': 'Settings saved!',
   'toast.complete_saved': 'Details saved!',
   'toast.password_changed': 'Password changed successfully!',
+  'toast.password_change_unavailable': 'Could not change your password right now. Check your connection and try again.',
   'toast.error_generic': 'Something went wrong. Try again.',
   'toast.fill_required': 'Please fill the required fields.',
   'toast.photo_required': 'Add a photo.',

@@ -473,6 +473,7 @@ window.I18nLocales.es = {
   'toast.privacy_saved': '¡Configuración guardada!',
   'toast.complete_saved': '¡Registro completo guardado!',
   'toast.password_changed': '¡Contraseña cambiada con éxito!',
+  'toast.password_change_unavailable': 'No fue posible cambiar la contraseña ahora. Verifica tu conexión e inténtalo de nuevo.',
   'toast.error_generic': 'Algo salió mal. Inténtalo de nuevo.',
   'toast.fill_required': 'Completa los campos obligatorios.',
   'toast.photo_required': 'Agrega una foto.',
