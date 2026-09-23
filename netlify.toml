@@ -1,6 +1,21 @@
 [build]
   publish = "."
-  ignore = "exit 0"   # site estático — sem build step
+  # ATENÇÃO: o antigo `ignore = "exit 0"` fazia o Netlify PULAR todo build de
+  # git push (exit 0 = "sem mudanças"). Removido — agora há Netlify Functions
+  # que precisam de build/bundle (npm install roda por causa do package.json).
+
+# Backend gratuito (substitui as Cloud Functions — projeto segue no Spark)
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Rede de segurança do process-avistamento (a cada 6 horas)
+[functions."sweep-avistamentos"]
+  schedule = "0 */6 * * *"
+
+# North Star: auto-confirmação de reuniões após 7 dias (diário, 08h UTC ≈ 05h BRT)
+[functions."auto-confirmar-reunioes"]
+  schedule = "0 8 * * *"
 
 # PWA: redirecionar tudo para index.html (SPA routing via hash)
 [[redirects]]

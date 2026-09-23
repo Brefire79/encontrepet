@@ -2,10 +2,18 @@
   "name": "encontrepet-root",
   "private": true,
   "scripts": {
-    "dev": "firebase emulators:start --only hosting",
+    "dev": "netlify dev",
+    "dev:firebase": "firebase emulators:start --only hosting",
     "serve": "firebase serve --only hosting",
     "deploy:functions": "firebase deploy --only functions",
     "deploy": "firebase deploy",
     "test:rules": "firebase emulators:exec --only firestore --project encontrepet-rules-test \"npm --prefix test/rules test\""
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "nodemailer": "^6.9.16"
+  },
+  "devDependencies": {
+    "netlify-cli": "^17.38.1"
   }
 }

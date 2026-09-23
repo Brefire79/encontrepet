@@ -7,7 +7,9 @@
 // hardening N-01..N-04 e S-08 (auth/db/app novos).
 // v1.19.1: fix geoDistKm — usa latitude_publica dos docs públicos (gates e
 // score de distância do match voltam a funcionar).
-const CACHE_VERSION = 'encontre-pet-v1.19.1';
+// v1.20.0: backend migrado para Netlify Functions (custo zero sem Blaze) —
+// novo js/services/backend.js (shim httpsCallable) + process-avistamento.
+const CACHE_VERSION = 'encontre-pet-v1.20.0';
 const DYNAMIC_CACHE = 'encontre-pet-dynamic-v1.1';
 const API_CACHE = 'encontre-pet-api-v1.0';
 
@@ -29,6 +31,7 @@ const STATIC_ASSETS = [
   '/js/ai-vision.js',
   '/js/db.js',
   '/js/app.js',
+  '/js/services/backend.js',
   '/js/services/image-hash.js',
   '/js/services/similarity.js',
   '/js/components/ModalDuplicateCase.js',
@@ -82,6 +85,9 @@ self.addEventListener('fetch', event => {
 
   // Skip non-GET requests (Firestore uses POST/streaming)
   if (request.method !== 'GET') return;
+
+  // Backend Netlify Functions — nunca cachear (respostas dinâmicas/sensíveis)
+  if (url.pathname.startsWith('/.netlify/')) return;
 
   // API requests (REST) - Network First
   if (url.pathname.startsWith('/tables/')) {

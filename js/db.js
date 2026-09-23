@@ -870,7 +870,33 @@ const DB = (() => {
     }
 
     saveMyReport(result.id, 'avistamento');
+
+    // Substituto do trigger onAvistamentoCreated (sem Cloud Functions):
+    // o backend Netlify processa notificações de match, conversa e vínculos
+    // LGPD. Fire-and-forget com 1 retry; a scheduled sweep-avistamentos
+    // cobre quem fechar o app antes do retry. Idempotente no servidor.
+    if (result?.id) {
+      triggerProcessAvistamento(result.id);
+    }
     return result;
+  }
+
+  function triggerProcessAvistamento(avistamentoId, attempt = 1) {
+    const MAX_ATTEMPTS = 2;
+    (async () => {
+      try {
+        const functions = FirebaseConfig.getFunctions?.();
+        if (!functions?.httpsCallable) return;
+        await functions.httpsCallable('processAvistamento')({ avistamentoId });
+        console.log('[DB] Avistamento processado pelo backend:', avistamentoId);
+      } catch (err) {
+        console.warn(`[DB] processAvistamento falhou (tentativa ${attempt}):`, err.message);
+        if (attempt < MAX_ATTEMPTS) {
+          setTimeout(() => triggerProcessAvistamento(avistamentoId, attempt + 1), 5000);
+        }
+        // Sem pânico: sweep-avistamentos (6/6h) reprocessa pendentes.
+      }
+    })();
   }
 
   async function listarAvistamentos(opts = {}) {
@@ -1552,6 +1578,7 @@ const DB = (() => {
         const tB = b.created_at?.toMillis?.() || new Date(b.data_avistamento || 0).getTime();
         return tB - tA;
       });
+
       return results;
     } catch (err) {
       console.error('[DB] getLinkedSightings error:', err);
