@@ -1154,11 +1154,18 @@ const DB = (() => {
             .where('destinatario_firebase_uid', '==', firebaseUid).limit(200).get();
           snap1.docs.forEach(d => merged.set(d.id, { id: d.id, ...d.data() }));
         }
-        // Query 2: por destinatario_uid (cobre UID mismatch entre sessões)
-        if (uid) {
-          const snap2 = await db.collection(TABLES.NOTIFICACOES)
-            .where('destinatario_uid', '==', uid).limit(200).get();
-          snap2.docs.forEach(d => merged.set(d.id, { id: d.id, ...d.data() }));
+        // Query 2: por destinatario_uid. A rule só libera essa query quando o
+        // destinatario_uid É o Firebase Auth UID; com o ID do app (u_xxx/anon_xxx)
+        // ela é sempre negada — e, no mesmo try, descartava o resultado da
+        // Query 1 (a tela de notificações ficava vazia para todos).
+        if (uid && uid === firebaseUid) {
+          try {
+            const snap2 = await db.collection(TABLES.NOTIFICACOES)
+              .where('destinatario_uid', '==', uid).limit(200).get();
+            snap2.docs.forEach(d => merged.set(d.id, { id: d.id, ...d.data() }));
+          } catch (e2) {
+            console.warn('[DB] listarNotificacoes (destinatario_uid) negada:', e2.message);
+          }
         }
         const data = [...merged.values()];
         return { data, total: data.length };
@@ -1476,13 +1483,18 @@ const DB = (() => {
           );
       }
 
-      // Query 2: por destinatario_uid (u_xxx — cobre casos de UID mismatch entre sessões)
-      const unsub2 = db.collection(TABLES.NOTIFICACOES)
-        .where('destinatario_uid', '==', uid)
-        .onSnapshot(
-          snap => { snap.docs.forEach(d => merged.set(d.id, { id: d.id, ...d.data() })); notify(); },
-          err => console.warn('[DB] watchNotificacoes (uid) error:', err.message)
-        );
+      // Query 2: por destinatario_uid — só quando a rule pode permitir
+      // (destinatario_uid == Firebase Auth UID). Com u_xxx/anon_xxx era sempre
+      // negada: um listener a mais só para gerar erro.
+      let unsub2 = () => {};
+      if (uid === firebaseUid) {
+        unsub2 = db.collection(TABLES.NOTIFICACOES)
+          .where('destinatario_uid', '==', uid)
+          .onSnapshot(
+            snap => { snap.docs.forEach(d => merged.set(d.id, { id: d.id, ...d.data() })); notify(); },
+            err => console.warn('[DB] watchNotificacoes (uid) error:', err.message)
+          );
+      }
 
       return () => { unsub1(); unsub2(); };
     } catch (err) {
