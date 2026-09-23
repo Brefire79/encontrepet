@@ -3104,6 +3104,16 @@ const App = (() => {
           <button class="btn-share" data-action="share" data-id="${displayPet.id}" data-name="${Security.sanitize(name)}"><i class="fas fa-share-alt"></i></button>
         </div>`;
 
+      // Foto cheia fora do doc público (custo): a miniatura aparece na hora e
+      // é trocada pela foto cheia quando o doc fotos/ chegar (+1 read).
+      if (pet.foto_full_doc && !pet.imageStorageUrl && !pet.foto_comprimida) {
+        DB.getFullPhoto(DB.COLLECTIONS.PETS, petId).then(full => {
+          const img = container.querySelector('img.detalhes-photo');
+          const src = full ? fixCorruptedDataUrl(full) : '';
+          if (img && src) img.src = src;
+        });
+      }
+
       // Bind "Reportar avistamento deste pet" button
       document.getElementById('btn-report-sighting-from-details')?.addEventListener('click', () => {
         // Pre-set the matched pet and navigate to sighting form

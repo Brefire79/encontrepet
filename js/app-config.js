@@ -13,6 +13,9 @@
   const config = Object.freeze({
     MATCH_THRESHOLD: 70,
     HASH_MATCH_THRESHOLD: 70,
+    // Foto cheia no Firebase Storage exige Blaze (sem bucket no Spark).
+    // false = foto cheia em fotos/{colecao}_{id} no Firestore (custo zero).
+    USE_FIREBASE_STORAGE: false,
     SEARCH_RADIUS_KM,
     getSearchRadius(tipoAnimal) {
       return SEARCH_RADIUS_KM[tipoAnimal] || SEARCH_RADIUS_KM.outro;

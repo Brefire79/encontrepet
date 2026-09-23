@@ -486,6 +486,40 @@ describe('S-08 leitura — vínculo avistamento↔pet só com UIDs (confirmaçã
   });
 });
 
+describe('fotos — foto cheia fora do doc público (custo)', () => {
+  const DATA = 'data:image/jpeg;base64,' + 'A'.repeat(1000);
+  beforeEach(async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'alert_privado', 'pets_perdidos_petf'), { owner_firebase_uid: OWNER });
+    });
+  });
+
+  it('dono do alerta grava a foto', async () => {
+    await assertSucceeds(setDoc(doc(asOwner(), 'fotos', 'pets_perdidos_petf'), { dataUrl: DATA, created_at: 'x' }));
+  });
+
+  it('terceiro NÃO grava foto em alerta alheio', async () => {
+    await assertFails(setDoc(doc(asOther(), 'fotos', 'pets_perdidos_petf'), { dataUrl: DATA, created_at: 'x' }));
+  });
+
+  it('NÃO grava foto sem alert_privado correspondente', async () => {
+    await assertFails(setDoc(doc(asOwner(), 'fotos', 'pets_perdidos_semprivado'), { dataUrl: DATA, created_at: 'x' }));
+  });
+
+  it('NÃO grava campos extras nem foto acima de 200KB', async () => {
+    await assertFails(setDoc(doc(asOwner(), 'fotos', 'pets_perdidos_petf'), { dataUrl: DATA, created_at: 'x', extra: 1 }));
+    await assertFails(setDoc(doc(asOwner(), 'fotos', 'pets_perdidos_petf'), { dataUrl: 'A'.repeat(200001), created_at: 'x' }));
+  });
+
+  it('qualquer um lê por ID, ninguém lista', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'fotos', 'pets_perdidos_petf'), { dataUrl: DATA, created_at: 'x' });
+    });
+    await assertSucceeds(getDoc(doc(asOther(), 'fotos', 'pets_perdidos_petf')));
+    await assertFails(getDocs(collection(asOther(), 'fotos')));
+  });
+});
+
 describe('fallback global', () => {
   it('coleção desconhecida é negada', async () => {
     await assertFails(getDoc(doc(asOwner(), 'coisa_aleatoria', 'x')));

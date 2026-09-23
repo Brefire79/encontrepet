@@ -131,6 +131,22 @@ service cloud.firestore {
       );
     }
 
+    // Foto cheia fora do doc público (custo — sem Storage no Spark).
+    // ID = '{colecao}_{alertId}', o mesmo do alert_privado: só o dono do
+    // alerta grava. Leitura pública por ID (como o doc público); sem list.
+    match /fotos/{fotoId} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if isSignedIn()
+        && exists(/databases/$(database)/documents/alert_privado/$(fotoId))
+        && get(/databases/$(database)/documents/alert_privado/$(fotoId)).data.owner_firebase_uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['dataUrl', 'created_at'])
+        && request.resource.data.dataUrl is string
+        && request.resource.data.dataUrl.size() <= 200000;
+      allow delete: if isFirestoreAdmin() || (isSignedIn()
+        && get(/databases/$(database)/documents/alert_privado/$(fotoId)).data.owner_firebase_uid == request.auth.uid);
+    }
+
     // [S-08 leitura] Vínculo avistamento↔pet só com UIDs (sem contato nem
     // localização). Gravado pelo backend (Admin SDK) no process-avistamento;
     // o tutor usa para achar a contraparte da confirmação bilateral.

@@ -14,7 +14,9 @@
  *      partir do próprio base64 (sharp) e grava `foto_thumb`.
  *   2) Se tem `imageStorageUrl` E (`foto_thumb` ou thumb gerado no passo 1)
  *      → zera `foto_comprimida` (a imagem cheia fica só no Storage).
- *   Docs sem `imageStorageUrl` MANTÊM o base64 (é a única cópia da foto).
+ *   3) Sem Storage (projeto no Spark não tem bucket): copia o base64 para
+ *      `fotos/{colecao}_{id}` (lido só no detalhe), marca `foto_full_doc` e
+ *      zera `foto_comprimida`. A cópia é gravada ANTES de zerar o original.
  *
  * Características: idempotente, DRY-RUN por padrão.
  *
@@ -79,7 +81,7 @@ async function migrateCollection(db, collection) {
   let scanned = 0;
   let thumbGenerated = 0;
   let base64Stripped = 0;
-  let keptAsOnlyCopy = 0;
+  let movedToFotos = 0;
   let alreadyOk = 0;
   let failed = 0;
 
@@ -111,8 +113,16 @@ async function migrateCollection(db, collection) {
     if (hasStorage && thumb) {
       updates.foto_comprimida = '';
       base64Stripped++;
-    } else if (!hasStorage) {
-      keptAsOnlyCopy++;
+    } else if (!hasStorage && thumb) {
+      if (APPLY) {
+        await db.collection('fotos').doc(`${collection}_${doc.id}`).set({
+          dataUrl: data.foto_comprimida,
+          created_at: new Date().toISOString()
+        });
+      }
+      updates.foto_full_doc = true;
+      updates.foto_comprimida = '';
+      movedToFotos++;
     }
 
     if (Object.keys(updates).length === 0) { alreadyOk++; continue; }
@@ -123,7 +133,7 @@ async function migrateCollection(db, collection) {
   }
 
   console.log(`\n[${collection}] escaneados=${scanned} thumbsGerados=${thumbGenerated} ` +
-    `base64Removidos=${base64Stripped} mantidosSemStorage=${keptAsOnlyCopy} ok=${alreadyOk} falhas=${failed}`);
+    `base64Removidos=${base64Stripped} movidosParaFotos=${movedToFotos} ok=${alreadyOk} falhas=${failed}`);
 }
 
 (async () => {

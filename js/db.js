@@ -19,7 +19,8 @@ const DB = (() => {
     NOTIFICACOES: 'notificacoes',
     USUARIOS: 'usuarios',
     ALERT_PRIVADO: 'alert_privado',
-    CONVERSAS: 'conversas'
+    CONVERSAS: 'conversas',
+    FOTOS: 'fotos'
   };
 
   const COLLECTIONS = TABLES;
@@ -471,33 +472,9 @@ const DB = (() => {
       });
     }
 
-    // Upload Storage em background (fire-and-forget) — não bloqueia o retorno
-    if (result?.id && data.foto_comprimida && FirebaseConfig.isStorageReady?.()) {
-      const uploadId = result.id;
-      const uploadOwner = record.owner_uid;
-      (async () => {
-        try {
-          const uid = FirebaseConfig.getFirebaseUID();
-          if (!uid) { console.warn('[DB] Upload Storage ignorado — sem Firebase Auth'); return; }
-          const upload = await FirebaseConfig.uploadAlertImage({
-            alertId: uploadId,
-            dataUrl: data.foto_comprimida,
-            collection: TABLES.PETS,
-            ownerUid: uploadOwner
-          });
-          await update(TABLES.PETS, uploadId, {
-            imageStoragePath: upload.path,
-            imageStorageUrl: upload.downloadURL,
-            imageHashProcessed: false,
-            // Imagem cheia agora vive no Storage — remove o base64 do doc
-            // público para não pagar egress/reads por ele no feed (custo).
-            foto_comprimida: ''
-          });
-          console.log('[DB] Upload Storage pet_perdido concluído em background');
-        } catch (err) {
-          console.warn('[DB] Upload Storage pet_perdido falhou (background):', err.message);
-        }
-      })();
+    // Foto cheia sai do doc público em background (custo — não bloqueia o retorno)
+    if (result?.id && data.foto_comprimida) {
+      offloadFullPhoto(TABLES.PETS, result.id, data.foto_comprimida, record.owner_uid);
     }
 
     saveMyReport(result.id, 'pet_perdido');
@@ -841,32 +818,9 @@ const DB = (() => {
       }
     }
 
-    // Upload Storage em background (fire-and-forget) — não bloqueia o retorno
-    if (result?.id && data.foto_comprimida && FirebaseConfig.isStorageReady?.()) {
-      const uploadId = result.id;
-      const uploadOwner = record.owner_uid;
-      (async () => {
-        try {
-          const uid = FirebaseConfig.getFirebaseUID();
-          if (!uid) { console.warn('[DB] Upload Storage avistamento ignorado — sem Firebase Auth'); return; }
-          const upload = await FirebaseConfig.uploadAlertImage({
-            alertId: uploadId,
-            dataUrl: data.foto_comprimida,
-            collection: TABLES.AVISTAMENTOS,
-            ownerUid: uploadOwner
-          });
-          await update(TABLES.AVISTAMENTOS, uploadId, {
-            imageStoragePath: upload.path,
-            imageStorageUrl: upload.downloadURL,
-            imageHashProcessed: false,
-            // Imagem cheia no Storage — base64 sai do doc público (custo)
-            foto_comprimida: ''
-          });
-          console.log('[DB] Upload Storage avistamento concluído em background');
-        } catch (err) {
-          console.warn('[DB] Upload Storage avistamento falhou (background):', err.message);
-        }
-      })();
+    // Foto cheia sai do doc público em background (custo — não bloqueia o retorno)
+    if (result?.id && data.foto_comprimida) {
+      offloadFullPhoto(TABLES.AVISTAMENTOS, result.id, data.foto_comprimida, record.owner_uid);
     }
 
     saveMyReport(result.id, 'avistamento');
@@ -879,6 +833,50 @@ const DB = (() => {
       triggerProcessAvistamento(result.id);
     }
     return result;
+  }
+
+  // ====== FOTO CHEIA FORA DO DOC PÚBLICO (custo) ======
+  // O feed baixa o doc público inteiro; com o base64 (≤120KB) dentro dele a
+  // cota grátis de egress acabava com poucas dezenas de aberturas/dia. O doc
+  // público fica só com foto_thumb (~10KB) e a foto cheia vai para:
+  //   • Firebase Storage, se AppConfig.USE_FIREBASE_STORAGE (exige Blaze);
+  //   • senão fotos/{colecao}_{id} — mesmo ID do alert_privado, que as rules
+  //     usam para amarrar a gravação ao dono. Lida só no detalhe (+1 read).
+  // Se tudo falhar, o base64 fica no doc público (comportamento antigo).
+  function offloadFullPhoto(collection, id, dataUrl, ownerUid) {
+    if (!useFirestore) return;
+    (async () => {
+      try {
+        let patch = null;
+        if (AppConfig.USE_FIREBASE_STORAGE && FirebaseConfig.isStorageReady?.() && FirebaseConfig.getFirebaseUID()) {
+          try {
+            const upload = await FirebaseConfig.uploadAlertImage({ alertId: id, dataUrl, collection, ownerUid });
+            patch = { imageStoragePath: upload.path, imageStorageUrl: upload.downloadURL, imageHashProcessed: false };
+          } catch (err) {
+            console.warn('[DB] Upload Storage falhou, usando fotos/:', err.message);
+          }
+        }
+        if (!patch) {
+          await FirebaseConfig.getDB().collection(TABLES.FOTOS).doc(`${collection}_${id}`)
+            .set({ dataUrl, created_at: new Date().toISOString() });
+          patch = { foto_full_doc: true };
+        }
+        await update(collection, id, { ...patch, foto_comprimida: '' });
+      } catch (err) {
+        console.warn('[DB] offloadFullPhoto falhou (base64 permanece no doc):', err.message);
+      }
+    })();
+  }
+
+  async function getFullPhoto(collection, id) {
+    if (!useFirestore || !id) return '';
+    try {
+      const snap = await FirebaseConfig.getDB().collection(TABLES.FOTOS).doc(`${collection}_${id}`).get();
+      return snap.exists ? (snap.data()?.dataUrl || '') : '';
+    } catch (err) {
+      console.warn('[DB] getFullPhoto falhou:', err.message);
+      return '';
+    }
   }
 
   function triggerProcessAvistamento(avistamentoId, attempt = 1) {
@@ -1700,6 +1698,7 @@ const DB = (() => {
     watchPetsAtivos,
     watchAvistamentos,
     getLinkedSightings,
+    getFullPhoto,
     createSighterAuthorization,
     processSyncQueue,
     patchPrivateAlertPhone
