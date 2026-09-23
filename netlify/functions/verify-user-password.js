@@ -3,7 +3,7 @@
 
 const { callable, HttpsError, checkRateLimit } = require('./_lib/http');
 const { getAdmin } = require('./_lib/firebase');
-const { verifySha256SaltHash } = require('./_lib/shared');
+const { verifySha256SaltHash, assertOwnsUserDoc } = require('./_lib/shared');
 
 exports.handler = callable(async ({ data, auth }) => {
   const { uid, password } = data;
@@ -11,6 +11,8 @@ exports.handler = callable(async ({ data, auth }) => {
     throw new HttpsError('invalid-argument', 'uid e password sao obrigatorios.');
   }
   checkRateLimit('login', auth.uid, 10);
+  // Evita usar este endpoint como oráculo de senha de outras contas.
+  await assertOwnsUserDoc(uid, auth);
 
   const db = getAdmin().firestore();
   const doc = await db.collection('senhas_usuarios').doc(uid).get();

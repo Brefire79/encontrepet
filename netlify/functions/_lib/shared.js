@@ -43,6 +43,23 @@ async function findUserDocByEmail(email) {
   return snap.empty ? null : snap.docs[0];
 }
 
+// Prova de posse da conta `usuarios/{uid}` pelo chamador (identidade dupla):
+// o próprio UID ou um Firebase Auth UID vinculado (firebase_auth_uids — mesmo
+// critério do isBoundUser nas rules; o cadastro grava o vínculo e o login-user
+// o renova). Sem isto, qualquer autenticado (até anônimo) trocaria a senha de
+// outra conta e depois entraria nela pelo login-user.
+async function assertOwnsUserDoc(uid, auth) {
+  if (uid === auth.uid) return;
+  const db = getAdmin().firestore();
+  const snap = await db.collection('usuarios').doc(uid).get();
+  const data = snap.exists ? (snap.data() || {}) : {};
+  const bound = Array.isArray(data.firebase_auth_uids) && data.firebase_auth_uids.includes(auth.uid);
+  if (!bound) {
+    const { HttpsError } = require('./http');
+    throw new HttpsError('permission-denied', 'Sem permissão para esta conta.');
+  }
+}
+
 // SHA-256 + salt — mesmo algoritmo de js/security.js e das CFs.
 function verifySha256SaltHash(password, storedHash) {
   if (!storedHash || !storedHash.includes(':')) return false;
@@ -142,6 +159,7 @@ module.exports = {
   buildWhatsAppLink,
   waitForPrivateAlertData,
   findUserDocByEmail,
+  assertOwnsUserDoc,
   verifySha256SaltHash,
   sendTutorNotificationEmail,
   sendSighterNotificationEmail
