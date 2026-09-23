@@ -7,6 +7,13 @@ Versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [1.20.1] — 2026-09-23
+
+### Corrigido
+- **Tela de notificações vazia para todos**: `listarNotificacoes` fazia 2 queries no mesmo `try`; a query por `destinatario_uid` (ID do app `u_xxx`/`anon_xxx`) é sempre negada pelas rules e descartava o resultado da query por Firebase UID. Achado no teste E2E de produção de 2026-09-23. A query extra (e o listener correspondente em `watchNotificacoes`) só roda quando a rule pode permitir
+
+---
+
 ## [1.20.0] — 2026-07-20
 
 ### 🚀 Backend gratuito — Cloud Functions → Netlify Functions (Fase A do PLANO_ESTRUTURACAO.md)

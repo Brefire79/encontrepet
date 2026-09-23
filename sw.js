@@ -9,7 +9,8 @@
 // score de distância do match voltam a funcionar).
 // v1.20.0: backend migrado para Netlify Functions (custo zero sem Blaze) —
 // novo js/services/backend.js (shim httpsCallable) + process-avistamento.
-const CACHE_VERSION = 'encontre-pet-v1.20.0';
+// v1.20.1: tela de notificações voltava vazia (query negada descartava as outras).
+const CACHE_VERSION = 'encontre-pet-v1.20.1';
 // Versionado junto com o app: antes era fixo e sobrevivia a todos os deploys,
 // podendo servir cópias antigas de páginas/JS (caches.match procura em todos).
 const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';
