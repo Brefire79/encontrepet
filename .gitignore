@@ -22,8 +22,13 @@ scripts/serviceAccountKey.json
 **/serviceAccountKey.json
 
 # Test files
-test/
+test/*
 *.test.js
+# Exceção: harness de testes das Firestore Rules é versionado (CLAUDE.md exige
+# rodar testes do emulator antes de deploy de rules). node_modules fica de fora.
+!test/rules/
+!test/rules/**
+test/rules/node_modules/
 
 # Build (projeto é estático — sem build)
 dist/
@@ -34,6 +39,8 @@ build/
 
 # Firebase debug
 firebase-debug.log
+firestore-debug.log
+ui-debug.log
 
 # Local Netlify folder
 .netlify

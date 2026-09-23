@@ -1,0 +1,14 @@
+{
+  "name": "encontrepet-rules-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Testes do Firestore Rules emulator — codifica a Matriz de Acesso Esperada do AUDIT.md",
+  "scripts": {
+    "test": "mocha --timeout 20000 firestore.test.js"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^3.0.4",
+    "firebase": "^10.13.2",
+    "mocha": "^10.7.3"
+  }
+}

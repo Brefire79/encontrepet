@@ -78,8 +78,14 @@ const FirebaseConfig = (() => {
         storage = firebase.storage();
       }
 
-      // Cloud Functions centralizam a liberação de contatos sensíveis (LGPD).
-      if (firebase.functions) {
+      // Backend (Netlify Functions) centraliza a liberação de contatos
+      // sensíveis (LGPD) e o processamento de avistamentos. Substitui as
+      // Cloud Functions (custo zero sem Blaze — PLANO_ESTRUTURACAO.md §1).
+      // O shim Backend expõe a MESMA assinatura httpsCallable().
+      if (typeof Backend !== 'undefined' && Backend.httpsCallable) {
+        functions = Backend;
+      } else if (firebase.functions) {
+        // Fallback legado (só se backend.js não carregou)
         functions = firebase.app().functions('southamerica-east1');
       }
 

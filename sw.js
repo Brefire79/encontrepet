@@ -3,8 +3,16 @@
 // [FIX C5] CACHE_VERSION bumpado para forcar re-cache com os novos icones.
 // [FIX C5] icons/icon-192.png e icons/icon-512.png agora pre-cacheados para
 // que o PWA funcione corretamente offline no launcher do dispositivo.
-const CACHE_VERSION = 'encontre-pet-v1.18.0';
-const DYNAMIC_CACHE = 'encontre-pet-dynamic-v1.1';
+// v1.19.0: fase de lançamento — fotos via Storage/thumb, feed sem onSnapshot,
+// hardening N-01..N-04 e S-08 (auth/db/app novos).
+// v1.19.1: fix geoDistKm — usa latitude_publica dos docs públicos (gates e
+// score de distância do match voltam a funcionar).
+// v1.20.0: backend migrado para Netlify Functions (custo zero sem Blaze) —
+// novo js/services/backend.js (shim httpsCallable) + process-avistamento.
+const CACHE_VERSION = 'encontre-pet-v1.20.0';
+// Versionado junto com o app: antes era fixo e sobrevivia a todos os deploys,
+// podendo servir cópias antigas de páginas/JS (caches.match procura em todos).
+const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';
 const API_CACHE = 'encontre-pet-api-v1.0';
 
 const STATIC_ASSETS = [
@@ -25,6 +33,7 @@ const STATIC_ASSETS = [
   '/js/ai-vision.js',
   '/js/db.js',
   '/js/app.js',
+  '/js/services/backend.js',
   '/js/services/image-hash.js',
   '/js/services/similarity.js',
   '/js/components/ModalDuplicateCase.js',
@@ -49,7 +58,11 @@ self.addEventListener('install', event => {
     caches.open(CACHE_VERSION)
       .then(cache => {
         console.log('[SW] Caching static assets');
-        return cache.addAll(STATIC_ASSETS.filter(url => !url.startsWith('http')));
+        // cache: 'reload' ignora o cache HTTP do navegador — sem isso o SW
+        // novo re-precacheava o JS antigo (servido antes como immutable/1 ano).
+        return cache.addAll(STATIC_ASSETS
+          .filter(url => !url.startsWith('http'))
+          .map(url => new Request(url, { cache: 'reload' })));
       })
       .then(() => self.skipWaiting())
   );
@@ -78,6 +91,9 @@ self.addEventListener('fetch', event => {
 
   // Skip non-GET requests (Firestore uses POST/streaming)
   if (request.method !== 'GET') return;
+
+  // Backend Netlify Functions — nunca cachear (respostas dinâmicas/sensíveis)
+  if (url.pathname.startsWith('/.netlify/')) return;
 
   // API requests (REST) - Network First
   if (url.pathname.startsWith('/tables/')) {

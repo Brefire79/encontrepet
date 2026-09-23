@@ -1,0 +1,85 @@
+rules_version = '2';
+// PROTÓTIPO S-08 — ownership de pets_perdidos SEM owner_firebase_uid no doc
+// público. Ownership de update/delete passa a ser verificado via get() no
+// alert_privado correspondente. NÃO é a rule de produção — serve só para
+// medir viabilidade e custo (cada update/delete passa a custar +2 reads:
+// 1 exists() + 1 get() no alert_privado).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hashFields() {
+      return ['imageHash', 'imageHashAlgo', 'imageHashVersion', 'imageHashCreatedAt'];
+    }
+
+    // S-08: ownership derivado do alert_privado (não mais do doc público).
+    // Custo: 1 exists() + 1 get() = 2 reads por update/delete.
+    function ownsAlertViaPrivate(collection, alertId) {
+      let pid = collection + '_' + alertId;
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/alert_privado/$(pid))
+        && get(/databases/$(database)/documents/alert_privado/$(pid)).data.owner_firebase_uid == request.auth.uid;
+    }
+
+    function canConfirmReunion() {
+      let changed = request.resource.data.diff(resource.data).changedKeys();
+      return isSignedIn()
+        && resource.data.status == 'aguardando_confirmacao'
+        && resource.data.reuniao.avistador_firebase_uid == request.auth.uid
+        && request.resource.data.reuniao.confirmado_por_firebase_uid == request.auth.uid
+        && request.resource.data.desfecho == 'reuniao_confirmada'
+        && request.resource.data.status == 'encontrado'
+        && changed.hasOnly(['status', 'desfecho', 'data_encerrado', 'reuniao'])
+        && !changed.hasAny(hashFields());
+    }
+
+    function isFirestoreAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/admin_roles/$(request.auth.uid));
+    }
+
+    match /pets_perdidos/{alertId} {
+      allow read: if true;
+      // create relaxado: qualquer autenticado cria SEU alerta; owner_uid
+      // obrigatório; owner_firebase_uid PROIBIDO no público; sem campos de hash.
+      // Integridade real: o alert_privado exige owner_firebase_uid == auth.uid.
+      allow create: if isSignedIn()
+        && request.resource.data.owner_uid is string
+        && request.resource.data.owner_uid.size() > 0
+        && !request.resource.data.keys().hasAny(hashFields())
+        && !('owner_firebase_uid' in request.resource.data.keys());
+      allow update: if (ownsAlertViaPrivate('pets_perdidos', alertId)
+                        && !request.resource.data.diff(resource.data).changedKeys().hasAny(hashFields()))
+                    || isFirestoreAdmin()
+                    || canConfirmReunion();
+      allow delete: if ownsAlertViaPrivate('pets_perdidos', alertId) || isFirestoreAdmin();
+    }
+
+    match /alert_privado/{docId} {
+      allow get: if isSignedIn() && (
+        resource.data.owner_firebase_uid == request.auth.uid ||
+        resource.data.owner_uid == request.auth.uid
+      );
+      allow list: if false;
+      allow create: if isSignedIn() && (
+        request.resource.data.owner_firebase_uid == request.auth.uid ||
+        request.resource.data.owner_uid == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.owner_firebase_uid == request.auth.uid ||
+        resource.data.owner_uid == request.auth.uid
+      );
+    }
+
+    match /admin_roles/{adminUid} {
+      allow get: if adminUid == request.auth.uid;
+      allow list, create, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

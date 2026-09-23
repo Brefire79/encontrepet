@@ -376,10 +376,10 @@ const App = (() => {
     if (!petsList || petsList.length === 0) return;
     const count = petsList.length;
     const firstPet = petsList[0];
-    const petNome = Security.sanitize(firstPet.nome_pet || 'um pet');
+    const petNome = Security.sanitize(firstPet.nome_pet || I18n.t('sighting.feedback.a_pet'));
     const msg = count === 1
-      ? `Seu avistamento pode ser o pet «${petNome}»! O tutor foi avisado.`
-      : `Seu avistamento pode corresponder a ${count} pets perdidos! Os tutores foram avisados.`;
+      ? I18n.t('sighting.feedback.one', { name: petNome })
+      : I18n.t('sighting.feedback.many', { count });
 
     const modal = document.createElement('div');
     modal.id = 'avistador-match-feedback';
@@ -398,19 +398,19 @@ const App = (() => {
           <span style="font-size:52px">🎉</span>
         </div>
         <h3 style="text-align:center;margin:0 0 10px;font-size:1.2rem;color:#1b5e20;font-weight:800">
-          Avistamento registrado com sucesso!
+          ${I18n.t('sighting.feedback.title')}
         </h3>
         <p style="text-align:center;margin:0 0 20px;color:#555;font-size:0.95rem;line-height:1.5">
           ${msg}
         </p>
         <div style="background:#e8f5e9;border-radius:12px;padding:12px 16px;margin-bottom:20px;
                     border-left:4px solid #43a047;font-size:0.9rem;color:#2e7d32">
-          <strong>📲 Notificação enviada!</strong> O tutor receberá um alerta em tempo real.
+          ${I18n.t('sighting.feedback.notified')}
         </div>
         <button onclick="document.getElementById('avistador-match-feedback')?.remove();"
           style="width:100%;background:#43a047;color:#fff;border:none;border-radius:12px;
                  padding:14px;font-size:1rem;font-weight:700;cursor:pointer">
-          Entendido ✓
+          ${I18n.t('sighting.feedback.ok')}
         </button>
       </div>`;
 
@@ -1633,7 +1633,7 @@ const App = (() => {
       return;
     }
     container.innerHTML = stories.map(pet => {
-      const foto = pet.foto_comprimida ? fixCorruptedDataUrl(pet.foto_comprimida) : '';
+      const foto = photoThumbSrc(pet);
       const nome = Security.sanitize(pet.nome_pet || 'Pet');
       const como = pet.feedback_como_encontrou || '';
       const comoTexto = {
@@ -1799,7 +1799,7 @@ const App = (() => {
       const status = p.status || 'ativo';
       const statusLabel = { ativo: 'Ativo', encontrado: 'Encontrado', encerrado: 'Encerrado', desistencia: 'Desistência' }[status] || status;
       const data = p.data_reporte ? new Date(p.data_reporte).toLocaleDateString('pt-BR') : '';
-      const foto = p.foto_comprimida ? fixCorruptedDataUrl(p.foto_comprimida) : '';
+      const foto = photoThumbSrc(p);
       const avatar = foto ? `<img src="${foto}" alt="${nome}">` : `<i class="fas fa-paw"></i>`;
       return `<div class="admin-card" data-pet-id="${p.id}">
         <div class="admin-card-avatar">${avatar}</div>
@@ -1825,7 +1825,7 @@ const App = (() => {
     container.innerHTML = sightings.map(s => {
       const desc = Security.sanitize(s.descricao || s.observacoes || 'Avistamento');
       const data = s.data_avistamento ? new Date(s.data_avistamento).toLocaleDateString('pt-BR') : '';
-      const foto = s.foto_comprimida ? fixCorruptedDataUrl(s.foto_comprimida) : '';
+      const foto = photoThumbSrc(s);
       const avatar = foto ? `<img src="${foto}" alt="Avistamento">` : `<i class="fas fa-camera"></i>`;
       return `<div class="admin-card" data-sighting-id="${s.id}">
         <div class="admin-card-avatar">${avatar}</div>
@@ -2006,6 +2006,23 @@ const App = (() => {
     return ''; // Retorna vazio para não quebrar o <img>
   }
 
+  // Foto para cards/listas: prioriza o thumbnail leve gravado no doc (barato),
+  // depois o base64 legado, por fim a imagem do Storage (docs já migrados).
+  function photoThumbSrc(p) {
+    if (!p) return '';
+    return p.foto_thumb
+      || (p.foto_comprimida ? fixCorruptedDataUrl(p.foto_comprimida) : '')
+      || p.imageStorageUrl || '';
+  }
+
+  // Foto em tamanho cheio (detalhe/comparação de match): Storage primeiro.
+  function photoFullSrc(p) {
+    if (!p) return '';
+    return p.imageStorageUrl
+      || (p.foto_comprimida ? fixCorruptedDataUrl(p.foto_comprimida) : '')
+      || p.foto_thumb || '';
+  }
+
   function renderAlertCard(pet) {
     const labels = { cao: I18n.t('animal.dog'), gato: I18n.t('animal.cat'), outro: I18n.t('animal.other') };
     const badges = { cao: 'badge-cao', gato: 'badge-gato', outro: 'badge-outro' };
@@ -2015,7 +2032,7 @@ const App = (() => {
     const time = getTimeAgo(pet.created_at);
     const name = pet.nome_pet || `${labels[pet.tipo_animal] || 'Pet'} ${I18n.t('card.pet_lost').split(' ').pop()}`;
     const loc = pet.endereco_publico || pet.endereco || I18n.t('card.region_unknown');
-    const photo = fixCorruptedDataUrl(pet.foto_comprimida);
+    const photo = photoThumbSrc(pet);
     const isApprox = pet.localizacao_aproximada;
 
     return `
@@ -2325,6 +2342,7 @@ const App = (() => {
         tipo_animal: tipo,
         subtipo_animal: subtipo,
         foto_comprimida: state.photoData?.dataUrl || '',
+        foto_thumb: state.photoData?.thumbnail || '',
         foto_hash: state.photoData?.hash || '',
         embedding: state.photoData?.embedding || null,
         cor, porte,
@@ -2594,7 +2612,7 @@ const App = (() => {
           const isLinked = state.matchedLostPetId === pet.id;
           return `
             <div class="ai-match-item ${isLinked ? 'linked' : ''}" data-pet-id="${pet.id}" data-pet-name="${Security.sanitize(name)}" data-score="${match.totalScore}" data-engine="${engineUsed}" data-owner-uid="${pet.owner_firebase_uid || ''}" data-owner-custom-uid="${pet.owner_uid || ''}">
-              ${pet.foto_comprimida ? `<img class="ai-match-photo" src="${fixCorruptedDataUrl(pet.foto_comprimida)}" alt="">` :
+              ${photoFullSrc(pet) ? `<img class="ai-match-photo" src="${photoFullSrc(pet)}" alt="">` :
                 `<div class="ai-match-photo" style="display:flex;align-items:center;justify-content:center;background:var(--bg);"><i class="fas fa-paw" style="font-size:1.5rem;color:var(--text-muted)"></i></div>`}
               <div class="ai-match-info">
                 <div class="ai-match-name">${emoji} ${Security.sanitize(name)}</div>
@@ -2655,6 +2673,10 @@ const App = (() => {
               state.matchedLostPetName = petName;
               state.matchedScore = score;
               state.matchedEngine = engine;
+              // [S-08 leitura] Apenas hint do client: para alertas novos o doc
+              // público não carrega owner_firebase_uid, então este valor pode vir
+              // vazio. A identidade autoritativa do tutor é resolvida server-side
+              // pela CF onAvistamentoCreate via alert_privado — não depende disto.
               state.matchedPetOwnerFirebaseUid = item.dataset.ownerUid || null;
               state.matchedPetOwnerUid = item.dataset.ownerCustomUid || null;
               item.classList.add('linked');
@@ -2794,6 +2816,7 @@ const App = (() => {
         tipo_animal: tipoAv,
         subtipo_animal: subtipoAv,
         foto_comprimida: state.avistamentoPhotoData?.dataUrl || '',
+        foto_thumb: state.avistamentoPhotoData?.thumbnail || '',
         foto_hash: state.avistamentoPhotoData?.hash || '',
         embedding: state.avistamentoPhotoData?.embedding || null,
         latitude: parseFloat(document.getElementById('lat-avistamento')?.value) || 0,
@@ -2847,22 +2870,9 @@ const App = (() => {
             return GeoUtils.isWithinRadius(payload.latitude, payload.longitude, petLat, petLng, raioKm);
           });
 
-          // Notificar até 5 tutores próximos para não sobrecarregar
-          for (const pet of proximos.slice(0, 5)) {
-            if (!pet.owner_firebase_uid && !pet.owner_uid) continue;
-            await DB.criarNotificacao({
-              tipo: 'match_ia',
-              pet_perdido_id: pet.id,
-              avistamento_id: createdAlert.id,
-              mensagem: `📍 Um avistamento de ${tipoAvistado === 'cao' ? 'cão' : tipoAvistado === 'gato' ? 'gato' : 'animal'} foi registrado a menos de ${raioKm}km do local de perda do seu pet.`,
-              similaridade: 0,
-              lida: false,
-              owner_firebase_uid: pet.owner_firebase_uid || '',
-              destinatario_firebase_uid: pet.owner_firebase_uid || '',
-              destinatario_uid: pet.owner_uid || '',
-              data: new Date().toISOString()
-            }).catch(() => {});
-          }
+          // [S-08] A notificação dos tutores é criada pela CF onAvistamentoCreate
+          // (o cliente não conhece mais o owner_firebase_uid dos tutores).
+          // Aqui só calculamos a lista para o feedback visual do avistador.
           _petsNotificados = proximos.slice(0, 5);
         } catch (_) { /* não bloqueia o fluxo principal */ }
       }
@@ -2911,7 +2921,13 @@ const App = (() => {
     showLoading('Carregando...');
     try {
       const pet = await DB.get(DB.COLLECTIONS.PETS, petId);
-      const isOwner = !!(pet.owner_uid && pet.owner_uid === Auth.getUID());
+      // S-11: ownership unificado — aceita ID customizado (u_xxx) E Firebase Auth UID,
+      // espelhando a regra isOwner() do firestore.rules (owner_uid || owner_firebase_uid).
+      const myFirebaseUid = FirebaseConfig.getFirebaseUID?.() || '';
+      const isOwner = !!(
+        (pet.owner_uid && pet.owner_uid === Auth.getUID()) ||
+        (pet.owner_firebase_uid && myFirebaseUid && pet.owner_firebase_uid === myFirebaseUid)
+      );
       const isLoggedIn = Auth.isLoggedIn();
       const settings = Auth.getUserSettings();
       const displayPet = isOwner ? pet : (Security.sanitizeForPublic(pet, settings) || pet);
@@ -3053,10 +3069,10 @@ const App = (() => {
         }
       }
 
-      const fixedFoto = fixCorruptedDataUrl(displayPet.foto_comprimida);
-      
+      const fixedFoto = photoFullSrc(displayPet);
+
       container.innerHTML = `
-        ${fixedFoto && fixedFoto.startsWith('data:image/') ? `<img class="detalhes-photo" src="${fixedFoto}" alt="">` :
+        ${fixedFoto ? `<img class="detalhes-photo" src="${fixedFoto}" alt="">` :
           `<div class="detalhes-photo" style="height:200px;display:flex;align-items:center;justify-content:center;background:var(--bg);"><i class="fas fa-paw" style="font-size:4rem;color:var(--text-muted)"></i></div>`}
         <div class="detalhes-body">
           <div class="detalhes-badges">
@@ -3088,6 +3104,16 @@ const App = (() => {
           <button class="btn-share" data-action="share" data-id="${displayPet.id}" data-name="${Security.sanitize(name)}"><i class="fas fa-share-alt"></i></button>
         </div>`;
 
+      // Foto cheia fora do doc público (custo): a miniatura aparece na hora e
+      // é trocada pela foto cheia quando o doc fotos/ chegar (+1 read).
+      if (pet.foto_full_doc && !pet.imageStorageUrl && !pet.foto_comprimida) {
+        DB.getFullPhoto(DB.COLLECTIONS.PETS, petId).then(full => {
+          const img = container.querySelector('img.detalhes-photo');
+          const src = full ? fixCorruptedDataUrl(full) : '';
+          if (img && src) img.src = src;
+        });
+      }
+
       // Bind "Reportar avistamento deste pet" button
       document.getElementById('btn-report-sighting-from-details')?.addEventListener('click', () => {
         // Pre-set the matched pet and navigate to sighting form
@@ -3095,6 +3121,9 @@ const App = (() => {
         state.matchedLostPetName = name;
         state.matchedScore = 0;
         state.matchedEngine = 'manual';
+        // [S-08 leitura] Hint do client (pode vir vazio em alertas novos, sem
+        // owner_firebase_uid no doc público). Tutor resolvido server-side pela
+        // CF onAvistamentoCreate via alert_privado.
         state.matchedPetOwnerFirebaseUid = displayPet.owner_firebase_uid || pet.owner_firebase_uid || null;
         state.matchedPetOwnerUid = displayPet.owner_uid || pet.owner_uid || null;
         navigateTo('avistamento');
@@ -3161,8 +3190,9 @@ const App = (() => {
         const loc = Security.sanitize(s.endereco_publico || '');
         const score = s.matchedScore ? `${Math.round(s.matchedScore)}%` : '';
         const linkType = s.pet_perdido_id === petId ? 'manual' : 'ia';
-        const photoHtml = s.foto_comprimida && s.foto_comprimida.startsWith('data:image/')
-          ? `<img class="sighting-thumb" src="${s.foto_comprimida}" alt="">`
+        const sightingPhoto = photoThumbSrc(s);
+        const photoHtml = sightingPhoto
+          ? `<img class="sighting-thumb" src="${sightingPhoto}" alt="">`
           : `<div class="sighting-thumb-placeholder"><i class="fas fa-paw"></i></div>`;
         return `
           <div class="sighting-card" data-id="${s.id}">
@@ -3274,7 +3304,7 @@ const App = (() => {
     const uid = Auth.getUID();
     const storageKey = `sc_${petId}_${uid}`;
     if (localStorage.getItem(storageKey)) {
-      showToast('Você já enviou seu número para este tutor.', 'info');
+      showToast(I18n.t('sighter_contact.already_sent'), 'info');
       return;
     }
 
@@ -3287,26 +3317,26 @@ const App = (() => {
     modal.innerHTML = `
       <div style="width:100%;max-width:480px;background:#fff;border-radius:16px 16px 0 0;padding:24px;animation:slideUp 0.3s ease">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <h3 style="margin:0;font-size:1.1rem"><i class="fas fa-mobile-alt" style="color:var(--primary)"></i> Avisar o tutor</h3>
+          <h3 style="margin:0;font-size:1.1rem"><i class="fas fa-mobile-alt" style="color:var(--primary)"></i> ${I18n.t('sighter_contact.title')}</h3>
           <button id="sighter-modal-close" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#888">&times;</button>
         </div>
         <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:16px">
-          Informe seu celular. O tutor de <strong>${Security.sanitize(petNome)}</strong> receberá uma notificação com seu número para entrar em contato.
+          ${I18n.t('sighter_contact.desc', { name: Security.sanitize(petNome) })}
         </p>
         <div class="form-group">
-          <label class="form-label"><i class="fas fa-phone"></i> Seu celular (WhatsApp)</label>
+          <label class="form-label"><i class="fas fa-phone"></i> ${I18n.t('sighter_contact.phone_label')}</label>
           <input type="tel" id="sighter-phone-input" class="form-control" placeholder="(11) 99999-9999"
             value="${Security.sanitize(profilePhone)}" maxlength="20" inputmode="tel" autocomplete="tel">
           <div id="sighter-phone-error" style="color:var(--error);font-size:0.82rem;margin-top:4px;display:none"></div>
         </div>
         <div style="display:flex;gap:8px;margin-top:20px">
-          <button id="sighter-modal-cancel" class="btn-secondary" style="flex:1">Cancelar</button>
+          <button id="sighter-modal-cancel" class="btn-secondary" style="flex:1">${I18n.t('sighter_contact.cancel')}</button>
           <button id="sighter-modal-submit" class="btn-primary" style="flex:2">
-            <i class="fas fa-paper-plane"></i> Enviar meu número
+            <i class="fas fa-paper-plane"></i> ${I18n.t('sighter_contact.submit')}
           </button>
         </div>
         <p style="font-size:0.75rem;color:var(--text-muted);margin-top:12px;text-align:center">
-          <i class="fas fa-shield-alt"></i> Seu número só será visível ao tutor deste pet.
+          <i class="fas fa-shield-alt"></i> ${I18n.t('sighter_contact.privacy')}
         </p>
       </div>`;
 
@@ -3324,7 +3354,7 @@ const App = (() => {
       const phoneResult = Security.validatePhoneBR(rawPhone);
 
       if (!phoneResult.valid) {
-        errEl.textContent = 'Número inválido. Use o formato (11) 99999-9999.';
+        errEl.textContent = I18n.t('sighter_contact.invalid_phone');
         errEl.style.display = 'block';
         input.focus();
         return;
@@ -3333,26 +3363,42 @@ const App = (() => {
 
       const submitBtn = document.getElementById('sighter-modal-submit');
       submitBtn.disabled = true;
-      submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+      submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18n.t('sighter_contact.sending')}`;
 
       try {
         const rawNome = Auth.getUserData()?.displayName || 'Avistador';
         const phone = phoneResult.normalized || rawPhone;
 
-        await DB.criarNotificacao({
-          tipo: 'avistamento_contato',
-          pet_id: petId,
-          pet_nome: petNome,
-          sighter_nome: rawNome,
-          sighter_phone: phone,
+        // [S-08] Preferir a CF notifyTutorContact: resolve o destinatário via
+        // alert_privado (o doc público não carrega mais owner_firebase_uid).
+        let enviadoViaCF = false;
+        try {
+          const functions = FirebaseConfig.getFunctions?.();
+          if (functions) {
+            await functions.httpsCallable('notifyTutorContact')({ petId, phone, nome: rawNome });
+            enviadoViaCF = true;
+          }
+        } catch (cfErr) {
+          console.warn('[App] notifyTutorContact CF indisponível, fallback direto:', cfErr.message);
+        }
+
+        if (!enviadoViaCF) {
+          // Fallback legado (pré-deploy da CF): endereça pelos campos do doc
           // sighter_wa_link não é armazenado — URLs sofrem encoding em sanitizeObject.
           // O link é construído em tempo de renderização a partir de sighter_phone.
-          mensagem: `${rawNome} viu «${petNome}» e quer entrar em contato: ${phone}`,
-          data: new Date().toISOString(),
-          lida: false,
-          destinatario_uid: pet.owner_uid || '',
-          destinatario_firebase_uid: pet.owner_firebase_uid || ''
-        });
+          await DB.criarNotificacao({
+            tipo: 'avistamento_contato',
+            pet_id: petId,
+            pet_nome: petNome,
+            sighter_nome: rawNome,
+            sighter_phone: phone,
+            mensagem: `${rawNome} viu «${petNome}» e quer entrar em contato: ${phone}`,
+            data: new Date().toISOString(),
+            lida: false,
+            destinatario_uid: pet.owner_uid || '',
+            destinatario_firebase_uid: pet.owner_firebase_uid || ''
+          });
+        }
 
         // Guardar no localStorage para não duplicar
         localStorage.setItem(storageKey, new Date().toISOString());
@@ -3360,17 +3406,17 @@ const App = (() => {
         // Atualizar botão na tela de detalhes
         const btn = document.getElementById('btn-tutor-contact');
         if (btn) {
-          btn.innerHTML = '<i class="fas fa-check-circle"></i> Número enviado ao tutor ✓';
+          btn.innerHTML = `<i class="fas fa-check-circle"></i> ${I18n.t('sighter_contact.sent_button')}`;
           btn.disabled = true;
         }
 
         close();
-        showToast('Seu número foi enviado! O tutor entrará em contato.', 'success');
+        showToast(I18n.t('sighter_contact.sent_toast'), 'success');
       } catch (err) {
         console.error('[App] showSighterContactModal error:', err);
         submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar meu número';
-        showToast('Erro ao enviar. Tente novamente.', 'error');
+        submitBtn.innerHTML = `<i class="fas fa-paper-plane"></i> ${I18n.t('sighter_contact.submit')}`;
+        showToast(I18n.t('sighter_contact.error'), 'error');
       }
     });
   }
@@ -3466,7 +3512,7 @@ const App = (() => {
     const dataEncerrado = r.data_encerrado ? new Date(r.data_encerrado).toLocaleDateString(localeLang) : '';
 
     return `<div class="reporte-item ${!isActive ? 'reporte-encerrado' : ''}" data-id="${r.id}" data-type="${r._reportType}">
-      ${r.foto_comprimida ? `<img class="reporte-photo" src="${fixCorruptedDataUrl(r.foto_comprimida)}" alt="">` :
+      ${photoThumbSrc(r) ? `<img class="reporte-photo" src="${photoThumbSrc(r)}" alt="">` :
         `<div class="reporte-photo" style="display:flex;align-items:center;justify-content:center;"><i class="fas fa-${isPet ? 'paw' : 'eye'}" style="font-size:1.8rem;color:var(--text-muted)"></i></div>`}
       <div class="reporte-info">
         <div style="font-weight:700">${Security.sanitize(name)}</div>
@@ -3656,6 +3702,36 @@ const App = (() => {
         </div>`;
         }
 
+        if (n.tipo === 'confirmar_reuniao') {
+          const petNomeRaw = n.pet_nome || n.petNome || '';
+          const petId = n.pet_perdido_id || n.pet_id || '';
+          return `
+        <div class="notif-item ${!n.lida ? 'unread notif-flash' : ''}" data-nid="${n.id}">
+          <div class="notif-icon match"><i class="fas fa-handshake"></i></div>
+          <div class="notif-text">
+            <div class="notif-title">${Security.sanitize(I18n.t('notif.confirm_reunion_title', { pet: petNomeRaw }))}</div>
+            <div class="notif-desc">${Security.sanitize(I18n.t('notif.confirm_reunion_desc'))}</div>
+            <div style="margin-top:8px">
+              <button class="btn-confirm-reunion btn-small" data-pet-id="${petId}"><i class="fas fa-check"></i> ${I18n.t('notif.confirm_reunion_btn')}</button>
+            </div>
+            <div class="notif-time">${getTimeAgo(n.timestamp || n.created_at)}</div>
+          </div>
+        </div>`;
+        }
+
+        if (n.tipo === 'reuniao_confirmada') {
+          const petNomeRaw = n.pet_nome || n.petNome || '';
+          return `
+        <div class="notif-item ${!n.lida ? 'unread notif-flash' : ''}" data-nid="${n.id}">
+          <div class="notif-icon match"><i class="fas fa-circle-check"></i></div>
+          <div class="notif-text">
+            <div class="notif-title">${Security.sanitize(I18n.t('notif.reunion_confirmed_title', { pet: petNomeRaw }))}</div>
+            <div class="notif-desc">${Security.sanitize(I18n.t('notif.reunion_confirmed_desc'))}</div>
+            <div class="notif-time">${getTimeAgo(n.timestamp || n.created_at)}</div>
+          </div>
+        </div>`;
+        }
+
         const tipoConfig = {
           match_ia:           { icon: 'fa-robot',         cls: 'match',   titulo: I18n.t('notif.match_title') },
           contato_solicitado: { icon: 'fa-hands-helping', cls: 'contact', titulo: '👋 Alguém quer contato!' },
@@ -3715,8 +3791,8 @@ const App = (() => {
 
       container.querySelectorAll('.notif-item').forEach(item => {
         item.addEventListener('click', async (e) => {
-          // Não marcar como lida se clicar no botão "Ver pet" (tem seu próprio handler)
-          if (e.target.closest('.notif-view-btn') || e.target.closest('.btn-chat-notif')) return;
+          // Não marcar como lida se clicar em botões com handler próprio
+          if (e.target.closest('.notif-view-btn') || e.target.closest('.btn-chat-notif') || e.target.closest('.btn-confirm-reunion')) return;
           try {
             await DB.marcarNotificacaoLida(item.dataset.nid);
             item.classList.remove('unread', 'notif-flash');
@@ -3757,6 +3833,29 @@ const App = (() => {
           openInternalChat(btn.dataset.chatId, btn.dataset.chatTitle || I18n.t('chat.title'));
         });
       });
+
+      // Confirmação bilateral: a contraparte confirma o reencontro.
+      container.querySelectorAll('.btn-confirm-reunion').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const petId = btn.dataset.petId;
+          if (!petId) return;
+          btn.disabled = true;
+          try {
+            showLoading('Salvando...');
+            await DB.confirmarReuniao(petId);
+            const item = btn.closest('.notif-item');
+            if (item) { try { await DB.marcarNotificacaoLida(item.dataset.nid); } catch {} }
+            hideLoading();
+            showToast(I18n.t('toast.reunion_confirmed'), 'success');
+            loadNotifications();
+          } catch (err) {
+            hideLoading();
+            btn.disabled = false;
+            showToast(err?.message || I18n.t('toast.save_error'), 'error');
+          }
+        });
+      });
     } catch { container.innerHTML = `<div class="empty-state"><p>${I18n.t('notif.load_error')}</p></div>`; }
   }
 
@@ -3784,7 +3883,7 @@ const App = (() => {
         html += `<div class="mapa-section-header"><i class="fas fa-exclamation-circle" style="color:var(--danger)"></i> ${I18n.t('map.pets_count', {count: pets.length})}</div>`;
         html += pets.map(p => {
           const pub = Security.sanitizeForPublic(p, settings) || p;
-          const photo = fixCorruptedDataUrl(pub.foto_comprimida);
+          const photo = photoThumbSrc(pub);
           const name = Security.sanitize(pub.nome_pet || 'Pet');
           const loc = Security.sanitize(pub.endereco_publico || pub.endereco || I18n.t('map.region'));
           const desc = Security.sanitize(pub.descricao || '');
@@ -3814,7 +3913,7 @@ const App = (() => {
       if (avistamentos.length > 0) {
         html += `<div class="mapa-section-header" style="margin-top:16px"><i class="fas fa-eye" style="color:var(--success)"></i> ${I18n.t('map.sightings_count', {count: avistamentos.length})}</div>`;
         html += avistamentos.map((a, idx) => {
-          const photo = fixCorruptedDataUrl(a.foto_comprimida);
+          const photo = photoThumbSrc(a);
           const desc = Security.sanitize(a.descricao || I18n.t('map.sighting_desc'));
           const fullDesc = Security.sanitize(a.descricao || '');
           const time = getTimeAgo(a.created_at || a.data_avistamento);
@@ -4111,14 +4210,21 @@ const App = (() => {
   let foundPetId = null;
   let foundNota = 0;
   let foundDesfecho = '';
+  let foundContraparte = null;   // avistador escolhido p/ confirmação bilateral
+  let foundContrapartes = [];    // avistamentos vinculados candidatos
 
   function openFoundFeedbackModal(petId) {
     foundPetId = petId;
     foundNota = 0;
     foundDesfecho = '';
+    foundContraparte = null;
+    foundContrapartes = [];
     const modal = document.getElementById('found-feedback-modal');
     if (!modal) return;
     // Reset
+    const cpList = document.getElementById('found-contraparte-list');
+    if (cpList) cpList.innerHTML = '';
+    document.getElementById('fg-contraparte')?.classList.add('hidden');
     document.getElementById('found-como').value = '';
     document.querySelectorAll('input[name="found-app-ajudou"]').forEach(r => r.checked = false);
     document.getElementById('found-mensagem').value = '';
@@ -4173,8 +4279,65 @@ const App = (() => {
       if (fgApp) fgApp.style.display = '';
     }
 
+    // Confirmação bilateral: só faz sentido em reencontro com vida.
+    foundContraparte = null;
+    if (desfecho === 'encontrado_vivo' && foundPetId) {
+      loadContraparteSelector(foundPetId);
+    } else {
+      document.getElementById('fg-contraparte')?.classList.add('hidden');
+    }
+
     step1.classList.add('hidden');
     step2.classList.remove('hidden');
+  }
+
+  /**
+   * Popula o seletor de contraparte com os avistadores vinculados ao pet.
+   * Se não houver contraparte conhecida, esconde o bloco → fluxo unilateral.
+   */
+  async function loadContraparteSelector(petId) {
+    const fg = document.getElementById('fg-contraparte');
+    const list = document.getElementById('found-contraparte-list');
+    if (!fg || !list) return;
+    fg.classList.remove('hidden');
+    list.innerHTML = `<div class="contraparte-loading">${I18n.t('feedback.reunion_loading')}</div>`;
+    try {
+      const myFbUid = FirebaseConfig.getFirebaseUID?.() || '';
+      const sightings = await DB.getLinkedSightings(petId);
+      // Só serve como contraparte quem tem Firebase UID e não é o próprio tutor.
+      const valid = (sightings || []).filter(s => s.owner_firebase_uid && s.owner_firebase_uid !== myFbUid);
+      foundContrapartes = valid;
+      if (valid.length === 0) {
+        fg.classList.add('hidden');
+        list.innerHTML = '';
+        return;
+      }
+      const items = valid.map((s, i) => {
+        const nome = Security.sanitize(s.avistador_nome || s.contato_nome || I18n.t('feedback.reunion_finder_default'));
+        const quando = getTimeAgo(s.created_at || s.data_avistamento);
+        return `<button type="button" class="contraparte-option" data-idx="${i}">
+          <i class="fas fa-user"></i>
+          <span class="contraparte-nome">${nome}</span>
+          <span class="contraparte-quando">${quando}</span>
+        </button>`;
+      }).join('');
+      const alone = `<button type="button" class="contraparte-option contraparte-alone" data-idx="-1">
+        <i class="fas fa-house-user"></i>
+        <span class="contraparte-nome">${I18n.t('feedback.reunion_alone')}</span>
+      </button>`;
+      list.innerHTML = items + alone;
+      list.querySelectorAll('.contraparte-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          foundContraparte = idx >= 0 ? foundContrapartes[idx] : null;
+          list.querySelectorAll('.contraparte-option').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+        });
+      });
+    } catch (e) {
+      fg.classList.add('hidden');
+      list.innerHTML = '';
+    }
   }
 
   function initFoundFeedbackModal() {
@@ -4208,22 +4371,30 @@ const App = (() => {
 
       try {
         showLoading('Salvando...');
+        const cp = foundContraparte;
         await DB.marcarEncontrado(foundPetId, {
           desfecho: foundDesfecho,
           como,
           appAjudou,
           mensagem,
-          nota: foundNota
+          nota: foundNota,
+          ...(cp ? {
+            avistamentoId: cp.id,
+            avistadorUid: cp.owner_uid || '',
+            avistadorFirebaseUid: cp.owner_firebase_uid || ''
+          } : {})
         });
         incrementarContadorPerfil('pets_encontrados');
         hideLoading();
         closeFoundFeedbackModal();
-        const toastMsg = foundDesfecho === 'encontrado_vivo'
-          ? I18n.t('toast.found_alive')
-          : foundDesfecho === 'encontrado_morto'
-            ? I18n.t('toast.found_dead')
-            : I18n.t('toast.search_closed');
-        showToast(toastMsg, foundDesfecho === 'encontrado_vivo' ? 'success' : 'info');
+        const toastMsg = cp
+          ? I18n.t('toast.awaiting_confirmation')
+          : foundDesfecho === 'encontrado_vivo'
+            ? I18n.t('toast.found_alive')
+            : foundDesfecho === 'encontrado_morto'
+              ? I18n.t('toast.found_dead')
+              : I18n.t('toast.search_closed');
+        showToast(toastMsg, (cp || foundDesfecho === 'encontrado_vivo') ? 'success' : 'info');
         loadMyReports();
       } catch (err) {
         hideLoading();
@@ -4236,10 +4407,18 @@ const App = (() => {
       if (!foundPetId) return;
       try {
         showLoading('Salvando...');
-        await DB.marcarEncontrado(foundPetId, { desfecho: foundDesfecho });
+        const cp = foundContraparte;
+        await DB.marcarEncontrado(foundPetId, {
+          desfecho: foundDesfecho,
+          ...(cp ? {
+            avistamentoId: cp.id,
+            avistadorUid: cp.owner_uid || '',
+            avistadorFirebaseUid: cp.owner_firebase_uid || ''
+          } : {})
+        });
         hideLoading();
         closeFoundFeedbackModal();
-        showToast(I18n.t('toast.report_closed'), 'info');
+        showToast(cp ? I18n.t('toast.awaiting_confirmation') : I18n.t('toast.report_closed'), cp ? 'success' : 'info');
         loadMyReports();
       } catch (err) {
         hideLoading();

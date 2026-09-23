@@ -7,6 +7,40 @@ Versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [1.20.0] — 2026-07-20
+
+### 🚀 Backend gratuito — Cloud Functions → Netlify Functions (Fase A do PLANO_ESTRUTURACAO.md)
+
+#### Adicionado
+- **`netlify/functions/`** — backend completo em Netlify Functions + firebase-admin (projeto permanece no plano Spark, sem cartão): `get-tutor-contact`, `get-sighter-contact`, `save-user-password`, `verify-user-password`, `login-user`, `check-email-exists`, `notify-tutor-contact`, `count-users-in-radius`
+- **`process-avistamento`** — substituto idempotente do trigger `onAvistamentoCreated` (notificações de match ao tutor E avistador, criação de conversa, vínculos LGPD/S-08), invocado pelo cliente pós-create com retry
+- **`sweep-avistamentos`** (scheduled 6/6h) — reprocessa avistamentos pendentes (rede de segurança)
+- **`auto-confirmar-reunioes`** (scheduled diário) — confirmação unilateral após 7 dias (North Star)
+- **`js/services/backend.js`** — shim com assinatura `httpsCallable()` idêntica ao SDK; zero mudança nos call sites
+
+#### Corrigido (achados do teste E2E de 2026-07-05)
+- Tutor volta a receber notificação de match/avistamento (achado 1 — North Star)
+- Removido fallback que gravava `senha_hash` no doc `usuarios` (achado 2 — regressão S-03)
+- Contador "pessoas alcançadas" via backend Admin SDK (achado 3 — N-01)
+- Acesso cruzado LGPD (`linked_pet_owner_firebase_uid` + `sighter_authorizations`) garantido server-side (achado 5)
+- `netlify.toml`: removido `ignore = "exit 0"` que fazia o Netlify pular builds de git push
+
+#### Segurança / LGPD (revisão de 2026-09-23)
+- **`save-user-password` / `verify-user-password`**: exigem posse da conta (`firebase_auth_uids`). Antes qualquer autenticado — até anônimo — podia trocar a senha de outra conta e entrar nela pelo `login-user` (falha herdada da CF original)
+- `changePassword`: removido o último fallback que gravava `senha_hash` em `usuarios` (S-03)
+- **Revertida** a leitura do `alert_privado` do avistador pelo tutor (expunha telefone/localização sem log LGPD). No lugar, `vinculos_avistamento/{avistamentoId}` só com UIDs, gravado pelo backend
+- `get-tutor-contact`: prova de avistamento vinculado via `vinculos_avistamento` (os docs públicos pós-S-08 não têm `owner_firebase_uid`, então ninguém recebia o contato)
+
+#### Custo (cota grátis)
+- **Foto cheia fora do doc público**: sem bucket de Storage no Spark, a foto vai para `fotos/{colecao}_{id}` (lida só no detalhe). O feed carrega apenas `foto_thumb` (~10KB). `migrate-p0-foto-thumb.js` move as fotos antigas
+- `count-users-in-radius`: 1 read (agregado `stats/usuarios_geo`, refeito ≤1×/dia) em vez de até 1000 reads por abertura da Home; cache de 1h no cliente
+- `netlify.toml`: JS/CSS com `must-revalidate` (antes `immutable` por 1 ano sem `?v=` — o app não atualizava após deploy); SW com cache dinâmico versionado e precache `cache: 'reload'`
+
+#### i18n
+- Modais do avistador (feedback de match e "Avisar o tutor") nos 3 idiomas (E2E achado 6)
+
+---
+
 ## [1.0.0] — 2026-02-17
 
 ### 🎉 Lançamento Inicial

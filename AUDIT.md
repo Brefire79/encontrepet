@@ -438,26 +438,27 @@ showToast('Tutor encontrado mas sem telefone cadastrado.', 'warning');
 
 ### Imediato (antes do próximo deploy)
 
-- [ ] **S-01** — Corrigir `firestore.rules`: `alert_privado` → `allow get: if isSignedIn() && isOwner(resource.data)`
-- [ ] **S-02** — Corrigir `firestore.rules`: `notificacoes` → adicionar filtro `destinatario_uid == request.auth.uid`
-- [ ] **S-04** — Remover fallback direto de `alert_privado` em `app.js` para não-donos (ou adicionar log LGPD)
-- [ ] **S-09** — Substituir 3 strings hardcoded PT por chamadas `I18n.t()`
+- [x] **S-01** — `firestore.rules` `alert_privado`: `get` só dono + `list:if false`; fallback removido em `app.js`. ✅ 2026-06
+- [x] **S-02** — `firestore.rules` `notificacoes`: filtro por destinatário; `db.criarNotificacao` preenche `destinatario_uid`. ✅ 2026-06
+- [x] **S-04** — Fallback direto eliminado; `getTutorContact` grava `lgpd_access_log`. ✅ 2026-06
+- [x] **S-09** — 3 strings hardcoded substituídas por `I18n.t()`. ✅ 2026-06 (nova lacuna menor: `ai-match.js` 235-237 — backlog)
 
 ### Curto prazo (próxima sprint)
 
-- [ ] **S-03** — Mover `senha_hash` para coleção `senhas_usuarios/{uid}` com `allow: false`
-- [ ] **S-05** — Cloud Function `getTutorContact`: verificar avistamento vinculado antes de revelar contato
-- [ ] **S-06** — Remover `contato_email` do documento público `pets_perdidos`
-- [ ] **S-07** — Persistir rate limiting no `localStorage` (sobrevive reloads)
-- [ ] **S-10** — Internacionalizar mensagem WhatsApp
+- [x] **S-03** — `senhas_usuarios/{uid}` com `if false` + CFs `saveUserPassword`/`verifyUserPassword`. ✅ 2026-06 (script `scripts/migrate-s03-senha-hash.js` p/ docs legados)
+- [x] **S-05** — `getTutorContact` exige avistamento vinculado ou score ≥70% antes de revelar. ✅ 2026-06
+- [x] **S-06** — Doc público só com `contato_email_publico` (opt-in); e-mail completo em `alert_privado`. ✅ 2026-06
+- [x] **S-07** — Rate limiting persistido em `localStorage` (`security.js` 405-420) + rate limit server-side na CF. ✅ 2026-06
+- [x] **S-10** — Mensagem WhatsApp via `I18n.t('details.whatsapp_msg', { name })`. ✅ 2026-06
 
 ### Médio prazo
 
-- [ ] **S-08** — Remover `owner_firebase_uid` de documentos públicos
-- [ ] **S-11** — Unificar verificação `isOwner` no cliente com Firebase Auth UID
-- [ ] Implementar fluxo de revelação mútua de contato para matches ≥ 92%
+- [x] **S-08** — Remover `owner_firebase_uid` de docs públicos. ✅ **Código concluído 2026-07-04** (52/52 testes no emulator): (b) notificações rerouteadas — proximidade e `avistamento_contato` via CFs (`onAvistamentoCreate`/`notifyTutorContact`); `sighter_authorizations` + `linked_pet_owner_firebase_uid` criados server-side; (c) rules com ownership via `alert_privado` (`ownsAlertViaPrivate`, transição aceita campo legado); cliente parou de gravar o campo nos docs públicos. **Pendente em produção (manual):** (a) `backfill --apply` → deploy functions → deploy rules → (e) `strip --apply --i-understand-risk`.
+- [x] **S-11** — `isOwner` no cliente unificado (`owner_uid` OU `owner_firebase_uid`), `app.js` `showPetDetails`. ✅ 2026-06
+- [ ] ~~Fluxo de revelação mútua ≥ 92%~~ — **descontinuado** (decisão 2026-06: threshold único de 70%; ver `ESTADO_ATUAL.md` §2).
 - [ ] Adicionar notificação ao tutor quando alguém acessa seu contato
 - [ ] Dashboard de auditoria LGPD para o tutor (quem acessou, quando)
+- [ ] Confirmação **bilateral** de reunião (North Star) — fechamento atual é unilateral. Fase 2.
 
 ---
 
@@ -490,9 +491,22 @@ A coleção `lgpd_access_log` deve registrar todos os eventos abaixo:
 
 ---
 
+## Achados novos — revisão pré-lançamento (2026-07-04)
+
+| # | Severidade | Componente | Título | Status |
+|---|-----------|------------|--------|--------|
+| N-01 | 🟠 ALTO | `firestore.rules` | `usuarios` listável por qualquer autenticado (limit ≤200) — enumeração de nome/email/telefone (LGPD) | ✅ Corrigido: list em massa só admin; `limit<=1` transitório. Login/cadastro/recuperação via CFs `loginUser`/`checkEmailExists`; get do próprio doc via vínculo `firebase_auth_uids` (`isBoundUser`). **Fechar `limit<=1` → admin-only após deploy das CFs + 1 ciclo.** |
+| N-02 | 🟡 MÉDIO | `firestore.rules` | `notificacoes` create sem validação — spam/phishing interno se passando pelo sistema | ✅ Corrigido: `tipo` restrito à lista permitida, destinatário obrigatório, `mensagem` ≤500 |
+| N-03 | 🔵 BAIXO | `firestore.rules` | `lgpd_access_log` create sem amarrar o ator — poluição do log de auditoria | ✅ Corrigido: `actor_firebase_uid == request.auth.uid` + `tipo` obrigatório |
+| N-04 | 🟠 ALTO | `js/auth.js` | **Regressão S-03:** cadastro ainda gravava `senha_hash` no doc público `usuarios` (comentário defasado "Spark plan") | ✅ Corrigido: hash vai só p/ `senhas_usuarios` via CF; doc público só recebe hash como fallback se a CF estiver indisponível. `changePassword` idem (verifica atual via CF, limpa hash legado do doc) |
+
+Validação: harness `test/rules/` — 43/43 verdes no emulator (2026-07-04).
+
 ## Histórico de Auditorias
 
 | Data | Versão | Auditor | Severidades encontradas |
 |------|--------|---------|------------------------|
 | 2026-02-17 | Pre-audit | SECURITY.md | Baseline |
 | 2026-03-21 | db2ec51 | Análise automatizada | 2 Crítico, 2 Alto, 4 Médio, 3 Baixo |
+| 2026-06-12 | Fase 0 (re-auditoria) | Verificação código real | 9/11 já corrigidos. Pendentes: S-08 (médio, gated), S-11 (corrigido nesta sessão). Threshold/raio: divergências já inexistentes (fonte única `app-config.js`). Ver `ESTADO_ATUAL.md`. |
+| 2026-07-02 | Validação por emulator | Harness `test/rules/` (28 testes) | Matriz de Acesso validada no emulator (S-01/S-02/S-03 verdes). S-11 finalizado no cliente. S-08 confirmado como gated + 2º bloqueio descoberto (endereçamento de notificações depende do campo público). `strip` do S-08 permanece pendente até rerotear notificações. |

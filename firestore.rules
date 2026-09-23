@@ -24,14 +24,50 @@ service cloud.firestore {
       ];
     }
 
-    function canCreateAlert() {
-      return isOwner(request.resource.data)
-        && !request.resource.data.keys().hasAny(hashFields());
+    // [S-08] Ownership derivado do alert_privado (o doc público deixa de
+    // carregar owner_firebase_uid). Custo: +2 reads (exists+get) por
+    // update/delete de docs já "stripados"; docs legados continuam casando
+    // por isOwner() sem custo extra durante a transição.
+    function ownsAlertViaPrivate(collection, alertId) {
+      let pid = collection + '_' + alertId;
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/alert_privado/$(pid))
+        && get(/databases/$(database)/documents/alert_privado/$(pid)).data.owner_firebase_uid == request.auth.uid;
     }
 
-    function canUpdateOwnAlert() {
+    // [S-08] create sem owner_firebase_uid no público: exige owner_uid; se o
+    // campo legado vier (cliente antigo em cache), precisa ser o próprio UID.
+    // Integridade real do ownership: alert_privado (create exige
+    // owner_firebase_uid == auth.uid lá).
+    function canCreateAlert() {
+      return isSignedIn()
+        && request.resource.data.owner_uid is string
+        && request.resource.data.owner_uid.size() > 0
+        && !request.resource.data.keys().hasAny(hashFields())
+        && (!('owner_firebase_uid' in request.resource.data)
+            || request.resource.data.owner_firebase_uid == request.auth.uid);
+    }
+
+    function canUpdateOwnAlert(collection, alertId) {
       let changed = request.resource.data.diff(resource.data).changedKeys();
-      return isOwner(resource.data)
+      return (isOwner(resource.data) || ownsAlertViaPrivate(collection, alertId))
+        && !changed.hasAny(hashFields());
+    }
+
+    // Confirmação BILATERAL de reunião (North Star).
+    // O tutor (dono) marca o pet como 'aguardando_confirmacao' e registra a
+    // contraparte em reuniao.avistador_firebase_uid. APENAS essa contraparte
+    // pode transicionar para 'encontrado'/desfecho 'reuniao_confirmada',
+    // alterando somente os campos de encerramento (nunca dados do alerta).
+    function canConfirmReunion() {
+      let changed = request.resource.data.diff(resource.data).changedKeys();
+      return isSignedIn()
+        && resource.data.status == 'aguardando_confirmacao'
+        && resource.data.reuniao.avistador_firebase_uid == request.auth.uid
+        && request.resource.data.reuniao.confirmado_por_firebase_uid == request.auth.uid
+        && request.resource.data.desfecho == 'reuniao_confirmada'
+        && request.resource.data.status == 'encontrado'
+        && changed.hasOnly(['status', 'desfecho', 'data_encerrado', 'reuniao'])
         && !changed.hasAny(hashFields());
     }
 
@@ -60,25 +96,22 @@ service cloud.firestore {
     match /pets_perdidos/{alertId} {
       allow read: if true;
       allow create: if canCreateAlert();
-      allow update: if canUpdateOwnAlert() || isFirestoreAdmin();
-      allow delete: if isOwner(resource.data) || isFirestoreAdmin();
+      allow update: if canUpdateOwnAlert('pets_perdidos', alertId) || isFirestoreAdmin() || canConfirmReunion();
+      allow delete: if isOwner(resource.data) || ownsAlertViaPrivate('pets_perdidos', alertId) || isFirestoreAdmin();
     }
 
     match /avistamentos/{alertId} {
       allow read: if true;
       allow create: if canCreateAlert();
-      allow update: if canUpdateOwnAlert() || isFirestoreAdmin();
-      allow delete: if isOwner(resource.data) || isFirestoreAdmin();
+      allow update: if canUpdateOwnAlert('avistamentos', alertId) || isFirestoreAdmin();
+      allow delete: if isOwner(resource.data) || ownsAlertViaPrivate('avistamentos', alertId) || isFirestoreAdmin();
     }
 
     // ========================================
     //  COLLECTION PRIVADA (LGPD)
-    //  Acesso direto: owner lê seus próprios dados.
-    //  Acesso cruzado (sem Cloud Function):
-    //    • Tutor lê alert_privado do avistamento se
-    //      linked_pet_owner_firebase_uid == request.auth.uid
-    //    • Avistador lê alert_privado do pet se existir
-    //      sighter_authorizations/{uid}_{petId}
+    //  Somente o dono lê. Contato de terceiros sai apenas pelo backend
+    //  (get-tutor-contact / get-sighter-contact, com lgpd_access_log);
+    //  o UID da contraparte vem de vinculos_avistamento (só UIDs).
     //  Auditoria: S-01 (2026-03-21), revisado plano Spark
     // ========================================
 
@@ -96,6 +129,33 @@ service cloud.firestore {
         resource.data.owner_firebase_uid == request.auth.uid ||
         resource.data.owner_uid == request.auth.uid
       );
+    }
+
+    // Foto cheia fora do doc público (custo — sem Storage no Spark).
+    // ID = '{colecao}_{alertId}', o mesmo do alert_privado: só o dono do
+    // alerta grava. Leitura pública por ID (como o doc público); sem list.
+    match /fotos/{fotoId} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if isSignedIn()
+        && exists(/databases/$(database)/documents/alert_privado/$(fotoId))
+        && get(/databases/$(database)/documents/alert_privado/$(fotoId)).data.owner_firebase_uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['dataUrl', 'created_at'])
+        && request.resource.data.dataUrl is string
+        && request.resource.data.dataUrl.size() <= 200000;
+      allow delete: if isFirestoreAdmin() || (isSignedIn()
+        && get(/databases/$(database)/documents/alert_privado/$(fotoId)).data.owner_firebase_uid == request.auth.uid);
+    }
+
+    // [S-08 leitura] Vínculo avistamento↔pet só com UIDs (sem contato nem
+    // localização). Gravado pelo backend (Admin SDK) no process-avistamento;
+    // o tutor usa para achar a contraparte da confirmação bilateral.
+    match /vinculos_avistamento/{avistamentoId} {
+      allow get: if isSignedIn() && (
+        resource.data.pet_owner_firebase_uid == request.auth.uid ||
+        resource.data.sighter_firebase_uid == request.auth.uid
+      );
+      allow list, create, update, delete: if false;
     }
 
     // ========================================
@@ -118,11 +178,16 @@ service cloud.firestore {
 
     // ========================================
     //  LOG DE AUDITORIA LGPD
-    //  Apenas create — nenhum cliente lê ou altera logs.
+    //  Apenas create, amarrado ao ator autenticado (N-03) — impede
+    //  poluir o log em nome de terceiros. CFs gravam via Admin SDK.
+    //  Nenhum cliente lê ou altera logs.
     // ========================================
 
     match /lgpd_access_log/{docId} {
-      allow create: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.actor_firebase_uid == request.auth.uid
+        && request.resource.data.tipo is string
+        && request.resource.data.tipo.size() <= 60;
       allow read, update, delete: if false;
     }
 
@@ -153,20 +218,25 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
 
+    // Vínculo doc u_xxx ↔ Firebase Auth UID: firebase_auth_uids é preenchido
+    // no cadastro (cliente) e a cada login via CF loginUser (Admin SDK).
+    function isBoundUser(data) {
+      return request.auth.uid in data.get('firebase_auth_uids', []);
+    }
+
     match /usuarios/{uid} {
-      // list: necessário para findByEmail (login/cadastro) e painel admin.
-      // fsList() usa limit 200 por padrão — regra bloqueia queries acima disso para users normais.
-      // Admin (isFirestoreAdmin) lista sem restrição de limite.
-      // Limitação conhecida: sem Cloud Functions (Spark plan) não há como
-      // fazer projeção de campos ou mover senha_hash para collection protegida.
-      allow list: if isSignedIn() && (
-        isFirestoreAdmin() ||
-        request.query.limit <= 200
-      );
-      // get direto por ID: próprio UID ou email do Firebase Auth bate com o doc
+      // list (N-01): bulk listing SOMENTE admin. limit<=1 permanece como
+      // compatibilidade transitória (fsGetUser legado por documentId e
+      // findByEmail pré-deploy das CFs loginUser/checkEmailExists).
+      // Antes: limit<=200 — qualquer autenticado enumerava nome/email/telefone
+      // de toda a base (LGPD). Fechar para admin-only após deploy das CFs.
+      allow list: if isFirestoreAdmin() || (isSignedIn() && request.query.limit <= 1);
+      // get direto por ID: próprio UID, email do Firebase Auth bate com o doc,
+      // ou Firebase Auth UID vinculado (firebase_auth_uids)
       allow get: if isSignedIn() && (
         uid == request.auth.uid ||
         isUserOwner(resource.data.email) ||
+        isBoundUser(resource.data) ||
         isFirestoreAdmin()
       );
       // create: qualquer auth válida (app garante unicidade de email)
@@ -176,7 +246,7 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         isFirestoreAdmin() ||
         (
-          (uid == request.auth.uid || isUserOwner(resource.data.email)) &&
+          (uid == request.auth.uid || isUserOwner(resource.data.email) || isBoundUser(resource.data)) &&
           !request.resource.data.diff(resource.data).changedKeys().hasAny(protectedUserFields())
         )
       );
@@ -186,8 +256,10 @@ service cloud.firestore {
     // ========================================
     //  NOTIFICAÇÕES
     //  Leitura/alteração restritas ao destinatário.
-    //  Escrita aberta para autenticados (sistema gera notificações).
-    //  Auditoria: S-02 (2026-03-21)
+    //  Criação validada (N-02): tipo permitido + limites de tamanho —
+    //  evita spam/phishing interno se passando pelo sistema.
+    //  CFs criam notificações via Admin SDK (não passam por aqui).
+    //  Auditoria: S-02 (2026-03-21), N-02 (2026-07-04)
     // ========================================
 
     match /notificacoes/{docId} {
@@ -195,7 +267,13 @@ service cloud.firestore {
         resource.data.destinatario_firebase_uid == request.auth.uid ||
         resource.data.destinatario_uid == request.auth.uid
       );
-      allow create: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.tipo in ['match_ia', 'avistamento_contato', 'confirmar_reuniao', 'reuniao_confirmada']
+        && (request.resource.data.destinatario_uid is string
+            || request.resource.data.destinatario_firebase_uid is string)
+        && (!('mensagem' in request.resource.data)
+            || (request.resource.data.mensagem is string
+                && request.resource.data.mensagem.size() <= 500));
       allow update, delete: if isSignedIn() && (
         resource.data.destinatario_firebase_uid == request.auth.uid ||
         resource.data.destinatario_uid == request.auth.uid

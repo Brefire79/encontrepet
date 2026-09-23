@@ -19,7 +19,8 @@ const DB = (() => {
     NOTIFICACOES: 'notificacoes',
     USUARIOS: 'usuarios',
     ALERT_PRIVADO: 'alert_privado',
-    CONVERSAS: 'conversas'
+    CONVERSAS: 'conversas',
+    FOTOS: 'fotos'
   };
 
   const COLLECTIONS = TABLES;
@@ -415,6 +416,9 @@ const DB = (() => {
       porte: data.porte || '',
       sexo: data.sexo || '',
       foto_comprimida: data.foto_comprimida || '',
+      // Thumbnail pequeno (~10KB) fica no doc para o feed; a imagem cheia vai
+      // pro Storage e o base64 grande é removido do doc após o upload (custo).
+      foto_thumb: data.foto_thumb || '',
       foto_hash: data.foto_hash || '',
       embedding: data.embedding || null,
       // Apenas localização pública (ofuscada)
@@ -446,13 +450,14 @@ const DB = (() => {
       suspiciousFlag: data.suspiciousFlag || false,
       suspiciousReason: Security.sanitize(data.suspiciousReason || ''),
       flaggedByUid: data.flaggedByUid || '',
-      // [FIX C12] Usa ensuredFirebaseUid (garantido via waitForAuthUID) como fallback
-      owner_firebase_uid: data.owner_firebase_uid || ensuredFirebaseUid || FirebaseConfig.getFirebaseUID?.() || '',
+      // [S-08] owner_firebase_uid NÃO vai mais no doc público — vive apenas no
+      // alert_privado (savePrivateAlertData), fonte de ownership das rules.
       similarCandidates: Array.isArray(data.similarCandidates) ? data.similarCandidates.slice(0, 5) : [],
       owner_uid: Auth.getUID()
     };
 
     const result = await create(TABLES.PETS, record);
+    _feedCache.pets.at = 0; // novo alerta aparece no próximo load do feed
 
     // Salvar dados PRIVADOS em collection separada (LGPD)
     if (result?.id) {
@@ -467,30 +472,9 @@ const DB = (() => {
       });
     }
 
-    // Upload Storage em background (fire-and-forget) — não bloqueia o retorno
-    if (result?.id && data.foto_comprimida && FirebaseConfig.isStorageReady?.()) {
-      const uploadId = result.id;
-      const uploadOwner = record.owner_uid;
-      (async () => {
-        try {
-          const uid = FirebaseConfig.getFirebaseUID();
-          if (!uid) { console.warn('[DB] Upload Storage ignorado — sem Firebase Auth'); return; }
-          const upload = await FirebaseConfig.uploadAlertImage({
-            alertId: uploadId,
-            dataUrl: data.foto_comprimida,
-            collection: TABLES.PETS,
-            ownerUid: uploadOwner
-          });
-          await update(TABLES.PETS, uploadId, {
-            imageStoragePath: upload.path,
-            imageStorageUrl: upload.downloadURL,
-            imageHashProcessed: false
-          });
-          console.log('[DB] Upload Storage pet_perdido concluído em background');
-        } catch (err) {
-          console.warn('[DB] Upload Storage pet_perdido falhou (background):', err.message);
-        }
-      })();
+    // Foto cheia sai do doc público em background (custo — não bloqueia o retorno)
+    if (result?.id && data.foto_comprimida) {
+      offloadFullPhoto(TABLES.PETS, result.id, data.foto_comprimida, record.owner_uid);
     }
 
     saveMyReport(result.id, 'pet_perdido');
@@ -516,6 +500,27 @@ const DB = (() => {
     }
   }
 
+  /**
+   * Grava um evento na coleção de auditoria LGPD (lgpd_access_log).
+   * Rules: create liberado para autenticados; ninguém lê pelo cliente.
+   * Best-effort — nunca deve bloquear o fluxo principal.
+   */
+  async function registrarLogLGPD(tipo, dados = {}) {
+    try {
+      if (!useFirestore) return;
+      const db = FirebaseConfig.getDB();
+      await db.collection('lgpd_access_log').add({
+        tipo,
+        ...dados,
+        actor_firebase_uid: FirebaseConfig.getFirebaseUID?.() || '',
+        actor_uid: Auth.getUID() || '',
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('[DB] registrarLogLGPD falhou:', e.message);
+    }
+  }
+
   async function marcarEncontrado(petId, feedback = {}) {
     const desfecho = feedback.desfecho || 'encontrado_vivo';
     const statusMap = {
@@ -523,16 +528,117 @@ const DB = (() => {
       'encontrado_morto': 'encerrado_falecido',
       'desistencia': 'encerrado_desistencia'
     };
-    const updateData = {
-      status: statusMap[desfecho] || 'encontrado',
-      desfecho: desfecho,
-      data_encerrado: new Date().toISOString(),
+
+    const baseFeedback = {
       feedback_como_encontrou: feedback.como || '',
       feedback_app_ajudou: feedback.appAjudou || false,
       feedback_mensagem: Security.sanitize(feedback.mensagem || ''),
       feedback_nota: feedback.nota || 0
     };
-    return await update(TABLES.PETS, petId, updateData);
+
+    // Confirmação BILATERAL (North Star): quando o reencontro foi com uma
+    // contraparte conhecida (avistador de um avistamento vinculado), o alerta
+    // entra em 'aguardando_confirmacao' e a contraparte confirma para virar
+    // 'reuniao_confirmada'. Sem contraparte → fluxo unilateral (como antes).
+    const myFbUid = FirebaseConfig.getFirebaseUID?.() || '';
+    const temContraparte = desfecho === 'encontrado_vivo'
+      && !!feedback.avistadorFirebaseUid
+      && feedback.avistadorFirebaseUid !== myFbUid;
+
+    if (temContraparte) {
+      const avistamentoId = feedback.avistamentoId || '';
+      const reuniao = {
+        marcado_por_uid: Auth.getUID() || '',
+        marcado_por_firebase_uid: myFbUid,
+        marcado_em: new Date().toISOString(),
+        avistamento_id: avistamentoId,
+        conversa_id: avistamentoId ? `${petId}_${avistamentoId}` : '',
+        avistador_uid: feedback.avistadorUid || '',
+        avistador_firebase_uid: feedback.avistadorFirebaseUid,
+        confirmado_por_uid: '',
+        confirmado_por_firebase_uid: '',
+        confirmado_em: '',
+        confirmacao_unilateral: false
+      };
+      const res = await update(TABLES.PETS, petId, {
+        status: 'aguardando_confirmacao',
+        desfecho: 'encontrado_vivo',
+        reuniao,
+        ...baseFeedback
+      });
+      // Notifica a contraparte (avistador) para confirmar o reencontro.
+      try {
+        await criarNotificacao({
+          tipo: 'confirmar_reuniao',
+          pet_perdido_id: petId,
+          pet_nome: feedback.petNome || '',
+          avistamento_id: avistamentoId,
+          conversaId: reuniao.conversa_id,
+          lida: false,
+          destinatario_uid: feedback.avistadorUid || '',
+          destinatario_firebase_uid: feedback.avistadorFirebaseUid,
+          data: new Date().toISOString()
+        });
+      } catch (e) { console.warn('[DB] notif confirmar_reuniao falhou:', e.message); }
+      return res;
+    }
+
+    // Fluxo unilateral (sem contraparte conhecida) — comportamento histórico.
+    const res = await update(TABLES.PETS, petId, {
+      status: statusMap[desfecho] || 'encontrado',
+      desfecho: desfecho,
+      data_encerrado: new Date().toISOString(),
+      ...baseFeedback
+    });
+    if (desfecho === 'encontrado_vivo') {
+      registrarLogLGPD('pet_encontrado', { petId, sem_contraparte: true });
+    }
+    return res;
+  }
+
+  /**
+   * A contraparte (avistador designado em reuniao.avistador_firebase_uid)
+   * confirma que o reencontro aconteceu → status vira 'reuniao_confirmada'
+   * (alimenta a North Star). Rules: canConfirmReunion permite a escrita cruzada
+   * apenas do avistador designado e só dos campos de encerramento.
+   */
+  async function confirmarReuniao(petId) {
+    const pet = await get(TABLES.PETS, petId);
+    if (!pet) throw new Error('Pet não encontrado.');
+    if (pet.status !== 'aguardando_confirmacao') {
+      throw new Error('Este reencontro não está aguardando confirmação.');
+    }
+    const myFbUid = FirebaseConfig.getFirebaseUID?.() || '';
+    const reuniao = { ...(pet.reuniao || {}) };
+    reuniao.confirmado_por_uid = Auth.getUID() || '';
+    reuniao.confirmado_por_firebase_uid = myFbUid;
+    reuniao.confirmado_em = new Date().toISOString();
+    reuniao.confirmacao_unilateral = false;
+
+    const res = await update(TABLES.PETS, petId, {
+      status: 'encontrado',
+      desfecho: 'reuniao_confirmada',
+      data_encerrado: new Date().toISOString(),
+      reuniao
+    });
+    registrarLogLGPD('pet_encontrado', {
+      petId,
+      avistamentoId: reuniao.avistamento_id || '',
+      bilateral: true
+    });
+    // Notifica o tutor que a reunião foi confirmada.
+    try {
+      await criarNotificacao({
+        tipo: 'reuniao_confirmada',
+        pet_perdido_id: petId,
+        pet_nome: pet.nome_pet || '',
+        lida: false,
+        destinatario_uid: reuniao.marcado_por_uid || pet.owner_uid || '',
+        destinatario_firebase_uid: reuniao.marcado_por_firebase_uid || pet.owner_firebase_uid || '',
+        data: new Date().toISOString()
+      });
+    } catch (e) { console.warn('[DB] notif reuniao_confirmada falhou:', e.message); }
+    return res;
   }
 
   /**
@@ -559,7 +665,29 @@ const DB = (() => {
    * para evitar necessidade de índice composto.
    * Ordenação feita em JS pelo fsList().
    */
-  async function listarPetsAtivos(page = 1) {
+  // ============================================================
+  //  CACHE TTL DO FEED (custo)
+  //  O feed, o matching de IA e o polling de novidades pedem a MESMA
+  //  lista — compartilham um único get() por até FEED_CACHE_TTL_MS,
+  //  em vez de cada chamador pagar os reads de novo.
+  // ============================================================
+  const FEED_CACHE_TTL_MS = 60 * 1000;
+  const _feedCache = { pets: { at: 0, promise: null }, avist: { at: 0, promise: null } };
+
+  function cachedFeedFetch(slot, fetcher, force) {
+    const c = _feedCache[slot];
+    const now = Date.now();
+    if (!force && c.promise && (now - c.at) < FEED_CACHE_TTL_MS) return c.promise;
+    c.at = now;
+    c.promise = fetcher().catch(err => { c.at = 0; c.promise = null; throw err; });
+    return c.promise;
+  }
+
+  async function listarPetsAtivos(opts = {}) {
+    return cachedFeedFetch('pets', () => _fetchPetsAtivos(), opts.force === true);
+  }
+
+  async function _fetchPetsAtivos() {
     if (useFirestore) {
       try {
         return await fsList(TABLES.PETS, {
@@ -614,6 +742,8 @@ const DB = (() => {
       tipo_animal: data.tipo_animal || 'cao',
       subtipo_animal: Security.sanitize(data.subtipo_animal || ''),
       foto_comprimida: data.foto_comprimida || '',
+      // Thumbnail pequeno para o feed; base64 grande sai do doc após upload
+      foto_thumb: data.foto_thumb || '',
       foto_hash: data.foto_hash || '',
       embedding: data.embedding || null,
       // Apenas localização pública (ofuscada)
@@ -644,13 +774,13 @@ const DB = (() => {
       suspiciousFlag: data.suspiciousFlag || false,
       suspiciousReason: Security.sanitize(data.suspiciousReason || ''),
       flaggedByUid: data.flaggedByUid || '',
-      // [FIX C12] Usa ensuredFirebaseUid (garantido via waitForAuthUID) como fallback
-      owner_firebase_uid: data.owner_firebase_uid || ensuredFirebaseUid || FirebaseConfig.getFirebaseUID?.() || '',
+      // [S-08] owner_firebase_uid só no alert_privado (ownership das rules)
       similarCandidates: Array.isArray(data.similarCandidates) ? data.similarCandidates.slice(0, 5) : [],
       owner_uid: Auth.getUID()
     };
 
     const result = await create(TABLES.AVISTAMENTOS, record);
+    _feedCache.avist.at = 0; // novo avistamento aparece no próximo load
 
     // Salvar dados PRIVADOS em collection separada (LGPD)
     if (result?.id) {
@@ -688,38 +818,87 @@ const DB = (() => {
       }
     }
 
-    // Upload Storage em background (fire-and-forget) — não bloqueia o retorno
-    if (result?.id && data.foto_comprimida && FirebaseConfig.isStorageReady?.()) {
-      const uploadId = result.id;
-      const uploadOwner = record.owner_uid;
-      (async () => {
-        try {
-          const uid = FirebaseConfig.getFirebaseUID();
-          if (!uid) { console.warn('[DB] Upload Storage avistamento ignorado — sem Firebase Auth'); return; }
-          const upload = await FirebaseConfig.uploadAlertImage({
-            alertId: uploadId,
-            dataUrl: data.foto_comprimida,
-            collection: TABLES.AVISTAMENTOS,
-            ownerUid: uploadOwner
-          });
-          await update(TABLES.AVISTAMENTOS, uploadId, {
-            imageStoragePath: upload.path,
-            imageStorageUrl: upload.downloadURL,
-            imageHashProcessed: false
-          });
-          console.log('[DB] Upload Storage avistamento concluído em background');
-        } catch (err) {
-          console.warn('[DB] Upload Storage avistamento falhou (background):', err.message);
-        }
-      })();
+    // Foto cheia sai do doc público em background (custo — não bloqueia o retorno)
+    if (result?.id && data.foto_comprimida) {
+      offloadFullPhoto(TABLES.AVISTAMENTOS, result.id, data.foto_comprimida, record.owner_uid);
     }
 
     saveMyReport(result.id, 'avistamento');
+
+    // Substituto do trigger onAvistamentoCreated (sem Cloud Functions):
+    // o backend Netlify processa notificações de match, conversa e vínculos
+    // LGPD. Fire-and-forget com 1 retry; a scheduled sweep-avistamentos
+    // cobre quem fechar o app antes do retry. Idempotente no servidor.
+    if (result?.id) {
+      triggerProcessAvistamento(result.id);
+    }
     return result;
   }
 
-  async function listarAvistamentos(page = 1) {
-    return await list(TABLES.AVISTAMENTOS, { limit: 50 });
+  // ====== FOTO CHEIA FORA DO DOC PÚBLICO (custo) ======
+  // O feed baixa o doc público inteiro; com o base64 (≤120KB) dentro dele a
+  // cota grátis de egress acabava com poucas dezenas de aberturas/dia. O doc
+  // público fica só com foto_thumb (~10KB) e a foto cheia vai para:
+  //   • Firebase Storage, se AppConfig.USE_FIREBASE_STORAGE (exige Blaze);
+  //   • senão fotos/{colecao}_{id} — mesmo ID do alert_privado, que as rules
+  //     usam para amarrar a gravação ao dono. Lida só no detalhe (+1 read).
+  // Se tudo falhar, o base64 fica no doc público (comportamento antigo).
+  function offloadFullPhoto(collection, id, dataUrl, ownerUid) {
+    if (!useFirestore) return;
+    (async () => {
+      try {
+        let patch = null;
+        if (AppConfig.USE_FIREBASE_STORAGE && FirebaseConfig.isStorageReady?.() && FirebaseConfig.getFirebaseUID()) {
+          try {
+            const upload = await FirebaseConfig.uploadAlertImage({ alertId: id, dataUrl, collection, ownerUid });
+            patch = { imageStoragePath: upload.path, imageStorageUrl: upload.downloadURL, imageHashProcessed: false };
+          } catch (err) {
+            console.warn('[DB] Upload Storage falhou, usando fotos/:', err.message);
+          }
+        }
+        if (!patch) {
+          await FirebaseConfig.getDB().collection(TABLES.FOTOS).doc(`${collection}_${id}`)
+            .set({ dataUrl, created_at: new Date().toISOString() });
+          patch = { foto_full_doc: true };
+        }
+        await update(collection, id, { ...patch, foto_comprimida: '' });
+      } catch (err) {
+        console.warn('[DB] offloadFullPhoto falhou (base64 permanece no doc):', err.message);
+      }
+    })();
+  }
+
+  async function getFullPhoto(collection, id) {
+    if (!useFirestore || !id) return '';
+    try {
+      const snap = await FirebaseConfig.getDB().collection(TABLES.FOTOS).doc(`${collection}_${id}`).get();
+      return snap.exists ? (snap.data()?.dataUrl || '') : '';
+    } catch (err) {
+      console.warn('[DB] getFullPhoto falhou:', err.message);
+      return '';
+    }
+  }
+
+  function triggerProcessAvistamento(avistamentoId, attempt = 1) {
+    const MAX_ATTEMPTS = 2;
+    (async () => {
+      try {
+        const functions = FirebaseConfig.getFunctions?.();
+        if (!functions?.httpsCallable) return;
+        await functions.httpsCallable('processAvistamento')({ avistamentoId });
+        console.log('[DB] Avistamento processado pelo backend:', avistamentoId);
+      } catch (err) {
+        console.warn(`[DB] processAvistamento falhou (tentativa ${attempt}):`, err.message);
+        if (attempt < MAX_ATTEMPTS) {
+          setTimeout(() => triggerProcessAvistamento(avistamentoId, attempt + 1), 5000);
+        }
+        // Sem pânico: sweep-avistamentos (6/6h) reprocessa pendentes.
+      }
+    })();
+  }
+
+  async function listarAvistamentos(opts = {}) {
+    return cachedFeedFetch('avist', () => list(TABLES.AVISTAMENTOS, { limit: 50 }), opts.force === true);
   }
 
   async function listRecentAlertsForSimilarity(tipoAnimal, recentDays = 30, limitPerCollection = 250) {
@@ -1166,37 +1345,29 @@ const DB = (() => {
    * @returns {Promise<number>}
    */
   async function countUsersInRadius(centerLat, centerLng, radiusKm = 3) {
+    if (!centerLat || !centerLng) return 0;
+
+    // A Home chama isto a cada abertura: cache de 1h por região (~1 km) evita
+    // invocar o backend repetidamente (cota Netlify/Firestore — custo zero).
+    const cacheKey = `ep_reach_${centerLat.toFixed(2)}_${centerLng.toFixed(2)}_${radiusKm}`;
     try {
-      if (!centerLat || !centerLng) return 0;
-      // [FIX C13] Reduzido limit de 1000 para 200 — a regra Firestore de /usuarios
-      // bloqueia list com limit > 200 para nao-admins (request.query.limit <= 200).
-      // Limitacao: se houver mais de 200 usuarios cadastrados, a contagem fica
-      // subestimada. Quando o app crescer, considerar paginacao ou Cloud Function
-      // dedicada (admin SDK) para count global.
-      const usersResult = await list(TABLES.USUARIOS, { limit: 200 });
-      const allUsers = (usersResult.data || []).filter(u => !u.is_anonymous);
-      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      const cached = JSON.parse(sessionStorage.getItem(cacheKey) || 'null');
+      if (cached && Date.now() - cached.t < 60 * 60 * 1000) return cached.count;
+    } catch { /* storage indisponível: segue sem cache */ }
 
-      let count = 0;
-      for (const user of allUsers) {
-        if (!user.latitude && !user.location?.lat) continue;
-        const uLat = user.latitude || user.location?.lat || 0;
-        const uLng = user.longitude || user.location?.lng || 0;
-        if (!uLat || !uLng) continue;
-
-        // Verificar atividade recente (se campo existir)
-        if (user.lastActive) {
-          const lastActive = typeof user.lastActive === 'number' ? user.lastActive :
-            (user.lastActive?.toMillis ? user.lastActive.toMillis() : new Date(user.lastActive).getTime());
-          if (lastActive < thirtyDaysAgo) continue;
-        }
-
-        const distance = GeoUtils.calculateDistance(centerLat, centerLng, uLat, uLng);
-        if (distance <= radiusKm) count++;
-      }
+    // Só o backend (Admin SDK) conta: a N-01 fechou a listagem de usuarios no
+    // cliente, então o antigo fallback local sempre falhava por permissão.
+    try {
+      const functions = FirebaseConfig.getFunctions?.();
+      if (!functions?.httpsCallable) return 0;
+      const res = await functions.httpsCallable('countUsersInRadius')({
+        lat: centerLat, lng: centerLng, radiusKm
+      });
+      const count = typeof res?.data?.count === 'number' ? res.data.count : 0;
+      try { sessionStorage.setItem(cacheKey, JSON.stringify({ count, t: Date.now() })); } catch {}
       return count;
     } catch (err) {
-      console.warn('[DB] countUsersInRadius error:', err);
+      console.warn('[DB] countUsersInRadius backend indisponível:', err.message);
       return 0;
     }
   }
@@ -1397,6 +1568,29 @@ const DB = (() => {
         const tB = b.created_at?.toMillis?.() || new Date(b.data_avistamento || 0).getTime();
         return tB - tA;
       });
+
+      // [S-08 leitura] O doc público do avistamento não carrega mais
+      // owner_firebase_uid (strip). A confirmação bilateral precisa desse UID
+      // (contraparte da reunião). O backend (process-avistamento) grava
+      // vinculos_avistamento/{avistamentoId} só com os UIDs — sem telefone nem
+      // localização do avistador (o alert_privado continua só do dono). Só
+      // busca quem estiver faltando e só roda no fluxo raro de fechamento.
+      const faltandoUid = results.filter(r => !r.owner_firebase_uid);
+      if (faltandoUid.length > 0) {
+        await Promise.all(faltandoUid.map(async (sighting) => {
+          try {
+            const vinc = await db.collection('vinculos_avistamento').doc(sighting.id).get();
+            if (vinc.exists) {
+              const v = vinc.data() || {};
+              if (v.sighter_firebase_uid) sighting.owner_firebase_uid = v.sighter_firebase_uid;
+              if (!sighting.owner_uid && v.sighter_owner_uid) sighting.owner_uid = v.sighter_owner_uid;
+            }
+          } catch (e) {
+            // Sem permissão / avistamento ainda não processado: contraparte não elegível.
+          }
+        }));
+      }
+
       return results;
     } catch (err) {
       console.error('[DB] getLinkedSightings error:', err);
@@ -1404,44 +1598,60 @@ const DB = (() => {
     }
   }
 
+  // ============================================================
+  //  POLLING DO FEED (custo — substitui os onSnapshot de 200 docs)
+  //  O feed não exige tempo real: um poll periódico via cache TTL
+  //  compartilhado detecta novidades (som/contadores) sem manter dois
+  //  listeners permanentes. Pausa com a aba oculta e revalida ao voltar.
+  //  Realtime permanece apenas em notificações/chat/doc de detalhe.
+  // ============================================================
+  const FEED_POLL_MS = 5 * 60 * 1000;
+
+  function pollFeed(fetcher, onChange) {
+    let stopped = false;
+    let timer = null;
+
+    const schedule = () => {
+      if (stopped) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (document.hidden) { schedule(); return; }
+        tick(true);
+      }, FEED_POLL_MS);
+    };
+
+    const tick = async (force) => {
+      if (stopped) return;
+      try {
+        const result = await fetcher(force);
+        if (!stopped) onChange(result.data || []);
+      } catch (err) {
+        console.warn('[DB] pollFeed error:', err.message);
+      }
+      schedule();
+    };
+
+    const onVisible = () => { if (!document.hidden && !stopped) tick(false); };
+    document.addEventListener('visibilitychange', onVisible);
+
+    tick(false);
+
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }
+
   function watchPetsAtivos(onChange) {
-    if (!useFirestore) return () => {};
-    try {
-      const db = FirebaseConfig.getDB();
-      // [FIX M6] Adicionado .limit(200) para evitar memory bomb conforme a
-      // colecao cresce. Antes baixava TODOS os ativos a cada update.
-      const unsubscribe = db.collection(TABLES.PETS)
-        .where('status', '==', 'ativo')
-        .limit(200)
-        .onSnapshot(
-          (snapshot) => {
-            const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            onChange(docs);
-          },
-          (err) => console.error('[DB] watchPetsAtivos error:', err)
-        );
-      return unsubscribe;
-    } catch (err) {
-      console.error('[DB] watchPetsAtivos init error:', err);
-      return () => {};
-    }
+    return pollFeed(
+      (force) => listarPetsAtivos({ force }),
+      (docs) => onChange(docs.filter(p => p.status === 'ativo'))
+    );
   }
 
   function watchAvistamentos(onChange) {
-    if (!useFirestore) return () => {};
-    try {
-      const db = FirebaseConfig.getDB();
-      const unsubscribe = db.collection(TABLES.AVISTAMENTOS)
-        .limit(200)
-        .onSnapshot(
-          (snapshot) => onChange(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
-          (err) => console.error('[DB] watchAvistamentos error:', err)
-        );
-      return unsubscribe;
-    } catch (err) {
-      console.error('[DB] watchAvistamentos init error:', err);
-      return () => {};
-    }
+    return pollFeed((force) => listarAvistamentos({ force }), onChange);
   }
 
   // API pública
@@ -1453,6 +1663,7 @@ const DB = (() => {
     reportarPetPerdido,
     completarCadastro,
     marcarEncontrado,
+    confirmarReuniao,
     reabrirReporte,
     countUsersInRadius,
     listarPetsAtivos,
@@ -1479,6 +1690,7 @@ const DB = (() => {
     watchPetsAtivos,
     watchAvistamentos,
     getLinkedSightings,
+    getFullPhoto,
     createSighterAuthorization,
     processSyncQueue,
     patchPrivateAlertPhone

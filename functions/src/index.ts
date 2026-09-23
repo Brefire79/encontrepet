@@ -1,6 +1,7 @@
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as logger from 'firebase-functions/logger';
 import * as admin from 'firebase-admin';
 import sharp from 'sharp';
@@ -48,6 +49,79 @@ function buildWhatsAppLink(phone: string): string {
   const clean = phone.replace(/\D/g, '');
   const number = clean.startsWith('55') ? clean : `55${clean}`;
   return `https://wa.me/${number}`;
+}
+
+// Raios de busca por espécie — espelha js/app-config.js SEARCH_RADIUS_KM
+// (server-side; manter em sincronia com o app-config, fonte única da UI).
+const SEARCH_RADIUS_KM: Record<string, number> = { cao: 5, gato: 0.8, outro: 3 };
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// [S-08] Notificação de proximidade (avistamento SEM vínculo a pet): antes era
+// criada pelo cliente lendo pet.owner_firebase_uid do doc público. Com o campo
+// migrado para alert_privado, só o Admin SDK consegue endereçar o tutor.
+async function notifyNearbyTutors(
+  db: admin.firestore.Firestore,
+  avistamento: FirebaseFirestore.DocumentData,
+  avistamentoId: string,
+  avistadorPrivateData: FirebaseFirestore.DocumentData,
+  timestamp: FirebaseFirestore.FieldValue
+): Promise<void> {
+  try {
+    const lat = avistadorPrivateData.latitude_privada || avistamento.latitude_publica || 0;
+    const lng = avistadorPrivateData.longitude_privada || avistamento.longitude_publica || 0;
+    if (!lat || !lng) return;
+
+    const tipo = avistamento.tipo_animal || 'outro';
+    const raioKm = SEARCH_RADIUS_KM[tipo] ?? SEARCH_RADIUS_KM.outro;
+
+    const petsSnap = await db.collection('pets_perdidos')
+      .where('status', '==', 'ativo')
+      .limit(100)
+      .get();
+
+    const proximos = petsSnap.docs.filter((d) => {
+      const p = d.data();
+      if (p.tipo_animal && p.tipo_animal !== tipo) return false;
+      const pLat = p.latitude_publica || p.latitude || 0;
+      const pLng = p.longitude_publica || p.longitude || 0;
+      if (!pLat || !pLng) return false;
+      return haversineKm(lat, lng, pLat, pLng) <= raioKm;
+    }).slice(0, 5);
+
+    const tipoLabel = tipo === 'cao' ? 'cão' : tipo === 'gato' ? 'gato' : 'animal';
+
+    for (const petDoc of proximos) {
+      const p = petDoc.data();
+      let tutorUid = p.owner_firebase_uid || '';
+      if (!tutorUid) {
+        const priv = await db.collection('alert_privado').doc(`pets_perdidos_${petDoc.id}`).get();
+        tutorUid = priv.exists ? (priv.data()?.owner_firebase_uid || '') : '';
+      }
+      if (!tutorUid && !p.owner_uid) continue;
+      await db.collection('notificacoes').add({
+        tipo: 'match_ia',
+        pet_perdido_id: petDoc.id,
+        avistamento_id: avistamentoId,
+        mensagem: `📍 Um avistamento de ${tipoLabel} foi registrado a menos de ${raioKm}km do local de perda do seu pet.`,
+        similaridade: 0,
+        lida: false,
+        destinatario_firebase_uid: tutorUid,
+        destinatario_uid: p.owner_uid || '',
+        data: new Date().toISOString(),
+        timestamp
+      });
+    }
+  } catch (e) {
+    logger.warn('notifyNearbyTutors falhou (não-fatal).', { avistamentoId });
+  }
 }
 
 // ============================================================
@@ -352,8 +426,14 @@ export const onAvistamentoCreated = onDocumentCreated(
     const petId = avistamento.pet_perdido_id || avistamento.matchedLostPetId || '';
     const rawScore = avistamento.match_score ?? avistamento.matchedScore ?? avistamento.match_percentual ?? 0;
     const matchScore = typeof rawScore === 'number' ? rawScore : Number(rawScore) || 0;
-    const avistadorUid = avistamento.owner_firebase_uid || '';
-    const avistadorOwnerUid = avistamento.owner_uid || '';
+
+    // [S-08] owner_firebase_uid sai dos docs públicos — o alert_privado do
+    // avistamento é a fonte canônica do UID do avistador (campo público é
+    // apenas fallback de transição, até o strip).
+    const avistadorPrivateDocId = `avistamentos_${avistamentoId}`;
+    const avistadorPrivateData = await waitForPrivateAlertData(avistadorPrivateDocId);
+    const avistadorUid = avistamento.owner_firebase_uid || avistadorPrivateData.owner_firebase_uid || '';
+    const avistadorOwnerUid = avistamento.owner_uid || avistadorPrivateData.owner_uid || '';
 
     if (!petId) {
       await db.collection('lgpd_access_log').add({
@@ -365,6 +445,9 @@ export const onAvistamentoCreated = onDocumentCreated(
         threshold: MATCH_THRESHOLD,
         timestamp
       });
+      // [S-08] Notificação de proximidade movida do cliente para cá: o cliente
+      // não conhece mais o owner_firebase_uid dos tutores (campo privado).
+      await notifyNearbyTutors(db, avistamento, avistamentoId, avistadorPrivateData, timestamp);
       return;
     }
 
@@ -372,14 +455,35 @@ export const onAvistamentoCreated = onDocumentCreated(
     if (!petDoc.exists) return;
     const pet = petDoc.data() || {};
 
-    const tutorUid = pet.owner_firebase_uid || pet.destinatario_firebase_uid || '';
-    const tutorOwnerUid = pet.owner_uid || '';
-    const petNome = pet.nome || pet.nome_pet || 'seu pet';
-
     const tutorPrivateDocId = `pets_perdidos_${petId}`;
     const tutorPrivateData = await waitForPrivateAlertData(tutorPrivateDocId, 1);
-    const avistadorPrivateDocId = `avistamentos_${avistamentoId}`;
-    const avistadorPrivateData = await waitForPrivateAlertData(avistadorPrivateDocId);
+
+    // [S-08] UID do tutor: alert_privado é a fonte canônica; campo público é
+    // fallback de transição.
+    const tutorUid = pet.owner_firebase_uid || pet.destinatario_firebase_uid
+      || tutorPrivateData.owner_firebase_uid || '';
+    const tutorOwnerUid = pet.owner_uid || tutorPrivateData.owner_uid || '';
+    const petNome = pet.nome || pet.nome_pet || 'seu pet';
+
+    // [S-08] Vínculos que o cliente criava lendo o campo público, agora
+    // garantidos server-side: autorização do avistador → dados privados do pet
+    // e linked_pet_owner_firebase_uid no alert_privado do avistamento.
+    if (avistadorUid && tutorUid) {
+      try {
+        await db.collection('sighter_authorizations').doc(`${avistadorUid}_${petId}`).set({
+          sighter_firebase_uid: avistadorUid,
+          pet_id: petId,
+          pet_owner_firebase_uid: tutorUid,
+          sighting_id: avistamentoId,
+          created_at: timestamp
+        }, { merge: true });
+        await db.collection('alert_privado').doc(avistadorPrivateDocId).set({
+          linked_pet_owner_firebase_uid: tutorUid
+        }, { merge: true });
+      } catch (e) {
+        logger.warn('Falha ao criar vínculo avistador↔pet (não-fatal).', { petId, avistamentoId });
+      }
+    }
 
     const tutorTelefone = tutorPrivateData.contato_telefone || pet.contato_telefone || pet.telefone_publico || '';
     const tutorEmail = tutorPrivateData.contato_email || pet.contato_email || pet.contato_email_publico || '';
@@ -837,6 +941,212 @@ export const verifyUserPassword = onCall(
 );
 
 // ============================================================
+//  loginUser — login por email sem listar a colecao usuarios (N-01)
+//  Substitui o findByEmail client-side (que exigia allow list aberto
+//  em usuarios e permitia enumerar nome/email/telefone de todos).
+//  Retorna o perfil APENAS com credencial valida:
+//    - senha verificada contra senhas_usuarios (ou senha_hash legado), OU
+//    - request.auth.token.email igual ao email pedido (Firebase Auth
+//      ja autenticou este usuario por email/senha).
+//  senha_hash nunca sai na resposta.
+// ============================================================
+
+const emailLookupRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkEmailLookupRateLimit(key: string, max = 10): void {
+  const now = Date.now();
+  const entry = emailLookupRateLimitMap.get(key);
+  if (!entry || now > entry.resetAt) {
+    emailLookupRateLimitMap.set(key, { count: 1, resetAt: now + 60_000 });
+    return;
+  }
+  entry.count++;
+  if (entry.count > max) {
+    throw new HttpsError('resource-exhausted', 'Muitas tentativas. Aguarde 1 minuto.');
+  }
+}
+
+async function findUserDocByEmail(email: string) {
+  const db = admin.firestore();
+  const snap = await db.collection('usuarios')
+    .where('email', '==', email)
+    .limit(1)
+    .get();
+  return snap.empty ? null : snap.docs[0];
+}
+
+function verifySha256SaltHash(password: string, storedHash: string, nodeCrypto: typeof import('node:crypto')): boolean {
+  if (!storedHash || !storedHash.includes(':')) return false;
+  const [salt, hash] = storedHash.split(':');
+  const encoded = Buffer.from(salt + password + salt, 'utf8');
+  const hash1 = nodeCrypto.createHash('sha256').update(encoded).digest();
+  const hash2 = nodeCrypto.createHash('sha256').update(hash1).digest('hex');
+  return hash2 === hash;
+}
+
+export const loginUser = onCall(
+  {
+    region: 'southamerica-east1',
+    maxInstances: 10,
+    cors: ALLOWED_CORS_ORIGINS,
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Autenticacao necessaria.');
+    }
+    const { email, password } = request.data as { email: string; password?: string };
+    if (!email || typeof email !== 'string') {
+      throw new HttpsError('invalid-argument', 'email e obrigatorio.');
+    }
+    checkLoginRateLimit(request.auth.uid);
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const GENERIC = 'Credenciais invalidas.';
+
+    const doc = await findUserDocByEmail(normalizedEmail);
+    if (!doc) throw new HttpsError('unauthenticated', GENERIC);
+    const data = doc.data();
+
+    // 1) Firebase Auth ja verificou este email (login por email/senha)
+    const tokenEmail = (request.auth.token?.email || '').toLowerCase();
+    let valid = !!tokenEmail && tokenEmail === normalizedEmail;
+
+    // 2) Caso contrario, verificar a senha (senhas_usuarios; fallback legado)
+    if (!valid) {
+      if (!password || typeof password !== 'string') {
+        throw new HttpsError('unauthenticated', GENERIC);
+      }
+      const nodeCrypto = await import('node:crypto');
+      const db = admin.firestore();
+      const senhaDoc = await db.collection('senhas_usuarios').doc(doc.id).get();
+      const storedHash: string = senhaDoc.exists
+        ? (senhaDoc.data()?.senhaHash || '')
+        : (data.senha_hash || ''); // docs legados pre-S-03
+      valid = verifySha256SaltHash(password, storedHash, nodeCrypto);
+    }
+
+    if (!valid) throw new HttpsError('unauthenticated', GENERIC);
+    if (data.status === 'bloqueado') {
+      throw new HttpsError('permission-denied', 'Esta conta foi bloqueada.');
+    }
+
+    // Vincula o Firebase Auth UID atual ao doc — habilita o get direto do
+    // próprio perfil nas rules (isBoundUser) sem listagem (N-01).
+    try {
+      await doc.ref.update({
+        firebase_auth_uids: admin.firestore.FieldValue.arrayUnion(request.auth.uid),
+      });
+    } catch (e) {
+      logger.warn('Falha ao vincular firebase_auth_uid (nao-fatal).', { uid: doc.id.substring(0, 8) });
+    }
+
+    const profile: Record<string, unknown> = { id: doc.id, ...data };
+    delete profile.senha_hash;
+    logger.info('Login via CF concluido.', { uid: doc.id.substring(0, 8) });
+    return { user: profile };
+  }
+);
+
+// ============================================================
+//  notifyTutorContact — avistador envia o próprio telefone ao tutor
+//  [S-08] O cliente não conhece mais o owner_firebase_uid do tutor
+//  (campo privado); esta CF resolve o destinatário via alert_privado
+//  e cria a notificação avistamento_contato com log LGPD.
+// ============================================================
+
+export const notifyTutorContact = onCall(
+  {
+    region: 'southamerica-east1',
+    maxInstances: 10,
+    cors: ALLOWED_CORS_ORIGINS,
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Autenticacao necessaria.');
+    }
+    const { petId, phone, nome } = request.data as { petId: string; phone: string; nome?: string };
+    if (!petId || typeof petId !== 'string' || !phone || typeof phone !== 'string') {
+      throw new HttpsError('invalid-argument', 'petId e phone sao obrigatorios.');
+    }
+    const cleanPhone = phone.replace(/[^\d\s()+-]/g, '').slice(0, 20);
+    const cleanNome = String(nome || 'Avistador').slice(0, 80);
+    checkRateLimit(request.auth.uid);
+
+    const db = admin.firestore();
+    const petDoc = await db.collection('pets_perdidos').doc(petId).get();
+    if (!petDoc.exists) {
+      throw new HttpsError('not-found', 'Pet nao encontrado.');
+    }
+    const pet = petDoc.data() || {};
+    const petNome = pet.nome_pet || pet.nome || 'Pet';
+
+    let tutorUid = pet.owner_firebase_uid || '';
+    let tutorOwnerUid = pet.owner_uid || '';
+    if (!tutorUid) {
+      const priv = await db.collection('alert_privado').doc(`pets_perdidos_${petId}`).get();
+      if (priv.exists) {
+        tutorUid = priv.data()?.owner_firebase_uid || '';
+        tutorOwnerUid = tutorOwnerUid || priv.data()?.owner_uid || '';
+      }
+    }
+    if (!tutorUid && !tutorOwnerUid) {
+      throw new HttpsError('failed-precondition', 'Tutor sem destinatario valido.');
+    }
+
+    const timestamp = admin.firestore.FieldValue.serverTimestamp();
+    await db.collection('notificacoes').add({
+      tipo: 'avistamento_contato',
+      pet_id: petId,
+      pet_nome: petNome,
+      sighter_nome: cleanNome,
+      sighter_phone: cleanPhone,
+      mensagem: `${cleanNome} viu «${petNome}» e quer entrar em contato: ${cleanPhone}`,
+      data: new Date().toISOString(),
+      timestamp,
+      lida: false,
+      destinatario_uid: tutorOwnerUid,
+      destinatario_firebase_uid: tutorUid
+    });
+
+    await db.collection('lgpd_access_log').add({
+      tipo: 'notif_contato',
+      petId,
+      de: request.auth.uid,
+      para: tutorUid || tutorOwnerUid,
+      timestamp
+    });
+
+    logger.info('notifyTutorContact concluido.', { petId });
+    return { success: true };
+  }
+);
+
+// ============================================================
+//  checkEmailExists — unicidade de email no cadastro/recuperacao
+//  sem listar usuarios (N-01). Retorna somente um booleano.
+// ============================================================
+
+export const checkEmailExists = onCall(
+  {
+    region: 'southamerica-east1',
+    maxInstances: 10,
+    cors: ALLOWED_CORS_ORIGINS,
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Autenticacao necessaria.');
+    }
+    const { email } = request.data as { email: string };
+    if (!email || typeof email !== 'string') {
+      throw new HttpsError('invalid-argument', 'email e obrigatorio.');
+    }
+    checkEmailLookupRateLimit(request.auth.uid);
+    const doc = await findUserDocByEmail(email.trim().toLowerCase());
+    return { exists: !!doc };
+  }
+);
+
+// ============================================================
 //  getSighterContact — retorna contato do avistador para o tutor
 //  Fluxo bidirecional: tutor pode contatar quem avistou seu pet
 //  Requer: Firebase Auth + ser dono do pet + avistamento vinculado
@@ -1000,5 +1310,83 @@ export const getSighterContact = onCall(
       });
       throw new HttpsError('internal', 'Erro ao buscar contato do avistador.');
     }
+  }
+);
+
+/**
+ * Auto-confirmação de reuniões (North Star).
+ * Job diário: pets em 'aguardando_confirmacao' há mais de 7 dias são
+ * confirmados automaticamente com reuniao.confirmacao_unilateral = true.
+ * Custo: 1 execução/dia + reads apenas dos pendentes (baixíssimo).
+ */
+export const autoConfirmarReunioes = onSchedule(
+  {
+    schedule: 'every 24 hours',
+    region: 'southamerica-east1',
+    timeZone: 'America/Sao_Paulo',
+  },
+  async () => {
+    const db = admin.firestore();
+    const SETE_DIAS_MS = 7 * 24 * 60 * 60 * 1000;
+    const limite = Date.now() - SETE_DIAS_MS;
+
+    const snap = await db
+      .collection('pets_perdidos')
+      .where('status', '==', 'aguardando_confirmacao')
+      .limit(200)
+      .get();
+
+    let confirmados = 0;
+    for (const doc of snap.docs) {
+      const data = doc.data() || {};
+      const reuniao = data.reuniao || {};
+      const marcadoEm = Date.parse(reuniao.marcado_em || '') || 0;
+      if (!marcadoEm || marcadoEm > limite) continue; // ainda dentro da janela de 7 dias
+
+      const agora = new Date().toISOString();
+      const novaReuniao = {
+        ...reuniao,
+        confirmado_em: agora,
+        confirmacao_unilateral: true,
+      };
+      try {
+        await doc.ref.update({
+          status: 'encontrado',
+          desfecho: 'reuniao_confirmada',
+          data_encerrado: agora,
+          reuniao: novaReuniao,
+        });
+        await db.collection('lgpd_access_log').add({
+          tipo: 'pet_encontrado',
+          petId: doc.id,
+          avistamentoId: reuniao.avistamento_id || '',
+          bilateral: true,
+          confirmacao_unilateral: true,
+          timestamp: agora,
+        });
+        // Notifica o tutor sobre a confirmação automática.
+        await db.collection('notificacoes').add({
+          tipo: 'reuniao_confirmada',
+          pet_perdido_id: doc.id,
+          pet_nome: data.nome_pet || '',
+          lida: false,
+          destinatario_uid: reuniao.marcado_por_uid || data.owner_uid || '',
+          destinatario_firebase_uid: reuniao.marcado_por_firebase_uid || data.owner_firebase_uid || '',
+          confirmacao_unilateral: true,
+          data: agora,
+        });
+        confirmados++;
+      } catch (error) {
+        logger.error('Falha ao auto-confirmar reunião.', {
+          error: error instanceof Error ? error.message : String(error),
+          petId: doc.id,
+        });
+      }
+    }
+
+    logger.info('autoConfirmarReunioes concluído.', {
+      pendentesVarridos: snap.size,
+      confirmados,
+    });
   }
 );
