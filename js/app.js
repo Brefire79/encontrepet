@@ -376,10 +376,10 @@ const App = (() => {
     if (!petsList || petsList.length === 0) return;
     const count = petsList.length;
     const firstPet = petsList[0];
-    const petNome = Security.sanitize(firstPet.nome_pet || 'um pet');
+    const petNome = Security.sanitize(firstPet.nome_pet || I18n.t('sighting.feedback.a_pet'));
     const msg = count === 1
-      ? `Seu avistamento pode ser o pet «${petNome}»! O tutor foi avisado.`
-      : `Seu avistamento pode corresponder a ${count} pets perdidos! Os tutores foram avisados.`;
+      ? I18n.t('sighting.feedback.one', { name: petNome })
+      : I18n.t('sighting.feedback.many', { count });
 
     const modal = document.createElement('div');
     modal.id = 'avistador-match-feedback';
@@ -398,19 +398,19 @@ const App = (() => {
           <span style="font-size:52px">🎉</span>
         </div>
         <h3 style="text-align:center;margin:0 0 10px;font-size:1.2rem;color:#1b5e20;font-weight:800">
-          Avistamento registrado com sucesso!
+          ${I18n.t('sighting.feedback.title')}
         </h3>
         <p style="text-align:center;margin:0 0 20px;color:#555;font-size:0.95rem;line-height:1.5">
           ${msg}
         </p>
         <div style="background:#e8f5e9;border-radius:12px;padding:12px 16px;margin-bottom:20px;
                     border-left:4px solid #43a047;font-size:0.9rem;color:#2e7d32">
-          <strong>📲 Notificação enviada!</strong> O tutor receberá um alerta em tempo real.
+          ${I18n.t('sighting.feedback.notified')}
         </div>
         <button onclick="document.getElementById('avistador-match-feedback')?.remove();"
           style="width:100%;background:#43a047;color:#fff;border:none;border-radius:12px;
                  padding:14px;font-size:1rem;font-weight:700;cursor:pointer">
-          Entendido ✓
+          ${I18n.t('sighting.feedback.ok')}
         </button>
       </div>`;
 
@@ -3304,7 +3304,7 @@ const App = (() => {
     const uid = Auth.getUID();
     const storageKey = `sc_${petId}_${uid}`;
     if (localStorage.getItem(storageKey)) {
-      showToast('Você já enviou seu número para este tutor.', 'info');
+      showToast(I18n.t('sighter_contact.already_sent'), 'info');
       return;
     }
 
@@ -3317,26 +3317,26 @@ const App = (() => {
     modal.innerHTML = `
       <div style="width:100%;max-width:480px;background:#fff;border-radius:16px 16px 0 0;padding:24px;animation:slideUp 0.3s ease">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <h3 style="margin:0;font-size:1.1rem"><i class="fas fa-mobile-alt" style="color:var(--primary)"></i> Avisar o tutor</h3>
+          <h3 style="margin:0;font-size:1.1rem"><i class="fas fa-mobile-alt" style="color:var(--primary)"></i> ${I18n.t('sighter_contact.title')}</h3>
           <button id="sighter-modal-close" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#888">&times;</button>
         </div>
         <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:16px">
-          Informe seu celular. O tutor de <strong>${Security.sanitize(petNome)}</strong> receberá uma notificação com seu número para entrar em contato.
+          ${I18n.t('sighter_contact.desc', { name: Security.sanitize(petNome) })}
         </p>
         <div class="form-group">
-          <label class="form-label"><i class="fas fa-phone"></i> Seu celular (WhatsApp)</label>
+          <label class="form-label"><i class="fas fa-phone"></i> ${I18n.t('sighter_contact.phone_label')}</label>
           <input type="tel" id="sighter-phone-input" class="form-control" placeholder="(11) 99999-9999"
             value="${Security.sanitize(profilePhone)}" maxlength="20" inputmode="tel" autocomplete="tel">
           <div id="sighter-phone-error" style="color:var(--error);font-size:0.82rem;margin-top:4px;display:none"></div>
         </div>
         <div style="display:flex;gap:8px;margin-top:20px">
-          <button id="sighter-modal-cancel" class="btn-secondary" style="flex:1">Cancelar</button>
+          <button id="sighter-modal-cancel" class="btn-secondary" style="flex:1">${I18n.t('sighter_contact.cancel')}</button>
           <button id="sighter-modal-submit" class="btn-primary" style="flex:2">
-            <i class="fas fa-paper-plane"></i> Enviar meu número
+            <i class="fas fa-paper-plane"></i> ${I18n.t('sighter_contact.submit')}
           </button>
         </div>
         <p style="font-size:0.75rem;color:var(--text-muted);margin-top:12px;text-align:center">
-          <i class="fas fa-shield-alt"></i> Seu número só será visível ao tutor deste pet.
+          <i class="fas fa-shield-alt"></i> ${I18n.t('sighter_contact.privacy')}
         </p>
       </div>`;
 
@@ -3354,7 +3354,7 @@ const App = (() => {
       const phoneResult = Security.validatePhoneBR(rawPhone);
 
       if (!phoneResult.valid) {
-        errEl.textContent = 'Número inválido. Use o formato (11) 99999-9999.';
+        errEl.textContent = I18n.t('sighter_contact.invalid_phone');
         errEl.style.display = 'block';
         input.focus();
         return;
@@ -3363,7 +3363,7 @@ const App = (() => {
 
       const submitBtn = document.getElementById('sighter-modal-submit');
       submitBtn.disabled = true;
-      submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+      submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${I18n.t('sighter_contact.sending')}`;
 
       try {
         const rawNome = Auth.getUserData()?.displayName || 'Avistador';
@@ -3406,17 +3406,17 @@ const App = (() => {
         // Atualizar botão na tela de detalhes
         const btn = document.getElementById('btn-tutor-contact');
         if (btn) {
-          btn.innerHTML = '<i class="fas fa-check-circle"></i> Número enviado ao tutor ✓';
+          btn.innerHTML = `<i class="fas fa-check-circle"></i> ${I18n.t('sighter_contact.sent_button')}`;
           btn.disabled = true;
         }
 
         close();
-        showToast('Seu número foi enviado! O tutor entrará em contato.', 'success');
+        showToast(I18n.t('sighter_contact.sent_toast'), 'success');
       } catch (err) {
         console.error('[App] showSighterContactModal error:', err);
         submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar meu número';
-        showToast('Erro ao enviar. Tente novamente.', 'error');
+        submitBtn.innerHTML = `<i class="fas fa-paper-plane"></i> ${I18n.t('sighter_contact.submit')}`;
+        showToast(I18n.t('sighter_contact.error'), 'error');
       }
     });
   }
