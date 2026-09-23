@@ -1345,37 +1345,29 @@ const DB = (() => {
    * @returns {Promise<number>}
    */
   async function countUsersInRadius(centerLat, centerLng, radiusKm = 3) {
+    if (!centerLat || !centerLng) return 0;
+
+    // A Home chama isto a cada abertura: cache de 1h por região (~1 km) evita
+    // invocar o backend repetidamente (cota Netlify/Firestore — custo zero).
+    const cacheKey = `ep_reach_${centerLat.toFixed(2)}_${centerLng.toFixed(2)}_${radiusKm}`;
     try {
-      if (!centerLat || !centerLng) return 0;
-      // [FIX C13] Reduzido limit de 1000 para 200 — a regra Firestore de /usuarios
-      // bloqueia list com limit > 200 para nao-admins (request.query.limit <= 200).
-      // Limitacao: se houver mais de 200 usuarios cadastrados, a contagem fica
-      // subestimada. Quando o app crescer, considerar paginacao ou Cloud Function
-      // dedicada (admin SDK) para count global.
-      const usersResult = await list(TABLES.USUARIOS, { limit: 200 });
-      const allUsers = (usersResult.data || []).filter(u => !u.is_anonymous);
-      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      const cached = JSON.parse(sessionStorage.getItem(cacheKey) || 'null');
+      if (cached && Date.now() - cached.t < 60 * 60 * 1000) return cached.count;
+    } catch { /* storage indisponível: segue sem cache */ }
 
-      let count = 0;
-      for (const user of allUsers) {
-        if (!user.latitude && !user.location?.lat) continue;
-        const uLat = user.latitude || user.location?.lat || 0;
-        const uLng = user.longitude || user.location?.lng || 0;
-        if (!uLat || !uLng) continue;
-
-        // Verificar atividade recente (se campo existir)
-        if (user.lastActive) {
-          const lastActive = typeof user.lastActive === 'number' ? user.lastActive :
-            (user.lastActive?.toMillis ? user.lastActive.toMillis() : new Date(user.lastActive).getTime());
-          if (lastActive < thirtyDaysAgo) continue;
-        }
-
-        const distance = GeoUtils.calculateDistance(centerLat, centerLng, uLat, uLng);
-        if (distance <= radiusKm) count++;
-      }
+    // Só o backend (Admin SDK) conta: a N-01 fechou a listagem de usuarios no
+    // cliente, então o antigo fallback local sempre falhava por permissão.
+    try {
+      const functions = FirebaseConfig.getFunctions?.();
+      if (!functions?.httpsCallable) return 0;
+      const res = await functions.httpsCallable('countUsersInRadius')({
+        lat: centerLat, lng: centerLng, radiusKm
+      });
+      const count = typeof res?.data?.count === 'number' ? res.data.count : 0;
+      try { sessionStorage.setItem(cacheKey, JSON.stringify({ count, t: Date.now() })); } catch {}
       return count;
     } catch (err) {
-      console.warn('[DB] countUsersInRadius error:', err);
+      console.warn('[DB] countUsersInRadius backend indisponível:', err.message);
       return 0;
     }
   }
