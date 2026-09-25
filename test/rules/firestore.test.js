@@ -243,8 +243,10 @@ describe('usuarios / senhas_usuarios (S-03, N-01)', () => {
     await assertFails(getDocs(query(collection(asOther(), 'usuarios'), limit(200))));
   });
 
-  it('list com limit 1 permitido (compat transitória fsGetUser/findByEmail)', async () => {
-    await assertSucceeds(getDocs(query(collection(asOther(), 'usuarios'), limit(1))));
+  it('list com limit 1 NEGADO — fecha a enumeração um a um (N-01 final)', async () => {
+    // Com limit<=1 + startAfter, um anônimo baixava a base inteira (nome,
+    // e-mail, telefone). Achado na avaliação de lançamento de 2026-09-25.
+    await assertFails(getDocs(query(collection(asOther(), 'usuarios'), limit(1))));
   });
 
   it('admin lista usuarios sem restrição', async () => {
