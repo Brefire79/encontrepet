@@ -14,7 +14,12 @@ const FirebaseConfig = (() => {
     // Login do Google servido pelo próprio domínio (proxy /__/auth/* no
     // netlify.toml): com o authDomain em outro domínio, o fluxo por redirect
     // quebra no Chrome/Safari atuais (armazenamento de terceiros bloqueado).
-    authDomain: "encontre-pet.netlify.app",
+    // Fora do site (localhost/dev) usa o domínio padrão do Firebase: o iframe
+    // de login de encontre-pet.netlify.app não pode ser embutido em outra
+    // origem (frame-src/frame-ancestors 'self').
+    authDomain: (typeof location !== 'undefined' && location.hostname === 'encontre-pet.netlify.app')
+      ? 'encontre-pet.netlify.app'
+      : 'encontre-pet-137d2.firebaseapp.com',
     projectId: "encontre-pet-137d2",
     storageBucket: "encontre-pet-137d2.firebasestorage.app",
     messagingSenderId: "349690177679",
