@@ -21,7 +21,10 @@
   --bg-dark: #1A1A2E;
   --text: #2D3436;
   --text-light: #636E72;
-  --text-muted: #B2BEC3;
+  /* Tema claro: #B2BEC3 tinha contraste 1,8:1 no fundo (rótulos, versão no
+     menu e abas de baixo quase sumiam no PC). #687479 = 4,57:1 (WCAG AA).
+     O tema escuro define o próprio --text-muted mais abaixo. */
+  --text-muted: #687479;
   --border: #E9ECEF;
   --shadow: 0 2px 12px rgba(0,0,0,0.08);
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
@@ -1297,7 +1300,9 @@ a { color: var(--primary); text-decoration: none; }
 
 .radio-card-content small {
   font-size: 0.7rem;
-  color: var(--text-muted);
+  /* text-light: sobre o fundo laranja-claro do card selecionado o
+     text-muted ficava em 4,3:1 */
+  color: var(--text-light);
 }
 
 .radio-card input:checked + .radio-card-content {
