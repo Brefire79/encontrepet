@@ -17,6 +17,13 @@
 [functions."auto-confirmar-reunioes"]
   schedule = "0 8 * * *"
 
+# Login com Google: o handler do Firebase Auth servido pelo nosso domínio
+# (authDomain = encontre-pet.netlify.app). Precisa vir antes do catch-all.
+[[redirects]]
+  from = "/__/auth/*"
+  to   = "https://encontre-pet-137d2.firebaseapp.com/__/auth/:splat"
+  status = 200
+
 # Landing de divulgação (link curto para grupos de WhatsApp).
 # Precisa vir ANTES do catch-all do SPA abaixo.
 [[redirects]]
@@ -34,7 +41,9 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    X-Frame-Options        = "DENY"
+    # SAMEORIGIN (não DENY): o iframe de login do Firebase (/__/auth/iframe)
+    # é servido pelo nosso domínio; outros sites seguem sem poder embutir.
+    X-Frame-Options        = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy        = "strict-origin-when-cross-origin"
     Permissions-Policy     = "geolocation=(self), camera=(self), microphone=()"
@@ -42,7 +51,7 @@
     # Origens adicionadas: nominatim (geocoding), firebasestorage (downloads),
     # identitytoolkit + securetoken (Firebase Auth), *.openstreetmap.org (tiles),
     # *.firebaseapp.com em connect (auth redirects).
-    Content-Security-Policy = "default-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://*.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.firebaseapp.com https://*.googleapis.com https://www.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://firebasestorage.googleapis.com https://*.openstreetmap.org https://tile.openstreetmap.org; connect-src 'self' https://*.firebaseio.com https://*.firebaseapp.com https://*.googleapis.com https://firestore.googleapis.com https://firebasestorage.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://*.cloudfunctions.net https://cdn.jsdelivr.net https://nominatim.openstreetmap.org wss://*.firebaseio.com wss://*.googleapis.com; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self';"
+    Content-Security-Policy = "default-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://*.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.firebaseapp.com https://*.googleapis.com https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://firebasestorage.googleapis.com https://*.openstreetmap.org https://tile.openstreetmap.org; connect-src 'self' https://*.firebaseio.com https://*.firebaseapp.com https://*.googleapis.com https://firestore.googleapis.com https://firebasestorage.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://*.cloudfunctions.net https://cdn.jsdelivr.net https://nominatim.openstreetmap.org wss://*.firebaseio.com wss://*.googleapis.com; worker-src 'self' blob:; frame-src 'self' https://encontre-pet-137d2.firebaseapp.com https://accounts.google.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self';"
 
 # Service Worker — nunca cachear no edge
 [[headers]]

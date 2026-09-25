@@ -954,6 +954,25 @@ const App = (() => {
       }
     });
 
+    // Login com Google (aparece só com AppConfig.GOOGLE_LOGIN_ENABLED)
+    const btnGoogle = document.getElementById('btn-google');
+    if (btnGoogle && Auth.googleLoginEnabled?.()) {
+      btnGoogle.classList.remove('hidden');
+      btnGoogle.addEventListener('click', async () => {
+        hideAuthError('login');
+        setButtonLoading(btnGoogle, true);
+        try {
+          await Auth.loginWithGoogle();
+        } catch (err) {
+          showAuthError('login', err.message);
+        } finally {
+          setButtonLoading(btnGoogle, false);
+        }
+      });
+      // Volta do login por redirect (quando o popup foi bloqueado)
+      Auth.completeGoogleRedirect().catch(err => showAuthError('login', err.message));
+    }
+
     // Enter key
     document.getElementById('login-password')?.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') document.getElementById('btn-login')?.click();

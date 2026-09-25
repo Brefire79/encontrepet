@@ -29,6 +29,8 @@ window.I18nLocales.pt = {
   'auth.name.placeholder': 'Seu nome',
   'auth.email_in_use': 'Este e-mail já está cadastrado. Tente fazer login.',
   'auth.signup_unavailable': 'Não foi possível criar sua conta agora. Verifique sua conexão e tente novamente.',
+  'auth.google': 'Continuar com Google',
+  'auth.google_error': 'Não foi possível entrar com o Google. Se abriu pelo WhatsApp, toque em “Abrir no navegador” e tente de novo.',
   'auth.password.min': 'Mínimo 6 caracteres',
   'auth.password.confirm': 'Confirmar Senha',
   'auth.password.confirm.placeholder': 'Repita a senha',

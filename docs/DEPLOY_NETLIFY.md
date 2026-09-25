@@ -98,3 +98,23 @@ node scripts/migrate-s08-owner-firebase-uid.js --phase=strip --apply --i-underst
   strip do S-08).
 - Modal do avistador ainda hardcoded em PT (E2E achado 6) — Fase B, junto com
   a paridade i18n.
+
+## 6. Login com Google (v1.21.2)
+
+Código pronto e desligado por `AppConfig.GOOGLE_LOGIN_ENABLED` (js/app-config.js).
+O handler do Firebase Auth é servido pelo nosso domínio (proxy `/__/auth/*` no
+`netlify.toml`, `authDomain: "encontre-pet.netlify.app"`), senão o fluxo por
+redirect quebra no Chrome/Safari atuais.
+
+Para ligar (conta `encontrepet26@gmail.com`):
+1. Firebase Console → Authentication → Sign-in method → **Google** → Ativar →
+   e-mail de suporte → Salvar.
+2. Google Cloud Console → APIs e serviços → Credenciais → cliente OAuth
+   **"Web client (auto created by Google Service)"**:
+   - Origens JavaScript autorizadas: `https://encontre-pet.netlify.app`
+   - URIs de redirecionamento autorizados: `https://encontre-pet.netlify.app/__/auth/handler`
+3. `GOOGLE_LOGIN_ENABLED: true` → bump do SW → deploy.
+
+Observação: o Google recusa login dentro de navegadores embutidos de alguns
+apps (Instagram/Facebook). No WhatsApp costuma funcionar; se falhar, a mensagem
+de erro orienta "Abrir no navegador".

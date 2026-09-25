@@ -20,6 +20,9 @@
     USE_FIREBASE_STORAGE: false,
     // Chave pública Web Push (Firebase Console → Configurações do projeto →
     // Cloud Messaging → Certificados push da Web). Vazia = push desligado.
+    // Login com Google: ligar só depois de ativar o provedor Google no
+    // Firebase Auth e cadastrar o redirect do proxy (docs/DEPLOY_NETLIFY.md).
+    GOOGLE_LOGIN_ENABLED: false,
     PUSH_VAPID_KEY: 'BCneUR9AlD1nhkpr5vSrP2R5YTkTEQ2XkpFUdrHNtMo-E3kLYquL7Fb9vQDNpc_5c_4wGOdssTb5qsOtPITk9sw',
     SEARCH_RADIUS_KM,
     getSearchRadius(tipoAnimal) {

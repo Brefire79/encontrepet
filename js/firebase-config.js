@@ -11,7 +11,10 @@ const FirebaseConfig = (() => {
 
   const CONFIG = {
     apiKey: "AIzaSyCQ-gN4GStfnS5h51z3nZ56vZMXdTt6150",
-    authDomain: "encontre-pet-137d2.firebaseapp.com",
+    // Login do Google servido pelo próprio domínio (proxy /__/auth/* no
+    // netlify.toml): com o authDomain em outro domínio, o fluxo por redirect
+    // quebra no Chrome/Safari atuais (armazenamento de terceiros bloqueado).
+    authDomain: "encontre-pet.netlify.app",
     projectId: "encontre-pet-137d2",
     storageBucket: "encontre-pet-137d2.firebasestorage.app",
     messagingSenderId: "349690177679",
