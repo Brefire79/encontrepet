@@ -16,8 +16,9 @@
 // v1.21.2: versão no menu vem de AppConfig.APP_VERSION; login reforçado.
 // v1.21.3: login com Google ligado.
 // v1.21.4: SW não intercepta outros sites nem /__/auth (login Google).
+// v1.21.5: contraste do texto suave no tema claro.
 // Manter igual a AppConfig.APP_VERSION (js/app-config.js).
-const CACHE_VERSION = 'encontre-pet-v1.21.4';
+const CACHE_VERSION = 'encontre-pet-v1.21.5';
 // Versionado junto com o app: antes era fixo e sobrevivia a todos os deploys,
 // podendo servir cópias antigas de páginas/JS (caches.match procura em todos).
 const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';
