@@ -21,7 +21,9 @@ const ALLOWED_ORIGINS = [
   'https://encontre-pet-137d2.web.app',
   'https://encontre-pet-137d2.firebaseapp.com'
 ];
-const NETLIFY_ORIGIN_RE = /^https:\/\/[a-z0-9-]+(--[a-z0-9-]+)?\.netlify\.app$/;
+// Só o site do Encontre Pet e as prévias de deploy dele (<id>--encontre-pet).
+// Antes aceitava qualquer *.netlify.app (sites de terceiros).
+const NETLIFY_ORIGIN_RE = /^https:\/\/([a-z0-9-]+--)?encontre-pet\.netlify\.app$/;
 
 const STATUS_TO_HTTP = {
   'invalid-argument': 400,
