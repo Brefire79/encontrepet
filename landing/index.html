@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Encontre Pet — cão perdido, vizinhança avisada</title>
+<meta name="description" content="App gratuito da comunidade para achar cães perdidos: o alerta aparece para quem está a até 5 km e quem vê um cão solto registra o avistamento com foto.">
+<link rel="canonical" href="https://encontre-pet.netlify.app/conheca">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Encontre Pet">
+<meta property="og:title" content="Cão sumiu? O alerta chega em quem está a até 5 km">
+<meta property="og:description" content="App gratuito da comunidade para achar cães perdidos. Deixe instalado antes de precisar.">
+<meta property="og:url" content="https://encontre-pet.netlify.app/conheca">
+<meta property="og:image" content="https://encontre-pet.netlify.app/landing/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Cartaz de PROCURA-SE com o nome Encontre Pet">
+<meta property="og:locale" content="pt_BR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#2B2F36">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Big+Shoulders+Display:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --papel:#FFE45C;      /* cartaz amarelo de xerox */
+    --tinta:#17130F;      /* tinta preta */
+    --rua:#2B2F36;        /* poste / asfalto */
+    --rua-2:#353A42;
+    --laranja:#FF6B35;    /* marca Encontre Pet */
+    --giz:#FFFDF7;        /* branco */
+    --verde:#1F8A4C;      /* reencontro */
+    --display:'Big Shoulders Display','Arial Narrow',Impact,sans-serif;
+    --body:'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%;overflow-x:hidden}
+  body{font-family:var(--body);font-size:18px;line-height:1.55;color:var(--giz);background:var(--rua);overflow-x:hidden}
+  a{color:inherit}
+  :focus-visible{outline:3px solid var(--laranja);outline-offset:3px;border-radius:4px}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 16px}
+  .skip{position:absolute;left:-999px}
+  .skip:focus{left:12px;top:12px;background:var(--giz);color:var(--tinta);padding:8px 12px;z-index:50}
+
+  /* ---------- Topo ---------- */
+  .top{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;max-width:1040px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;text-decoration:none}
+  .brand img{width:30px;height:30px;border-radius:8px}
+  .langs{display:flex;gap:4px}
+  .langs button{font:700 13px/1 var(--body);letter-spacing:.04em;color:var(--giz);background:transparent;border:1px solid rgba(255,253,247,.35);border-radius:6px;padding:7px 9px;cursor:pointer}
+  .langs button[aria-pressed="true"]{background:var(--giz);color:var(--tinta);border-color:var(--giz)}
+
+  /* ---------- Hero: o cartaz no poste ---------- */
+  .poste{position:relative;padding:18px 0 56px;overflow:hidden;
+    background:
+      repeating-linear-gradient(90deg,transparent 0 46px,rgba(0,0,0,.08) 46px 48px),
+      linear-gradient(180deg,var(--rua) 0%,var(--rua-2) 100%)}
+  .cartaz{position:relative;max-width:560px;margin:0 auto;background:var(--papel);color:var(--tinta);
+    margin-top:14px;padding:26px 22px 0;transform:rotate(-1.2deg);box-shadow:0 18px 40px rgba(0,0,0,.45),0 2px 0 rgba(0,0,0,.1);
+    background-image:radial-gradient(rgba(23,19,15,.05) 1px,transparent 1px);background-size:5px 5px}
+  .fita{position:absolute;top:-12px;width:78px;height:28px;background:rgba(255,253,247,.55);box-shadow:0 1px 2px rgba(0,0,0,.15)}
+  .fita.e{left:-18px;transform:rotate(-28deg)}
+  .fita.d{right:-18px;transform:rotate(24deg)}
+  .procura{font-family:var(--display);font-weight:900;font-size:clamp(50px,16vw,112px);white-space:nowrap;line-height:.86;letter-spacing:.01em;text-transform:uppercase;text-align:center}
+  .tese{font-family:var(--display);font-weight:700;font-size:clamp(23px,6vw,34px);line-height:1.18;text-align:center;margin:14px auto 18px;max-width:460px}
+  .tese em{font-style:normal;background:var(--tinta);color:var(--papel);padding:0 6px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+  .foto{border:3px dashed var(--tinta);display:grid;place-items:center;text-align:center;padding:18px 14px;margin:0 4px 16px;gap:4px}
+  .foto svg{width:74px;height:74px}
+  .foto p{font-weight:700;font-size:16px}
+  .cartaz .desc{font-size:17px;text-align:center;margin:0 6px 20px}
+  /* tirinhas de destacar */
+  .tiras{display:flex;margin:0 -22px;border-top:2px dashed var(--tinta)}
+  .tira{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;height:118px;text-decoration:none;
+    border-right:2px dashed var(--tinta);transform-origin:top center;transition:transform .18s ease,background .18s ease}
+  .tira:last-child{border-right:0}
+  .tira span{writing-mode:vertical-rl;transform:rotate(180deg);font:700 15px/1 var(--body);letter-spacing:.02em;white-space:nowrap}
+  .tira:hover,.tira:focus-visible{transform:rotate(4deg);background:rgba(255,253,247,.5)}
+  .tira.arrancada{visibility:hidden;border-right-color:transparent}
+  .dica{text-align:center;font-size:14px;color:rgba(255,253,247,.75);margin-top:22px}
+
+  .acoes{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:18px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:52px;padding:14px 22px;border-radius:10px;
+    font:700 17px/1.1 var(--body);text-decoration:none;cursor:pointer;border:2px solid transparent}
+  .btn-app{background:var(--laranja);color:var(--tinta)}
+  .btn-app:hover{background:#ff8457}
+  .btn-zap{background:transparent;color:var(--giz);border-color:rgba(255,253,247,.6)}
+  .btn-zap:hover{background:rgba(255,253,247,.1)}
+
+  /* ---------- Seções ---------- */
+  section{padding:56px 0}
+  h2{font-family:var(--display);font-weight:900;font-size:clamp(34px,8vw,52px);line-height:.95;text-transform:uppercase;letter-spacing:.01em;margin-bottom:10px}
+  .lead{color:rgba(255,253,247,.8);max-width:620px;margin-bottom:28px}
+
+  .caminhos{background:var(--giz);color:var(--tinta)}
+  .caminhos .lead{color:#4a4640}
+  .duas{display:grid;grid-template-columns:1fr;gap:18px}
+  .caminho{border:2px solid var(--tinta);padding:22px 20px 18px;position:relative}
+  .caminho h3{font-family:var(--display);font-weight:900;font-size:30px;line-height:1;text-transform:uppercase;margin-bottom:14px}
+  .caminho.tutor h3{color:#c9461a}
+  .caminho.viu h3{color:var(--verde)}
+  .caminho ol{list-style:none;counter-reset:p}
+  .caminho li{counter-increment:p;display:grid;grid-template-columns:34px 1fr;gap:10px;padding:10px 0;border-top:1px solid rgba(23,19,15,.15)}
+  .caminho li::before{content:counter(p);font-family:var(--display);font-weight:900;font-size:28px;line-height:1}
+  .caminho li strong{display:block}
+
+  .instalar{background:var(--rua-2)}
+  .aparelhos{display:grid;grid-template-columns:1fr;gap:16px}
+  .aparelho{border:1px solid rgba(255,253,247,.25);border-radius:12px;padding:20px}
+  .aparelho h3{font-size:19px;margin-bottom:10px}
+  .aparelho ol{padding-left:22px}
+  .aparelho li{margin:6px 0}
+  .aparelho kbd{font:700 15px/1 var(--body);background:rgba(255,253,247,.12);border:1px solid rgba(255,253,247,.3);border-radius:5px;padding:2px 6px}
+  .aviso-zap{margin-top:16px;border-left:4px solid var(--papel);padding:4px 0 4px 14px;color:rgba(255,253,247,.85)}
+
+  .fatos{display:grid;grid-template-columns:1fr;gap:0;border-top:1px solid rgba(255,253,247,.2)}
+  .fato{display:grid;grid-template-columns:44px 1fr;gap:14px;padding:18px 0;border-bottom:1px solid rgba(255,253,247,.2)}
+  .fato .ic{font-size:28px;line-height:1.1}
+  .fato strong{display:block;font-size:19px}
+  .fato span{color:rgba(255,253,247,.78)}
+
+  .repasse{background:var(--papel);color:var(--tinta)}
+  .repasse .lead{color:#4a4205}
+  .msg{background:var(--giz);border:2px solid var(--tinta);border-radius:14px 14px 14px 2px;padding:16px 18px;max-width:560px;white-space:pre-line;font-size:17px}
+  .repasse .acoes{justify-content:flex-start}
+  .repasse .btn-zap{color:var(--tinta);border-color:var(--tinta)}
+  .repasse .btn-zap:hover{background:rgba(23,19,15,.06)}
+  .copiado{font-weight:700;min-height:1.5em;margin-top:10px}
+
+  footer{padding:28px 16px 36px;text-align:center;font-size:15px;color:rgba(255,253,247,.7)}
+  footer a{color:var(--papel)}
+
+  @media (min-width:760px){
+    .poste{padding:36px 0 72px}
+    .cartaz{padding:34px 34px 0}
+    .tiras{margin:0 -34px}
+    .duas,.aparelhos{grid-template-columns:1fr 1fr}
+    .fatos{grid-template-columns:1fr 1fr 1fr;gap:24px;border-top:0}
+    .fato{grid-template-columns:1fr;border-bottom:0;border-top:1px solid rgba(255,253,247,.2)}
+  }
+
+  /* Um único movimento: o cartaz é colado no poste */
+  @media (prefers-reduced-motion:no-preference){
+    .cartaz{animation:cola .7s cubic-bezier(.2,.9,.3,1.2) both}
+    @keyframes cola{from{opacity:0;transform:translateY(-24px) rotate(-5deg)}to{opacity:1;transform:rotate(-1.2deg)}}
+  }
+  @media (prefers-reduced-motion:reduce){ .tira{transition:none} }
+</style>
+</head>
+<body>
+<a href="#caminhos" class="skip" data-i18n="skip">Pular para o conteúdo</a>
+
+<div class="poste">
+  <div class="top">
+    <a class="brand" href="/"><img src="/icons/icon-192.png" alt="" width="30" height="30"> Encontre Pet</a>
+    <div class="langs" role="group" aria-label="Idioma">
+      <button data-lang="pt" aria-pressed="true">PT</button>
+      <button data-lang="en" aria-pressed="false">EN</button>
+      <button data-lang="es" aria-pressed="false">ES</button>
+    </div>
+  </div>
+
+  <main class="wrap">
+    <article class="cartaz" aria-labelledby="procura">
+      <span class="fita e" aria-hidden="true"></span><span class="fita d" aria-hidden="true"></span>
+      <h1 id="procura" class="procura" data-i18n="procura">Procura-se</h1>
+      <p class="tese"><span data-i18n="tese_a">Antes era cartaz no poste.</span> <em data-i18n="tese_b">Agora o alerta chega em quem está a até 5 km.</em></p>
+      <div class="foto" aria-hidden="true">
+        <svg viewBox="0 0 64 64" fill="none" stroke="#17130F" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"><path d="M20 14c-8 0-12 6-12 16 0 6 3 9 7 9 3 0 4-3 4-6"/><path d="M44 14c8 0 12 6 12 16 0 6-3 9-7 9-3 0-4-3-4-6"/><path d="M19 22c0-6 6-10 13-10s13 4 13 10v14c0 10-6 17-13 17s-13-7-13-17z"/><circle cx="26" cy="29" r="2" fill="#17130F"/><circle cx="38" cy="29" r="2" fill="#17130F"/><ellipse cx="32" cy="40" rx="5" ry="3.5" fill="#17130F"/><path d="M32 44v3m0 0c-2 2-5 2-6 0m6 0c2 2 5 2 6 0"/></svg>
+        <p data-i18n="foto">Foto do seu cão + onde ele sumiu</p>
+      </div>
+      <p class="desc" data-i18n="desc">No Encontre Pet você publica o alerta em um minuto. Quem vir um cão solto registra com foto — e a IA do celular compara com os cães perdidos por perto.</p>
+      <nav class="tiras" aria-label="Abrir o app">
+        <a class="tira" href="/"><span>Encontre Pet</span></a>
+        <a class="tira" href="/"><span>Encontre Pet</span></a>
+        <a class="tira arrancada" href="/" tabindex="-1" aria-hidden="true"><span>Encontre Pet</span></a>
+        <a class="tira" href="/"><span>Encontre Pet</span></a>
+        <a class="tira" href="/"><span>Encontre Pet</span></a>
+        <a class="tira" href="/"><span>Encontre Pet</span></a>
+      </nav>
+    </article>
+
+    <div class="acoes">
+      <a class="btn btn-app" href="/" data-i18n="abrir">Abrir o app</a>
+      <a class="btn btn-zap js-zap" href="#" data-i18n="repassar">Repassar no WhatsApp</a>
+    </div>
+    <p class="dica" data-i18n="gratis">Gratuito. Dá para usar sem criar conta.</p>
+  </main>
+</div>
+
+<section id="caminhos" class="caminhos">
+  <div class="wrap">
+    <h2 data-i18n="cam_t">Dois jeitos de ajudar</h2>
+    <p class="lead" data-i18n="cam_l">Quem perdeu o cão e quem viu um cão na rua usam o mesmo app.</p>
+    <div class="duas">
+      <div class="caminho tutor">
+        <h3 data-i18n="tut_t">Meu cão sumiu</h3>
+        <ol>
+          <li><div><strong data-i18n="tut1a">Publique o alerta</strong><span data-i18n="tut1b">Foto, nome e o local onde ele foi visto pela última vez.</span></div></li>
+          <li><div><strong data-i18n="tut2a">A vizinhança vê</strong><span data-i18n="tut2b">O alerta aparece no app de quem está num raio de 5 km.</span></div></li>
+          <li><div><strong data-i18n="tut3a">Você é avisado</strong><span data-i18n="tut3b">Quando alguém registra um cão parecido, o aviso chega nas suas notificações e vocês conversam pelo chat do app.</span></div></li>
+        </ol>
+      </div>
+      <div class="caminho viu">
+        <h3 data-i18n="viu_t">Vi um cão solto</h3>
+        <ol>
+          <li><div><strong data-i18n="viu1a">Tire uma foto</strong><span data-i18n="viu1b">De onde você está, sem precisar se aproximar.</span></div></li>
+          <li><div><strong data-i18n="viu2a">A IA compara</strong><span data-i18n="viu2b">No seu próprio celular, com os cães perdidos por perto.</span></div></li>
+          <li><div><strong data-i18n="viu3a">O tutor fica sabendo</strong><span data-i18n="viu3b">Se a semelhança passar de 70%, o tutor recebe o aviso do seu avistamento.</span></div></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="instalar">
+  <div class="wrap">
+    <h2 data-i18n="ins_t">Deixe instalado antes de precisar</h2>
+    <p class="lead" data-i18n="ins_l">Quando um cão some, cada minuto conta. Com o app na tela inicial, você publica o alerta na hora.</p>
+    <div class="aparelhos">
+      <div class="aparelho">
+        <h3>Android</h3>
+        <ol>
+          <li data-i18n="and1">Abra o app no Chrome.</li>
+          <li data-i18n="and2">Toque no menu ⋮ no canto de cima.</li>
+          <li data-i18n="and3">Escolha “Instalar app” ou “Adicionar à tela inicial”.</li>
+        </ol>
+      </div>
+      <div class="aparelho">
+        <h3>iPhone</h3>
+        <ol>
+          <li data-i18n="ios1">Abra o app no Safari.</li>
+          <li data-i18n="ios2">Toque em Compartilhar (o quadrado com a seta).</li>
+          <li data-i18n="ios3">Escolha “Adicionar à Tela de Início”.</li>
+        </ol>
+      </div>
+    </div>
+    <p class="aviso-zap" data-i18n="zap_dica">Abriu pelo WhatsApp? Toque nos três pontinhos e escolha “Abrir no navegador” antes de instalar.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2 data-i18n="fat_t">O que você precisa saber</h2>
+    <div class="fatos">
+      <div class="fato"><div class="ic" aria-hidden="true">🆓</div><div><strong data-i18n="f1a">Gratuito</strong><span data-i18n="f1b">Feito pela comunidade. Dá para usar sem criar conta.</span></div></div>
+      <div class="fato"><div class="ic" aria-hidden="true">📍</div><div><strong data-i18n="f2a">Endereço protegido</strong><span data-i18n="f2b">O mapa mostra a localização aproximada, não a sua casa.</span></div></div>
+      <div class="fato"><div class="ic" aria-hidden="true">💬</div><div><strong data-i18n="f3a">Contato pelo app</strong><span data-i18n="f3b">Tutor e quem avistou conversam pelo chat interno. Seus dados seguem a LGPD.</span></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="repasse">
+  <div class="wrap">
+    <h2 data-i18n="rep_t">Repasse no seu grupo</h2>
+    <p class="lead" data-i18n="rep_l">Quanto mais gente da região tiver o app, mais olhos procurando.</p>
+    <p class="msg" id="msg"></p>
+    <div class="acoes">
+      <a class="btn btn-app js-zap" href="#" data-i18n="rep_zap">Enviar no WhatsApp</a>
+      <button class="btn btn-zap" id="copiar" type="button" data-i18n="rep_copiar">Copiar mensagem</button>
+    </div>
+    <p class="copiado" id="copiado" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
+<footer>
+  <p><a href="/" data-i18n="foot_app">Abrir o Encontre Pet</a> · <span data-i18n="foot">feito pela comunidade · Vianexx AI</span></p>
+</footer>
+
+<script>
+(function () {
+  var LINK = 'https://encontre-pet.netlify.app/conheca';
+  var I18N = {
+    pt: {
+      skip:'Pular para o conteúdo', procura:'Procura-se',
+      tese_a:'Antes era cartaz no poste.', tese_b:'Agora o alerta chega em quem está a até 5 km.',
+      foto:'Foto do seu cão + onde ele sumiu',
+      desc:'No Encontre Pet você publica o alerta em um minuto. Quem vir um cão solto registra com foto — e a IA do celular compara com os cães perdidos por perto.',
+      abrir:'Abrir o app', repassar:'Repassar no WhatsApp', gratis:'Gratuito. Dá para usar sem criar conta.',
+      cam_t:'Dois jeitos de ajudar', cam_l:'Quem perdeu o cão e quem viu um cão na rua usam o mesmo app.',
+      tut_t:'Meu cão sumiu',
+      tut1a:'Publique o alerta', tut1b:'Foto, nome e o local onde ele foi visto pela última vez.',
+      tut2a:'A vizinhança vê', tut2b:'O alerta aparece no app de quem está num raio de 5 km.',
+      tut3a:'Você é avisado', tut3b:'Quando alguém registra um cão parecido, o aviso chega nas suas notificações e vocês conversam pelo chat do app.',
+      viu_t:'Vi um cão solto',
+      viu1a:'Tire uma foto', viu1b:'De onde você está, sem precisar se aproximar.',
+      viu2a:'A IA compara', viu2b:'No seu próprio celular, com os cães perdidos por perto.',
+      viu3a:'O tutor fica sabendo', viu3b:'Se a semelhança passar de 70%, o tutor recebe o aviso do seu avistamento.',
+      ins_t:'Deixe instalado antes de precisar', ins_l:'Quando um cão some, cada minuto conta. Com o app na tela inicial, você publica o alerta na hora.',
+      and1:'Abra o app no Chrome.', and2:'Toque no menu ⋮ no canto de cima.', and3:'Escolha “Instalar app” ou “Adicionar à tela inicial”.',
+      ios1:'Abra o app no Safari.', ios2:'Toque em Compartilhar (o quadrado com a seta).', ios3:'Escolha “Adicionar à Tela de Início”.',
+      zap_dica:'Abriu pelo WhatsApp? Toque nos três pontinhos e escolha “Abrir no navegador” antes de instalar.',
+      fat_t:'O que você precisa saber',
+      f1a:'Gratuito', f1b:'Feito pela comunidade. Dá para usar sem criar conta.',
+      f2a:'Endereço protegido', f2b:'O mapa mostra a localização aproximada, não a sua casa.',
+      f3a:'Contato pelo app', f3b:'Tutor e quem avistou conversam pelo chat interno. Seus dados seguem a LGPD.',
+      rep_t:'Repasse no seu grupo', rep_l:'Quanto mais gente da região tiver o app, mais olhos procurando.',
+      rep_zap:'Enviar no WhatsApp', rep_copiar:'Copiar mensagem', copiado:'Mensagem copiada. É só colar no grupo.',
+      foot_app:'Abrir o Encontre Pet', foot:'feito pela comunidade · Vianexx AI',
+      msg:'🐾 Conheçam o Encontre Pet: um app gratuito da comunidade para achar cães perdidos.\n\nSe um cão sumir, o alerta aparece para quem está a até 5 km. Se você vir um cão solto, é só tirar uma foto que o app compara com os cães perdidos da região.\n\nDeixem instalado antes de precisar: ' + LINK
+    },
+    en: {
+      skip:'Skip to content', procura:'Lost dog',
+      tese_a:'It used to be a poster on a pole.', tese_b:'Now the alert reaches everyone within 5 km.',
+      foto:'Your dog’s photo + where it went missing',
+      desc:'On Encontre Pet you post an alert in a minute. Anyone who sees a loose dog logs it with a photo — and the phone’s AI compares it with lost dogs nearby.',
+      abrir:'Open the app', repassar:'Share on WhatsApp', gratis:'Free. You can use it without an account.',
+      cam_t:'Two ways to help', cam_l:'People who lost a dog and people who saw one on the street use the same app.',
+      tut_t:'My dog is missing',
+      tut1a:'Post the alert', tut1b:'Photo, name and the place it was last seen.',
+      tut2a:'The neighborhood sees it', tut2b:'The alert shows up in the app for everyone within 5 km.',
+      tut3a:'You get notified', tut3b:'When someone logs a similar dog, the notice arrives in your notifications and you chat inside the app.',
+      viu_t:'I saw a loose dog',
+      viu1a:'Take a photo', viu1b:'From where you are, no need to get close.',
+      viu2a:'The AI compares', viu2b:'On your own phone, against lost dogs nearby.',
+      viu3a:'The owner finds out', viu3b:'If the similarity is above 70%, the owner is notified of your sighting.',
+      ins_t:'Install it before you need it', ins_l:'When a dog goes missing, every minute counts. With the app on your home screen, you post the alert right away.',
+      and1:'Open the app in Chrome.', and2:'Tap the ⋮ menu at the top.', and3:'Choose “Install app” or “Add to Home screen”.',
+      ios1:'Open the app in Safari.', ios2:'Tap Share (the square with the arrow).', ios3:'Choose “Add to Home Screen”.',
+      zap_dica:'Opened it from WhatsApp? Tap the three dots and choose “Open in browser” before installing.',
+      fat_t:'What you should know',
+      f1a:'Free', f1b:'Built by the community. You can use it without an account.',
+      f2a:'Address protected', f2b:'The map shows an approximate location, not your home.',
+      f3a:'Contact through the app', f3b:'Owner and spotter talk in the in-app chat. Your data follows Brazil’s LGPD.',
+      rep_t:'Share it in your group', rep_l:'The more people nearby have the app, the more eyes are looking.',
+      rep_zap:'Send on WhatsApp', rep_copiar:'Copy message', copiado:'Message copied. Just paste it in the group.',
+      foot_app:'Open Encontre Pet', foot:'built by the community · Vianexx AI',
+      msg:'🐾 Meet Encontre Pet: a free community app to find lost dogs.\n\nIf a dog goes missing, the alert reaches everyone within 5 km. If you see a loose dog, just take a photo and the app compares it with lost dogs in the area.\n\nInstall it before you need it: ' + LINK
+    },
+    es: {
+      skip:'Saltar al contenido', procura:'Se busca',
+      tese_a:'Antes era un cartel en el poste.', tese_b:'Ahora la alerta llega a quien está a menos de 5 km.',
+      foto:'Foto de tu perro + dónde se perdió',
+      desc:'En Encontre Pet publicas la alerta en un minuto. Quien vea un perro suelto lo registra con foto — y la IA del celular lo compara con los perros perdidos cercanos.',
+      abrir:'Abrir la app', repassar:'Compartir en WhatsApp', gratis:'Gratis. Se puede usar sin crear cuenta.',
+      cam_t:'Dos formas de ayudar', cam_l:'Quien perdió a su perro y quien vio uno en la calle usan la misma app.',
+      tut_t:'Mi perro se perdió',
+      tut1a:'Publica la alerta', tut1b:'Foto, nombre y el lugar donde lo vieron por última vez.',
+      tut2a:'El barrio lo ve', tut2b:'La alerta aparece en la app de quien está en un radio de 5 km.',
+      tut3a:'Te avisan', tut3b:'Cuando alguien registra un perro parecido, el aviso llega a tus notificaciones y conversan por el chat de la app.',
+      viu_t:'Vi un perro suelto',
+      viu1a:'Toma una foto', viu1b:'Desde donde estás, sin acercarte.',
+      viu2a:'La IA compara', viu2b:'En tu propio celular, con los perros perdidos cercanos.',
+      viu3a:'El dueño se entera', viu3b:'Si la similitud supera el 70%, el dueño recibe el aviso de tu avistamiento.',
+      ins_t:'Instálala antes de necesitarla', ins_l:'Cuando un perro se pierde, cada minuto cuenta. Con la app en la pantalla de inicio, publicas la alerta al instante.',
+      and1:'Abre la app en Chrome.', and2:'Toca el menú ⋮ arriba.', and3:'Elige “Instalar app” o “Agregar a la pantalla principal”.',
+      ios1:'Abre la app en Safari.', ios2:'Toca Compartir (el cuadrado con la flecha).', ios3:'Elige “Agregar a inicio”.',
+      zap_dica:'¿La abriste desde WhatsApp? Toca los tres puntitos y elige “Abrir en el navegador” antes de instalar.',
+      fat_t:'Lo que debes saber',
+      f1a:'Gratis', f1b:'Hecha por la comunidad. Se puede usar sin crear cuenta.',
+      f2a:'Dirección protegida', f2b:'El mapa muestra una ubicación aproximada, no tu casa.',
+      f3a:'Contacto por la app', f3b:'Dueño y quien avistó conversan por el chat interno. Tus datos siguen la LGPD de Brasil.',
+      rep_t:'Compártela en tu grupo', rep_l:'Cuanta más gente de la zona tenga la app, más ojos buscando.',
+      rep_zap:'Enviar por WhatsApp', rep_copiar:'Copiar mensaje', copiado:'Mensaje copiado. Solo pégalo en el grupo.',
+      foot_app:'Abrir Encontre Pet', foot:'hecha por la comunidad · Vianexx AI',
+      msg:'🐾 Conozcan Encontre Pet: una app gratuita de la comunidad para encontrar perros perdidos.\n\nSi un perro se pierde, la alerta llega a quien está a menos de 5 km. Si ves un perro suelto, solo toma una foto y la app la compara con los perros perdidos de la zona.\n\nInstálenla antes de necesitarla: ' + LINK
+    }
+  };
+
+  var atual = 'pt';
+  function aplicar(lang) {
+    var d = I18N[lang] || I18N.pt; atual = lang;
+    document.documentElement.lang = lang === 'pt' ? 'pt-BR' : lang;
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var k = el.getAttribute('data-i18n'); if (d[k] != null) el.textContent = d[k];
+    });
+    document.getElementById('msg').textContent = d.msg;
+    var zap = 'https://wa.me/?text=' + encodeURIComponent(d.msg);
+    document.querySelectorAll('.js-zap').forEach(function (a) { a.href = zap; a.target = '_blank'; a.rel = 'noopener'; });
+    document.querySelectorAll('.langs button').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.lang === lang ? 'true' : 'false');
+    });
+    document.getElementById('copiado').textContent = '';
+  }
+  document.querySelectorAll('.langs button').forEach(function (b) {
+    b.addEventListener('click', function () { aplicar(b.dataset.lang); });
+  });
+  document.getElementById('copiar').addEventListener('click', function () {
+    var texto = I18N[atual].msg, ok = function () { document.getElementById('copiado').textContent = I18N[atual].copiado; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(texto).then(ok, function () {});
+    }
+  });
+  var nav = (navigator.language || 'pt').slice(0, 2);
+  aplicar(I18N[nav] ? nav : 'pt');
+})();
+</script>
+</body>
+</html>
