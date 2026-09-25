@@ -10,7 +10,8 @@
 // v1.20.0: backend migrado para Netlify Functions (custo zero sem Blaze) —
 // novo js/services/backend.js (shim httpsCallable) + process-avistamento.
 // v1.20.1: tela de notificações voltava vazia (query negada descartava as outras).
-const CACHE_VERSION = 'encontre-pet-v1.20.1';
+// v1.20.2: reporte feito sem conexão não grava mais alert_privado com ID local_ (órfão).
+const CACHE_VERSION = 'encontre-pet-v1.20.2';
 // Versionado junto com o app: antes era fixo e sobrevivia a todos os deploys,
 // podendo servir cópias antigas de páginas/JS (caches.match procura em todos).
 const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';

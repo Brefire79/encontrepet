@@ -234,7 +234,13 @@ const DB = (() => {
   //  UNIFIED OPERATIONS (Firestore → REST → Cache → vazio)
   // ============================================================
 
-  async function create(collection, data) {
+  /**
+   * @param {object} [opts]
+   * @param {boolean} [opts.queueOnFail=true] false = não enfileira sozinho (o
+   *   chamador decide o que guardar — usado pelos reportes, que refazem o fluxo
+   *   inteiro no sync em vez de só regravar o doc público).
+   */
+  async function create(collection, data, opts = {}) {
     // Tentar Firestore
     if (useFirestore) {
       try {
@@ -249,7 +255,7 @@ const DB = (() => {
     // Se ambos falharam, salvar localmente
     const localId = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     const localRecord = { id: localId, ...data, _localOnly: true, created_at: new Date().toISOString() };
-    saveToLocalQueue(collection, 'create', localRecord);
+    if (opts.queueOnFail !== false) saveToLocalQueue(collection, 'create', localRecord);
     return localRecord;
   }
 
@@ -302,7 +308,7 @@ const DB = (() => {
     return { data: [], total: 0 };
   }
 
-  async function update(collection, id, data) {
+  async function update(collection, id, data, opts = {}) {
     // Tentar Firestore
     if (useFirestore) {
       try {
@@ -315,8 +321,8 @@ const DB = (() => {
     const restResult = await apiUpdate(collection, id, data);
     if (restResult) return restResult;
     // Salvar na fila local
-    saveToLocalQueue(collection, 'update', { id, ...data });
-    return { id, ...data };
+    if (opts.queueOnFail !== false) saveToLocalQueue(collection, 'update', { id, ...data });
+    return { id, ...data, _localOnly: true };
   }
 
   async function remove(collection, id) {
@@ -359,11 +365,22 @@ const DB = (() => {
     const remaining = [];
     for (const item of queue) {
       try {
-        if (item.action === 'create') {
-          await create(item.collection, item.data);
+        // queueOnFail:false + checagem de _localOnly: se falhar de novo, o item
+        // original fica em `remaining`. Antes a operação se re-enfileirava e o
+        // setItem(remaining) abaixo sobrescrevia a cópia — o dado se perdia.
+        if (item.action === 'report') {
+          // Reporte completo (doc público + alert_privado + foto + backend),
+          // refeito com o ID definitivo. Ver reportarPetPerdido/reportarAvistamento.
+          const fn = item.collection === TABLES.PETS ? reportarPetPerdido : reportarAvistamento;
+          await fn(item.data, { fromSync: true });
+        } else if (item.action === 'create') {
+          const { id, _localOnly, created_at, ...rest } = item.data || {};
+          const res = await create(item.collection, rest, { queueOnFail: false });
+          if (res?._localOnly) throw new Error('ainda sem conexão');
         } else if (item.action === 'update' && item.data?.id) {
           const { id, ...rest } = item.data;
-          await update(item.collection, id, rest);
+          const res = await update(item.collection, id, rest, { queueOnFail: false });
+          if (res?._localOnly) throw new Error('ainda sem conexão');
         }
         console.log(`[DB] ✅ Sync: ${item.action} em ${item.collection}`);
       } catch (err) {
@@ -386,8 +403,19 @@ const DB = (() => {
   //  PETS PERDIDOS
   // ============================================================
 
-  async function reportarPetPerdido(data) {
-    Security.checkRateLimit('report_pet', 3, 300000);
+  // Doc público não foi criado (sem conexão / recusado): NADA vai ao Firestore
+  // com o ID temporário local_… — antes o alert_privado era gravado com ele e,
+  // quando a fila sincronizava, o doc público nascia com outro ID, deixando
+  // dados pessoais órfãos (e o tutor sem notificação). Guarda o reporte
+  // original; processSyncQueue o refaz inteiro com o ID definitivo.
+  function queueFailedReport(collection, data, localResult, opts) {
+    if (opts.fromSync) throw new Error('ainda sem conexão'); // item fica na fila
+    saveToLocalQueue(collection, 'report', data);
+    return localResult;
+  }
+
+  async function reportarPetPerdido(data, opts = {}) {
+    if (!opts.fromSync) Security.checkRateLimit('report_pet', 3, 300000);
     Security.validateReportData(data);
 
     // [FIX C12] Garante que Firebase Auth UID esteja pronto ANTES de montar o
@@ -456,8 +484,10 @@ const DB = (() => {
       owner_uid: Auth.getUID()
     };
 
-    const result = await create(TABLES.PETS, record);
+    const result = await create(TABLES.PETS, record, { queueOnFail: false });
     _feedCache.pets.at = 0; // novo alerta aparece no próximo load do feed
+
+    if (result?._localOnly) return queueFailedReport(TABLES.PETS, data, result, opts);
 
     // Salvar dados PRIVADOS em collection separada (LGPD)
     if (result?.id) {
@@ -722,8 +752,8 @@ const DB = (() => {
   //  AVISTAMENTOS
   // ============================================================
 
-  async function reportarAvistamento(data) {
-    Security.checkRateLimit('report_sighting', 5, 300000);
+  async function reportarAvistamento(data, opts = {}) {
+    if (!opts.fromSync) Security.checkRateLimit('report_sighting', 5, 300000);
 
     // [FIX C12] Mesma garantia de owner_firebase_uid valido (ver reportarPetPerdido)
     let ensuredFirebaseUid = '';
@@ -779,8 +809,10 @@ const DB = (() => {
       owner_uid: Auth.getUID()
     };
 
-    const result = await create(TABLES.AVISTAMENTOS, record);
+    const result = await create(TABLES.AVISTAMENTOS, record, { queueOnFail: false });
     _feedCache.avist.at = 0; // novo avistamento aparece no próximo load
+
+    if (result?._localOnly) return queueFailedReport(TABLES.AVISTAMENTOS, data, result, opts);
 
     // Salvar dados PRIVADOS em collection separada (LGPD)
     if (result?.id) {

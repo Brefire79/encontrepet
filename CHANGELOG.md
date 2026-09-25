@@ -7,6 +7,14 @@ Versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [1.20.2] — 2026-09-24
+
+### Corrigido
+- **Reporte feito sem conexão deixava dados pessoais órfãos**: quando o doc público falhava, o `alert_privado` era gravado com o ID temporário `local_…`; no sync o doc público nascia com outro ID (tutor sem notificação, dados privados soltos — 5 casos encontrados em produção). Agora o reporte inteiro vai para a fila e é refeito com o ID definitivo (doc público, `alert_privado`, foto e `process-avistamento`)
+- **Fila offline perdia dados**: uma operação que falhava de novo no sync era re-enfileirada e logo sobrescrita pelo `setItem(remaining)`. Agora o item original permanece na fila; a regravação também não leva mais os campos `id`/`_localOnly`
+
+---
+
 ## [1.20.1] — 2026-09-23
 
 ### Corrigido
