@@ -18,8 +18,9 @@
 // v1.21.4: SW não intercepta outros sites nem /__/auth (login Google).
 // v1.21.5: contraste do texto suave no tema claro.
 // v1.21.6: authDomain do Firebase por ambiente (login Google no localhost).
+// v1.21.7: som das notificações destravado no 1º toque; alarme no match compatível.
 // Manter igual a AppConfig.APP_VERSION (js/app-config.js).
-const CACHE_VERSION = 'encontre-pet-v1.21.6';
+const CACHE_VERSION = 'encontre-pet-v1.21.7';
 // Versionado junto com o app: antes era fixo e sobrevivia a todos os deploys,
 // podendo servir cópias antigas de páginas/JS (caches.match procura em todos).
 const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';

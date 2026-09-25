@@ -49,9 +49,27 @@ const App = (() => {
    * Plays a short, pleasant notification chime using Web Audio API.
    * No external files needed.
    */
+  /**
+   * Navegadores só liberam áudio depois de um toque do usuário. As
+   * notificações chegam sem toque, então o AudioContext ficava "suspenso" e
+   * os sons não tocavam (principalmente no celular). Destrava no 1º toque.
+   */
+  function unlockAudioOnFirstTouch() {
+    const eventos = ['pointerdown', 'touchend', 'keydown'];
+    const destravar = () => {
+      try {
+        if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (_audioCtx.state === 'suspended') _audioCtx.resume();
+      } catch (e) { /* sem Web Audio */ }
+      eventos.forEach(ev => document.removeEventListener(ev, destravar, true));
+    };
+    eventos.forEach(ev => document.addEventListener(ev, destravar, true));
+  }
+
   function playNotificationSound() {
     try {
       if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (_audioCtx.state === 'suspended') _audioCtx.resume();
       const ctx = _audioCtx;
       const now = ctx.currentTime;
 
@@ -85,6 +103,7 @@ const App = (() => {
   function playContactAlertSound() {
     try {
       if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (_audioCtx.state === 'suspended') _audioCtx.resume();
       const ctx = _audioCtx;
       const now = ctx.currentTime;
       [523.25, 659.25, 783.99].forEach((freq, i) => {
@@ -107,6 +126,7 @@ const App = (() => {
   function playFeedSound() {
     try {
       if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (_audioCtx.state === 'suspended') _audioCtx.resume();
       const ctx = _audioCtx;
       const now = ctx.currentTime;
       const osc = ctx.createOscillator();
@@ -213,6 +233,7 @@ const App = (() => {
   function playAlarmSound() {
     try {
       if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (_audioCtx.state === 'suspended') _audioCtx.resume();
       const ctx = _audioCtx;
       const now = ctx.currentTime;
       // Padrão de alarme: 3 bipes urgentes
@@ -559,6 +580,9 @@ const App = (() => {
     // 7. IA em background (apenas após login — TF.js não deve carregar na tela de login)
     if (Auth.isLoggedIn()) loadAIModel();
 
+    // Sons de notificação: libera o áudio no primeiro toque (política dos navegadores)
+    unlockAudioOnFirstTouch();
+
     // 8. Deep links (share URLs)
     handleDeepLink();
     window.addEventListener('hashchange', handleDeepLink);
@@ -619,8 +643,11 @@ const App = (() => {
 
       if (_lastKnownUnread >= 0 && unread > _lastKnownUnread) {
         const hasContactNotif = notifs.some(n => !n.lida && n.tipo === 'avistamento_contato');
-        const hasMatchNotif   = notifs.some(n => !n.lida && n.tipo === 'match_ia');
-        const newNotif = notifs.find(n => !n.lida && (n.tipo === 'match_ia' || n.tipo === 'avistamento_contato'));
+        // match_alto_para_tutor (avistamento compatível, criado pelo backend)
+        // é o caso mais importante e não disparava o alarme.
+        const URGENTES = ['match_ia', 'match_alto_para_tutor', 'avistamento_contato'];
+        const hasMatchNotif   = notifs.some(n => !n.lida && (n.tipo === 'match_ia' || n.tipo === 'match_alto_para_tutor'));
+        const newNotif = notifs.find(n => !n.lida && URGENTES.includes(n.tipo));
 
         // Som e flash do sino
         if (hasContactNotif) playContactAlertSound();
