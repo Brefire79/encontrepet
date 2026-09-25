@@ -313,6 +313,22 @@ const Auth = (() => {
     // Gerar hash da senha
     const senhaHash = await Security.createPasswordHash(password);
 
+    // Conta no Firebase Auth PRIMEIRO. Antes o perfil era criado antes e, se
+    // a conta Auth falhasse, o e-mail ficava "livre" no Firebase: outra
+    // pessoa podia criar a conta com ele e assumir o perfil. Agora sem conta
+    // Auth não há perfil — e o perfil já nasce vinculado a ela.
+    let contaAuthUid = '';
+    if (typeof firebase !== 'undefined' && firebase.auth) {
+      try {
+        const cred = await firebase.auth().createUserWithEmailAndPassword(Security.sanitizeEmail(email), password);
+        contaAuthUid = cred?.user?.uid || '';
+      } catch (fbErr) {
+        if (fbErr.code === 'auth/email-already-in-use') throw new Error(I18n.t('auth.email_in_use'));
+        console.warn('[Auth] Firebase Auth account creation failed:', fbErr.code);
+        throw new Error(I18n.t('auth.signup_unavailable'));
+      }
+    }
+
     // Gerar UID
     const uid = generateUID();
 
@@ -325,8 +341,10 @@ const Auth = (() => {
       email: Security.sanitizeEmail(email),
       // Vínculo com o Firebase Auth UID atual — habilita get direto do próprio
       // doc nas rules (isBoundUser) sem depender de listagem (N-01)
+      // UID da conta recém-criada (o cache do FirebaseConfig ainda pode
+      // estar com o UID anônimo — o onAuthStateChanged é assíncrono)
       firebase_auth_uids: (() => {
-        const fbUid = FirebaseConfig.getFirebaseUID?.() || '';
+        const fbUid = contaAuthUid || FirebaseConfig.getFirebaseUID?.() || '';
         return fbUid ? [fbUid] : [];
       })(),
       telefone: '',
@@ -368,18 +386,6 @@ const Auth = (() => {
     }
     // NOTA DE SEGURANÇA: hash nunca salvo em localStorage (risco XSS).
 
-    // Criar conta no Firebase Auth (necessário para recuperação de senha)
-    if (typeof firebase !== 'undefined' && firebase.auth) {
-      try {
-        await firebase.auth().createUserWithEmailAndPassword(
-          Security.sanitizeEmail(email), password
-        );
-      } catch (fbErr) {
-        // Não impede o cadastro; conta Firebase Auth pode ser criada futuramente
-        console.warn('[Auth] Firebase Auth account creation failed (non-critical):', fbErr.code);
-      }
-    }
-
     // Criar sessão
     const token = Security.generateSessionToken();
     Security.saveSession(finalUID, token, { nome: displayName, email, is_anonymous: false });
@@ -393,6 +399,110 @@ const Auth = (() => {
     userProfile = { ...userData, id: finalUID };
     notifyListeners('login', getUserData());
 
+    return { success: true, user: currentUser };
+  }
+
+  // ====== LOGIN COM GOOGLE ======
+  // O Google entrega e-mail verificado: o login-user aceita o e-mail do token
+  // (email_verified) sem senha. No primeiro acesso o perfil é criado já
+  // vinculado à conta Google. Ligado por AppConfig.GOOGLE_LOGIN_ENABLED.
+
+  function googleLoginEnabled() {
+    return typeof AppConfig !== 'undefined' && AppConfig.GOOGLE_LOGIN_ENABLED === true &&
+      typeof firebase !== 'undefined' && !!firebase.auth;
+  }
+
+  function googleProvider() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    return provider;
+  }
+
+  async function loginWithGoogle() {
+    if (!googleLoginEnabled()) throw new Error(I18n.t('auth.google_error'));
+    let cred;
+    try {
+      cred = await firebase.auth().signInWithPopup(googleProvider());
+    } catch (err) {
+      // Popup bloqueado (comum em app instalado/celular): segue por redirect;
+      // a volta é tratada em completeGoogleRedirect() no início do app.
+      if (err.code === 'auth/popup-blocked' || err.code === 'auth/operation-not-supported-in-this-environment') {
+        await firebase.auth().signInWithRedirect(googleProvider());
+        return { redirecting: true };
+      }
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+        return { cancelled: true };
+      }
+      console.warn('[Auth] Google login falhou:', err.code);
+      throw new Error(I18n.t('auth.google_error'));
+    }
+    return finishGoogleLogin(cred.user);
+  }
+
+  async function completeGoogleRedirect() {
+    if (!googleLoginEnabled()) return null;
+    try {
+      const result = await firebase.auth().getRedirectResult();
+      if (result?.user && result.additionalUserInfo?.providerId === 'google.com') {
+        return await finishGoogleLogin(result.user);
+      }
+    } catch (err) {
+      console.warn('[Auth] retorno do Google falhou:', err.code || err.message);
+    }
+    return null;
+  }
+
+  async function finishGoogleLogin(googleUser) {
+    const email = Security.sanitizeEmail((googleUser?.email || '').toLowerCase());
+    if (!email) throw new Error(I18n.t('auth.google_error'));
+
+    let user = null;
+    let existe = false;
+    try {
+      existe = (await cfCall('checkEmailExists', { email }))?.exists === true;
+      if (existe) user = (await cfCall('loginUser', { email }))?.user || null;
+    } catch (cfErr) {
+      if (cfErrorCode(cfErr) === 'permission-denied') throw new Error('Esta conta foi bloqueada.');
+      throw new Error(I18n.t('auth.google_error'));
+    }
+    if (existe && !user) throw new Error(I18n.t('auth.google_error'));
+
+    if (!user) {
+      // Primeiro acesso: perfil novo, já vinculado a esta conta Google
+      const uid = generateUID();
+      const userData = {
+        nome: Security.sanitize(googleUser.displayName || email.split('@')[0]),
+        email,
+        firebase_auth_uids: [googleUser.uid],
+        telefone: '',
+        cidade: '',
+        foto_perfil: '',
+        is_anonymous: false,
+        pets_reportados: 0,
+        avistamentos_count: 0,
+        config_notificacoes: true,
+        config_loc_aproximada: true,
+        config_raio_ofuscacao: 500,
+        config_perfil_publico: false,
+        status: 'ativo',
+        login_provider: 'google',
+        ultimo_login: new Date().toISOString()
+      };
+      const created = await createUser(uid, userData);
+      user = { ...userData, id: created.id || uid };
+    }
+
+    // Criar sessão
+    const token = Security.generateSessionToken();
+    Security.saveSession(user.id, token, { nome: user.nome, email: user.email, is_anonymous: false });
+    currentUser = {
+      uid: user.id,
+      email: user.email,
+      displayName: user.nome || email.split('@')[0],
+      isAnonymous: false
+    };
+    userProfile = user;
+    notifyListeners('login', getUserData());
     return { success: true, user: currentUser };
   }
 
@@ -822,6 +932,9 @@ const Auth = (() => {
     init,
     registerWithEmail,
     loginWithEmail,
+    loginWithGoogle,
+    completeGoogleRedirect,
+    googleLoginEnabled,
     loginAnonymous,
     logout,
     updateProfile,

@@ -535,6 +535,27 @@ describe('push_tokens — só o backend acessa', () => {
   });
 });
 
+describe('usuarios — dono pelo e-mail exige e-mail verificado', () => {
+  // Perfil legado sem vínculo (firebase_auth_uids) com o e-mail vitima@x.com.
+  beforeEach(async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'usuarios', 'u_vitima'), { email: 'vitima@x.com', role: 'user', status: 'ativo', telefone: '11999990000' });
+    });
+  });
+  const comEmail = (uid, verificado) =>
+    testEnv.authenticatedContext(uid, { email: 'vitima@x.com', email_verified: verificado }).firestore();
+
+  it('conta Auth com o e-mail NÃO verificado não lê o perfil', async () => {
+    await assertFails(getDoc(doc(comEmail('fb_invasor', false), 'usuarios', 'u_vitima')));
+  });
+  it('conta Auth com o e-mail NÃO verificado não altera o perfil', async () => {
+    await assertFails(updateDoc(doc(comEmail('fb_invasor', false), 'usuarios', 'u_vitima'), { firebase_auth_uids: ['fb_invasor'] }));
+  });
+  it('e-mail verificado (ex.: Google) lê o próprio perfil', async () => {
+    await assertSucceeds(getDoc(doc(comEmail('fb_dono', true), 'usuarios', 'u_vitima')));
+  });
+});
+
 describe('fallback global', () => {
   it('coleção desconhecida é negada', async () => {
     await assertFails(getDoc(doc(asOwner(), 'coisa_aleatoria', 'x')));

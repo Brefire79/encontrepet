@@ -13,7 +13,9 @@
 // v1.20.2: reporte feito sem conexão não grava mais alert_privado com ID local_ (órfão).
 // v1.21.0: notificação push (FCM) — handlers de push/notificationclick.
 // v1.21.1: avaliação de lançamento — validação de coordenadas; SDKs storage/functions removidos.
-const CACHE_VERSION = 'encontre-pet-v1.21.1';
+// v1.21.2: versão no menu vem de AppConfig.APP_VERSION; login reforçado.
+// Manter igual a AppConfig.APP_VERSION (js/app-config.js).
+const CACHE_VERSION = 'encontre-pet-v1.21.2';
 // Versionado junto com o app: antes era fixo e sobrevivia a todos os deploys,
 // podendo servir cópias antigas de páginas/JS (caches.match procura em todos).
 const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';
