@@ -22,9 +22,15 @@ exports.handler = callable(async ({ data, auth }) => {
   if (!doc) throw new HttpsError('unauthenticated', GENERIC);
   const userData = doc.data();
 
-  // 1) Firebase Auth já verificou este email (login por email/senha)
+  // 1) O Firebase Auth já provou a posse deste e-mail — mas só vale se o
+  //    e-mail estiver VERIFICADO (ex.: login com Google, reset por e-mail) ou
+  //    se este login já estiver vinculado ao perfil. Antes bastava o e-mail
+  //    do token: quem criasse uma conta Auth com o e-mail de um perfil sem
+  //    conta Auth assumia o perfil (avaliação de lançamento 2026-09-25).
   const tokenEmail = (auth.token?.email || '').toLowerCase();
-  let valid = !!tokenEmail && tokenEmail === normalizedEmail;
+  const emailConfere = !!tokenEmail && tokenEmail === normalizedEmail;
+  const jaVinculado = Array.isArray(userData.firebase_auth_uids) && userData.firebase_auth_uids.includes(auth.uid);
+  let valid = emailConfere && (auth.token?.email_verified === true || jaVinculado);
 
   // 2) Caso contrário, verificar a senha (senhas_usuarios; fallback legado)
   if (!valid) {

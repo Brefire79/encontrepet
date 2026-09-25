@@ -27,6 +27,8 @@ window.I18nLocales.es = {
   'auth.register.title': 'Crear Cuenta Gratis',
   'auth.name': 'Nombre',
   'auth.name.placeholder': 'Tu nombre',
+  'auth.email_in_use': 'Este correo ya está registrado. Intenta iniciar sesión.',
+  'auth.signup_unavailable': 'No fue posible crear tu cuenta ahora. Verifica tu conexión e inténtalo de nuevo.',
   'auth.password.min': 'Mínimo 6 caracteres',
   'auth.password.confirm': 'Confirmar Contraseña',
   'auth.password.confirm.placeholder': 'Repite la contraseña',

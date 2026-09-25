@@ -313,6 +313,22 @@ const Auth = (() => {
     // Gerar hash da senha
     const senhaHash = await Security.createPasswordHash(password);
 
+    // Conta no Firebase Auth PRIMEIRO. Antes o perfil era criado antes e, se
+    // a conta Auth falhasse, o e-mail ficava "livre" no Firebase: outra
+    // pessoa podia criar a conta com ele e assumir o perfil. Agora sem conta
+    // Auth não há perfil — e o perfil já nasce vinculado a ela.
+    let contaAuthUid = '';
+    if (typeof firebase !== 'undefined' && firebase.auth) {
+      try {
+        const cred = await firebase.auth().createUserWithEmailAndPassword(Security.sanitizeEmail(email), password);
+        contaAuthUid = cred?.user?.uid || '';
+      } catch (fbErr) {
+        if (fbErr.code === 'auth/email-already-in-use') throw new Error(I18n.t('auth.email_in_use'));
+        console.warn('[Auth] Firebase Auth account creation failed:', fbErr.code);
+        throw new Error(I18n.t('auth.signup_unavailable'));
+      }
+    }
+
     // Gerar UID
     const uid = generateUID();
 
@@ -325,8 +341,10 @@ const Auth = (() => {
       email: Security.sanitizeEmail(email),
       // Vínculo com o Firebase Auth UID atual — habilita get direto do próprio
       // doc nas rules (isBoundUser) sem depender de listagem (N-01)
+      // UID da conta recém-criada (o cache do FirebaseConfig ainda pode
+      // estar com o UID anônimo — o onAuthStateChanged é assíncrono)
       firebase_auth_uids: (() => {
-        const fbUid = FirebaseConfig.getFirebaseUID?.() || '';
+        const fbUid = contaAuthUid || FirebaseConfig.getFirebaseUID?.() || '';
         return fbUid ? [fbUid] : [];
       })(),
       telefone: '',
@@ -367,18 +385,6 @@ const Auth = (() => {
       console.warn('[Auth] saveUserPassword indisponível — hash NÃO gravado em usuarios (S-03).');
     }
     // NOTA DE SEGURANÇA: hash nunca salvo em localStorage (risco XSS).
-
-    // Criar conta no Firebase Auth (necessário para recuperação de senha)
-    if (typeof firebase !== 'undefined' && firebase.auth) {
-      try {
-        await firebase.auth().createUserWithEmailAndPassword(
-          Security.sanitizeEmail(email), password
-        );
-      } catch (fbErr) {
-        // Não impede o cadastro; conta Firebase Auth pode ser criada futuramente
-        console.warn('[Auth] Firebase Auth account creation failed (non-critical):', fbErr.code);
-      }
-    }
 
     // Criar sessão
     const token = Security.generateSessionToken();

@@ -200,8 +200,13 @@ service cloud.firestore {
     //  (unicidade de email é garantida pela camada de aplicação).
     // ========================================
 
+    // Dono pelo e-mail só com e-mail VERIFICADO (Google, reset por e-mail).
+    // Sem isso, criar uma conta Auth com o e-mail de outra pessoa dava acesso
+    // ao perfil dela. Contas não verificadas entram por isBoundUser (vínculo
+    // feito no cadastro e no login-user).
     function isUserOwner(storedEmail) {
       return request.auth.token.email != null
+        && request.auth.token.get('email_verified', false) == true
         && request.auth.token.email == storedEmail;
     }
 

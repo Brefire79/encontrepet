@@ -27,6 +27,8 @@ window.I18nLocales.en = {
   'auth.register.title': 'Create Free Account',
   'auth.name': 'Name',
   'auth.name.placeholder': 'Your name',
+  'auth.email_in_use': 'This e-mail is already registered. Try signing in.',
+  'auth.signup_unavailable': 'Could not create your account right now. Check your connection and try again.',
   'auth.password.min': 'Minimum 6 characters',
   'auth.password.confirm': 'Confirm Password',
   'auth.password.confirm.placeholder': 'Repeat password',
