@@ -12,7 +12,7 @@
 
   const config = Object.freeze({
     // Versão exibida no menu e em "Sobre". Manter igual ao CACHE_VERSION do sw.js.
-    APP_VERSION: '1.21.5',
+    APP_VERSION: '1.21.6',
     MATCH_THRESHOLD: 70,
     HASH_MATCH_THRESHOLD: 70,
     // Foto cheia no Firebase Storage exige Blaze (sem bucket no Spark).
