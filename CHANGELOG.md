@@ -7,6 +7,25 @@ Versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [1.21.1] — 2026-09-25
+
+### Segurança (avaliação de lançamento)
+- **Lista de usuários exposta**: a regra de `usuarios` ainda permitia `list` com `limit <= 1` (compat transitória); com `startAfter`, um visitante anônimo baixava a base inteira um a um (nome, e-mail, telefone — confirmado em produção com os 4 cadastros). Agora `list` é só de admin
+- CORS das Netlify Functions restrito ao site do Encontre Pet e às prévias de deploy dele (antes: qualquer `*.netlify.app`)
+
+### Corrigido
+- Reporte com coordenada fora do mapa (ex.: latitude 999) era aceito; mensagem nova nos 3 idiomas
+
+### Desempenho
+- Removidos os SDKs `firebase-storage-compat` e `firebase-functions-compat`, que não são mais usados (Storage exige Blaze; backend é Netlify)
+
+## [1.21.0] — 2026-09-24
+
+### Adicionado
+- Avisos no celular (push via Firebase Cloud Messaging, gratuito): cartão na tela de Notificações, convite após reportar pet perdido, envio pelas Netlify Functions nos eventos de match, avistamento próximo, contato e reencontro
+
+---
+
 ## [1.20.2] — 2026-09-24
 
 ### Corrigido

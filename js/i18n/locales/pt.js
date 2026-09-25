@@ -302,6 +302,7 @@ window.I18nLocales.pt = {
   'details.sighting_date': 'Data do avistamento',
 
   // — Notificações —
+  'report.invalid_location': 'Localização inválida. Marque o local no mapa ou use o GPS.',
   'notif.title': 'Notificações',
   'push.card_title': 'Receba avisos no celular',
   'push.card_desc': 'Saiba na hora quando alguém avistar um pet ligado a você, mesmo com o app fechado.',

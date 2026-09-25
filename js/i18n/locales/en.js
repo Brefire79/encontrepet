@@ -302,6 +302,7 @@ window.I18nLocales.en = {
   'details.sighting_date': 'Sighting date',
 
   // — Notifications —
+  'report.invalid_location': 'Invalid location. Mark the place on the map or use GPS.',
   'notif.title': 'Notifications',
   'push.card_title': 'Get alerts on your phone',
   'push.card_desc': 'Know right away when someone spots a pet linked to you, even with the app closed.',
