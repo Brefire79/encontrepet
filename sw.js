@@ -14,8 +14,9 @@
 // v1.21.0: notificação push (FCM) — handlers de push/notificationclick.
 // v1.21.1: avaliação de lançamento — validação de coordenadas; SDKs storage/functions removidos.
 // v1.21.2: versão no menu vem de AppConfig.APP_VERSION; login reforçado.
+// v1.21.3: login com Google ligado.
 // Manter igual a AppConfig.APP_VERSION (js/app-config.js).
-const CACHE_VERSION = 'encontre-pet-v1.21.2';
+const CACHE_VERSION = 'encontre-pet-v1.21.3';
 // Versionado junto com o app: antes era fixo e sobrevivia a todos os deploys,
 // podendo servir cópias antigas de páginas/JS (caches.match procura em todos).
 const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';
