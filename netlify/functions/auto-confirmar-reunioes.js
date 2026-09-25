@@ -4,6 +4,7 @@
 // North Star: reuniões confirmadas.
 
 const { getAdmin } = require('./_lib/firebase');
+const { enviarPush } = require('./_lib/push');
 
 exports.handler = async () => {
   const db = getAdmin().firestore();
@@ -50,6 +51,10 @@ exports.handler = async () => {
         confirmacao_unilateral: true,
         data: agora
       });
+      await enviarPush({
+        firebaseUid: reuniao.marcado_por_firebase_uid || data.owner_firebase_uid || '',
+        ownerUid: reuniao.marcado_por_uid || data.owner_uid || ''
+      }, { tipo: 'reuniao_confirmada', petNome: data.nome_pet, tag: `reuniao_${doc.id}` });
       confirmados++;
     } catch (error) {
       console.error('[auto-confirmar] falha em', doc.id, error.message);

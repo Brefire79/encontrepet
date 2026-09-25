@@ -520,6 +520,19 @@ describe('fotos — foto cheia fora do doc público (custo)', () => {
   });
 });
 
+describe('push_tokens — só o backend acessa', () => {
+  it('cliente NÃO grava token (nem no próprio UID)', async () => {
+    await assertFails(setDoc(doc(asOwner(), 'push_tokens', 'x'), { token: 't', owner_firebase_uid: OWNER }));
+  });
+  it('cliente NÃO lê nem lista tokens', async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, 'push_tokens', 'y'), { token: 't', owner_firebase_uid: OWNER });
+    });
+    await assertFails(getDoc(doc(asOwner(), 'push_tokens', 'y')));
+    await assertFails(getDocs(collection(asOther(), 'push_tokens')));
+  });
+});
+
 describe('fallback global', () => {
   it('coleção desconhecida é negada', async () => {
     await assertFails(getDoc(doc(asOwner(), 'coisa_aleatoria', 'x')));

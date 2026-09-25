@@ -30,6 +30,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js" integrity="sha384-Ke0FJhH7LyRqDxZ0wt+/OXV38yfQVu7g9VPEEGjYmB4RVOY/ta04uecRhsMwT7V3" crossorigin="anonymous"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js" integrity="sha384-XgUhjZUY/4vSJ8bUS7DFmLGK73fbJgS+nlrQDEC5X3QBpGgO+597wN8Syegw3ONj" crossorigin="anonymous"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js" integrity="sha384-hB0JJ4rNFhrwFXdiM7+wikJ3oIxttbx7D6zdYANzqbCt8CL8nLpOgbABsh5Mp3WC" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js" integrity="sha384-HY9kcCUNf5iP55Q7dt4qtyKGMq0L6BbtAwNb4LYA6MXDWUL8DRlsj1xhtwKBZ2BL" crossorigin="anonymous"></script>
 
   <!-- TensorFlow.js + MobileNet: injetados dinamicamente por AIVision.loadModel() apenas quando necessário -->
 </head>
@@ -847,6 +848,7 @@
         <button class="btn-back" data-back="home"><i class="fas fa-arrow-left"></i></button>
         <h2 data-i18n="notif.title">Notificações</h2>
       </div>
+      <div id="push-optin" class="push-optin hidden" aria-live="polite"></div>
       <div id="notificacoes-list" class="notificacoes-list">
         <div class="empty-state">
           <i class="fas fa-bell-slash"></i>
@@ -1557,12 +1559,13 @@
   </div>
 
   <!-- Scripts - Ordem importa! Locales → i18n → Firebase Config -->
-  <script src="js/app-config.js?v=1.20.0"></script>
-  <script src="js/i18n/locales/pt.js?v=1.20.0"></script>
-  <script src="js/i18n/locales/en.js?v=1.20.0"></script>
-  <script src="js/i18n/locales/es.js?v=1.20.0"></script>
-  <script src="js/i18n.js?v=1.20.0"></script>
+  <script src="js/app-config.js?v=1.21.0"></script>
+  <script src="js/i18n/locales/pt.js?v=1.21.0"></script>
+  <script src="js/i18n/locales/en.js?v=1.21.0"></script>
+  <script src="js/i18n/locales/es.js?v=1.21.0"></script>
+  <script src="js/i18n.js?v=1.21.0"></script>
   <script src="js/services/backend.js?v=1.20.0"></script>
+  <script src="js/services/push.js?v=1.21.0"></script>
   <script src="js/firebase-config.js"></script>
   <script src="js/security.js"></script>
   <script src="js/auth.js"></script>

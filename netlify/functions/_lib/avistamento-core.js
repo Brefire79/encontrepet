@@ -14,6 +14,7 @@ const {
   buildWhatsAppLink,
   waitForPrivateAlertData
 } = require('./shared');
+const { enviarPush } = require('./push');
 
 // [S-08] Notificação de proximidade (avistamento SEM vínculo a pet).
 async function notifyNearbyTutors(db, avistamento, avistamentoId, avistadorPrivateData, timestamp) {
@@ -61,6 +62,8 @@ async function notifyNearbyTutors(db, avistamento, avistamentoId, avistadorPriva
         data: new Date().toISOString(),
         timestamp
       });
+      await enviarPush({ firebaseUid: tutorUid, ownerUid: p.owner_uid },
+        { tipo: 'match_ia', petNome: p.nome_pet || p.nome, tag: `avist_${avistamentoId}` });
     }
   } catch (e) {
     console.warn('[avistamento-core] notifyNearbyTutors falhou (não-fatal):', avistamentoId);
@@ -141,6 +144,7 @@ async function runCore(admin, db, avistSnapRef, avistamento, avistamentoId) {
     || tutorPrivateData.owner_firebase_uid || '';
   const tutorOwnerUid = pet.owner_uid || tutorPrivateData.owner_uid || '';
   const petNome = pet.nome || pet.nome_pet || 'seu pet';
+  const petNomePush = pet.nome || pet.nome_pet || ''; // push traduz o padrão
 
   // [S-08] Vínculos garantidos server-side.
   if (avistadorUid && tutorUid) {
@@ -210,6 +214,8 @@ async function runCore(admin, db, avistSnapRef, avistamento, avistamentoId) {
       lida: false,
       timestamp
     });
+    await enviarPush({ firebaseUid: tutorUid, ownerUid: tutorOwnerUid },
+      { tipo: 'avistamento_registrado', petNome: petNomePush, tag: `avist_${avistamentoId}` });
     return;
   }
 
@@ -257,6 +263,8 @@ async function runCore(admin, db, avistSnapRef, avistamento, avistamentoId) {
     notifTutor.whatsapp_link = buildWhatsAppLink(avistadorTelefone);
   }
   await db.collection('notificacoes').add(notifTutor);
+  await enviarPush({ firebaseUid: tutorUid, ownerUid: tutorOwnerUid },
+    { tipo: 'match_alto_para_tutor', petNome: petNomePush, tag: `match_${conversaId}` });
 
   const notifAvistador = {
     tipo: 'match_alto_para_avistador',
@@ -284,6 +292,8 @@ async function runCore(admin, db, avistSnapRef, avistamento, avistamentoId) {
     notifAvistador.contato_email_tutor = tutorEmail;
   }
   await db.collection('notificacoes').add(notifAvistador);
+  await enviarPush({ firebaseUid: avistadorUid, ownerUid: avistadorOwnerUid },
+    { tipo: 'match_alto_para_avistador', petNome: petNomePush, tag: `match_${conversaId}` });
 
   await avistSnapRef.update({
     match_confirmado: true,
