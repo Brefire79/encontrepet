@@ -440,6 +440,12 @@ const Security = (() => {
     if (data.descricao && data.descricao.length > 1000) {
       errors.push('Descrição muito longa (máximo 1000 caracteres).');
     }
+    // Coordenada fora do planeta quebraria distância/match (e só serviria a abuso)
+    const lat = Number(data.latitude), lng = Number(data.longitude);
+    if ((data.latitude != null && (!Number.isFinite(lat) || Math.abs(lat) > 90)) ||
+        (data.longitude != null && (!Number.isFinite(lng) || Math.abs(lng) > 180))) {
+      errors.push(typeof I18n !== 'undefined' ? I18n.t('report.invalid_location') : 'Localização inválida.');
+    }
     if (errors.length > 0) throw new Error(errors.join(' '));
     return true;
   }

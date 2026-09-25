@@ -302,6 +302,7 @@ window.I18nLocales.es = {
   'details.sighting_date': 'Fecha del avistamiento',
 
   // — Notifications —
+  'report.invalid_location': 'Ubicación inválida. Marca el lugar en el mapa o usa el GPS.',
   'notif.title': 'Notificaciones',
   'push.card_title': 'Recibe avisos en el celular',
   'push.card_desc': 'Entérate al instante cuando alguien vea una mascota vinculada a ti, incluso con la app cerrada.',

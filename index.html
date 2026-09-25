@@ -28,8 +28,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" integrity="sha384-ZaR6mWzmJtrRibZ1Vm7SoHFr8OXjyAuGAXalGDKqbxFT18oi/z+oZLIRFkpeNor1" crossorigin="anonymous"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" integrity="sha384-I1LYojsZ5RM1cOda44Z2h42Qa6YfsQ1XkXxREnhp4ueYBR/4d1pG1K+NZM537Vsj" crossorigin="anonymous"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js" integrity="sha384-Ke0FJhH7LyRqDxZ0wt+/OXV38yfQVu7g9VPEEGjYmB4RVOY/ta04uecRhsMwT7V3" crossorigin="anonymous"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js" integrity="sha384-XgUhjZUY/4vSJ8bUS7DFmLGK73fbJgS+nlrQDEC5X3QBpGgO+597wN8Syegw3ONj" crossorigin="anonymous"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js" integrity="sha384-hB0JJ4rNFhrwFXdiM7+wikJ3oIxttbx7D6zdYANzqbCt8CL8nLpOgbABsh5Mp3WC" crossorigin="anonymous"></script>
+  <!-- storage-compat e functions-compat removidos (2026-09-25): Storage exige Blaze
+       (AppConfig.USE_FIREBASE_STORAGE=false) e o backend é Netlify (js/services/backend.js). -->
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js" integrity="sha384-HY9kcCUNf5iP55Q7dt4qtyKGMq0L6BbtAwNb4LYA6MXDWUL8DRlsj1xhtwKBZ2BL" crossorigin="anonymous"></script>
 
   <!-- TensorFlow.js + MobileNet: injetados dinamicamente por AIVision.loadModel() apenas quando necessário -->

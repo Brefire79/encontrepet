@@ -225,12 +225,12 @@ service cloud.firestore {
     }
 
     match /usuarios/{uid} {
-      // list (N-01): bulk listing SOMENTE admin. limit<=1 permanece como
-      // compatibilidade transitória (fsGetUser legado por documentId e
-      // findByEmail pré-deploy das CFs loginUser/checkEmailExists).
-      // Antes: limit<=200 — qualquer autenticado enumerava nome/email/telefone
-      // de toda a base (LGPD). Fechar para admin-only após deploy das CFs.
-      allow list: if isFirestoreAdmin() || (isSignedIn() && request.query.limit <= 1);
+      // list (N-01): SOMENTE admin. Histórico: limit<=200 deixava qualquer
+      // autenticado enumerar nome/e-mail/telefone da base (LGPD); a compat
+      // transitória limit<=1 caiu em 2026-09-25 — com startAfter ela ainda
+      // permitia baixar a base um a um. O backend (login-user /
+      // check-email-exists) resolve e-mail sem listar.
+      allow list: if isFirestoreAdmin();
       // get direto por ID: próprio UID, email do Firebase Auth bate com o doc,
       // ou Firebase Auth UID vinculado (firebase_auth_uids)
       allow get: if isSignedIn() && (
