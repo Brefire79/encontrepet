@@ -7,7 +7,7 @@ window.I18nLocales.pt = {
   // — App geral —
   'app.name': 'Encontre Pet',
   'app.tagline': 'Ajudando a reunir famílias 🐾',
-  'app.version': 'Versão 1.0.0',
+  'app.version': 'Versão {version}',
   'app.footer': 'Feito com amor pelos pets',
   'app.loading': 'Processando...',
   'app.free': '100% Gratuito',

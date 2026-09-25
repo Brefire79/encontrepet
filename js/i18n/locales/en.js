@@ -7,7 +7,7 @@ window.I18nLocales.en = {
   // — App —
   'app.name': 'Find Pet',
   'app.tagline': 'Helping reunite families 🐾',
-  'app.version': 'Version 1.0.0',
+  'app.version': 'Version {version}',
   'app.footer': 'Made with love for pets',
   'app.loading': 'Processing...',
   'app.free': '100% Free',

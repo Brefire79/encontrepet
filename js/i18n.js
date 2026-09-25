@@ -122,9 +122,11 @@ const I18n = (() => {
     // garante que, se os locales acabaram de carregar, a gente já mergeia
     refreshTranslations();
 
+    // Parâmetros globais disponíveis em qualquer data-i18n (ex.: {version})
+    const globais = { version: (typeof AppConfig !== 'undefined' && AppConfig.APP_VERSION) || '' };
     document.querySelectorAll('[data-i18n]').forEach(el => {
       const key = el.getAttribute('data-i18n');
-      const val = t(key);
+      const val = t(key, globais);
       if (val !== key) el.textContent = val;
     });
 

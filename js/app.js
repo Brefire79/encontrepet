@@ -586,7 +586,7 @@ const App = (() => {
     // Registrar estado inicial no histórico para que popstate funcione ao voltar para home
     history.replaceState({ page: 'home' }, '');
 
-    console.log('🐾 Encontre Pet v1.1.0 inicializado!');
+    console.log(`🐾 Encontre Pet v${AppConfig.APP_VERSION} inicializado!`);
   }
 
   /**
