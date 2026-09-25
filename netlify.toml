@@ -17,6 +17,13 @@
 [functions."auto-confirmar-reunioes"]
   schedule = "0 8 * * *"
 
+# Landing de divulgação (link curto para grupos de WhatsApp).
+# Precisa vir ANTES do catch-all do SPA abaixo.
+[[redirects]]
+  from = "/conheca"
+  to   = "/landing/index.html"
+  status = 200
+
 # PWA: redirecionar tudo para index.html (SPA routing via hash)
 [[redirects]]
   from = "/*"
