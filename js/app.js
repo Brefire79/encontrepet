@@ -565,7 +565,11 @@ const App = (() => {
 
     // 9. Notification badge polling — aguarda auth Firebase antes de abrir listener
     if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.waitForAuthUID) {
-      FirebaseConfig.waitForAuthUID(5000).then(() => startNotifPolling());
+      FirebaseConfig.waitForAuthUID(5000).then(() => {
+        startNotifPolling();
+        // Push: se já autorizado, reenvia o token caso o FCM o tenha trocado
+        if (typeof Push !== 'undefined') Push.refresh();
+      });
     } else {
       startNotifPolling();
     }
@@ -809,6 +813,14 @@ const App = (() => {
         // Pequeno delay para garantir que auth/db inicializaram
         setTimeout(tryOpen, 300);
       }
+    } else if (hash.startsWith('#notificacoes')) {
+      // Toque no aviso push (sw.js abre /#notificacoes)
+      let attempts = 0;
+      const tryOpenNotifs = () => {
+        if (Auth.isLoggedIn()) navigateTo('notificacoes');
+        else if (++attempts < 20) setTimeout(tryOpenNotifs, 500);
+      };
+      setTimeout(tryOpenNotifs, 300);
     }
   }
 
@@ -2393,6 +2405,7 @@ const App = (() => {
         showToast('✅ Alerta salvo!', 'success');
       }
       navigateTo('cadastro-completo');
+      offerPushAfterReport();
       // Revogar objectURL antes de limpar (evita leak)
       if (state.photoData?._objectUrl) URL.revokeObjectURL(state.photoData._objectUrl);
       state.photoData = null;
@@ -3595,7 +3608,75 @@ const App = (() => {
 
   // ====== NOTIFICAÇÕES ======
 
+  // ----- Avisos push (ver js/services/push.js) -----
+
+  async function ativarPush() {
+    try {
+      const st = await Push.enable();
+      if (st === 'enabled') showToast(I18n.t('push.enabled_toast'), 'success');
+      else if (st === 'blocked') showToast(I18n.t('push.blocked'), 'warning');
+    } catch (err) {
+      console.warn('[App] ativarPush:', err.message);
+      showToast(I18n.t('push.error'), 'error');
+    }
+    renderPushOptin();
+  }
+
+  // Cartão no topo da tela de Notificações, conforme o estado do aparelho.
+  function renderPushOptin() {
+    const box = document.getElementById('push-optin');
+    if (!box || typeof Push === 'undefined') return;
+    const st = Push.status();
+    if (st === 'unsupported') { box.classList.add('hidden'); return; }
+    const textos = {
+      available: ['push.card_title', 'push.card_desc'],
+      enabled: ['push.enabled', 'push.enabled_desc'],
+      blocked: ['push.card_title', 'push.blocked'],
+      ios_install: ['push.card_title', 'push.ios_install']
+    }[st];
+    let acao = '';
+    if (st === 'available') acao = `<button class="btn-primary btn-small" id="btn-push-enable">${I18n.t('push.enable')}</button>`;
+    if (st === 'enabled') acao = `<button class="btn-secondary btn-small" id="btn-push-disable">${I18n.t('push.disable')}</button>`;
+    box.innerHTML = `
+      <i class="fas ${st === 'enabled' ? 'fa-bell' : 'fa-bell-slash'}" aria-hidden="true"></i>
+      <div class="push-optin-text"><strong>${I18n.t(textos[0])}</strong><p>${I18n.t(textos[1])}</p></div>
+      ${acao}`;
+    box.classList.remove('hidden');
+    document.getElementById('btn-push-enable')?.addEventListener('click', ativarPush);
+    document.getElementById('btn-push-disable')?.addEventListener('click', async () => {
+      await Push.disable();
+      renderPushOptin();
+    });
+  }
+
+  // Convite único logo após reportar um pet perdido — o momento em que o
+  // tutor mais quer ser avisado. Recusou uma vez, não pergunta de novo.
+  function offerPushAfterReport() {
+    if (typeof Push === 'undefined' || Push.status() !== 'available') return;
+    try { if (localStorage.getItem('ep_push_prompt_seen')) return; localStorage.setItem('ep_push_prompt_seen', '1'); } catch { return; }
+    const modal = document.createElement('div');
+    modal.id = 'push-prompt';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-labelledby', 'push-prompt-title');
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,0.5)';
+    modal.innerHTML = `
+      <div style="width:100%;max-width:480px;background:#fff;border-radius:16px 16px 0 0;padding:24px;animation:slideUp 0.3s ease">
+        <h3 id="push-prompt-title" style="margin:0 0 8px;font-size:1.1rem"><i class="fas fa-bell" style="color:var(--primary)"></i> ${I18n.t('push.prompt_title')}</h3>
+        <p style="color:var(--text-muted);font-size:0.92rem;margin-bottom:18px">${I18n.t('push.prompt_desc')}</p>
+        <div style="display:flex;gap:8px">
+          <button id="push-prompt-no" class="btn-secondary" style="flex:1">${I18n.t('push.not_now')}</button>
+          <button id="push-prompt-yes" class="btn-primary" style="flex:2">${I18n.t('push.enable')}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    document.getElementById('push-prompt-no').onclick = close;
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.getElementById('push-prompt-yes').onclick = async () => { close(); await ativarPush(); };
+  }
+
   async function loadNotifications() {
+    renderPushOptin();
     const container = document.getElementById('notificacoes-list');
     if (!container) return;
     container.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Carregando...</p></div>';

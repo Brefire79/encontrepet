@@ -5159,3 +5159,26 @@ a { color: var(--primary); text-decoration: none; }
   font-weight: 600; cursor: pointer;
 }
 .btn-confirm-reunion:disabled { opacity: .6; cursor: default; }
+
+/* ===== Avisos push (tela de Notificações) ===== */
+.push-optin {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 16px 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--bg-card, #fff);
+  border: 1px solid rgba(255, 107, 53, 0.35);
+  border-left: 4px solid var(--primary);
+}
+.push-optin.hidden { display: none; }
+.push-optin > i { font-size: 1.4rem; color: var(--primary); flex-shrink: 0; }
+.push-optin-text { flex: 1; min-width: 0; }
+.push-optin-text strong { display: block; font-size: 0.95rem; }
+.push-optin-text p { margin: 2px 0 0; font-size: 0.85rem; color: var(--text-muted); }
+.push-optin .btn-small { flex-shrink: 0; width: auto; }
+@media (max-width: 380px) {
+  .push-optin { flex-wrap: wrap; }
+  .push-optin .btn-small { width: 100%; }
+}

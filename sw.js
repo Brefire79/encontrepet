@@ -11,7 +11,8 @@
 // novo js/services/backend.js (shim httpsCallable) + process-avistamento.
 // v1.20.1: tela de notificações voltava vazia (query negada descartava as outras).
 // v1.20.2: reporte feito sem conexão não grava mais alert_privado com ID local_ (órfão).
-const CACHE_VERSION = 'encontre-pet-v1.20.2';
+// v1.21.0: notificação push (FCM) — handlers de push/notificationclick.
+const CACHE_VERSION = 'encontre-pet-v1.21.0';
 // Versionado junto com o app: antes era fixo e sobrevivia a todos os deploys,
 // podendo servir cópias antigas de páginas/JS (caches.match procura em todos).
 const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';
@@ -36,6 +37,7 @@ const STATIC_ASSETS = [
   '/js/db.js',
   '/js/app.js',
   '/js/services/backend.js',
+  '/js/services/push.js',
   '/js/services/image-hash.js',
   '/js/services/similarity.js',
   '/js/components/ModalDuplicateCase.js',
@@ -203,4 +205,39 @@ self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+});
+
+// ====== PUSH (Firebase Cloud Messaging) ======
+// Mensagens data-only enviadas por netlify/functions/_lib/push.js:
+// { data: { title, body, link, tag } }. O texto já vem no idioma do aparelho
+// e sem dados pessoais (aparece na tela bloqueada).
+self.addEventListener('push', event => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch (e) { /* payload não-JSON */ }
+  const d = payload.data || payload.notification || {};
+  event.waitUntil(self.registration.showNotification(d.title || 'Encontre Pet', {
+    body: d.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-96.png',
+    tag: d.tag || 'encontre-pet',
+    renotify: true,
+    data: { link: d.link || '/#notificacoes' }
+  }));
+});
+
+// Toque no aviso: reaproveita uma janela aberta do app, senão abre uma nova.
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const link = (event.notification.data && event.notification.data.link) || '/#notificacoes';
+  event.waitUntil((async () => {
+    const janelas = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of janelas) {
+      if (new URL(c.url).origin === self.location.origin && 'focus' in c) {
+        await c.focus();
+        if ('navigate' in c) await c.navigate(link);
+        return;
+      }
+    }
+    await clients.openWindow(link);
+  })());
 });

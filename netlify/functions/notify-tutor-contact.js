@@ -4,6 +4,7 @@
 
 const { callable, HttpsError, checkRateLimit } = require('./_lib/http');
 const { getAdmin } = require('./_lib/firebase');
+const { enviarPush } = require('./_lib/push');
 
 exports.handler = callable(async ({ data, auth }) => {
   const { petId, phone, nome } = data;
@@ -48,6 +49,9 @@ exports.handler = callable(async ({ data, auth }) => {
     destinatario_uid: tutorOwnerUid,
     destinatario_firebase_uid: tutorUid
   });
+  // Push sem o telefone (aparece na tela bloqueada) — o número fica no app.
+  await enviarPush({ firebaseUid: tutorUid, ownerUid: tutorOwnerUid },
+    { tipo: 'avistamento_contato', petNome: pet.nome_pet || pet.nome, tag: `contato_${petId}` });
 
   await db.collection('lgpd_access_log').add({
     tipo: 'notif_contato',
