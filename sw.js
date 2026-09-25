@@ -15,8 +15,9 @@
 // v1.21.1: avaliação de lançamento — validação de coordenadas; SDKs storage/functions removidos.
 // v1.21.2: versão no menu vem de AppConfig.APP_VERSION; login reforçado.
 // v1.21.3: login com Google ligado.
+// v1.21.4: SW não intercepta outros sites nem /__/auth (login Google).
 // Manter igual a AppConfig.APP_VERSION (js/app-config.js).
-const CACHE_VERSION = 'encontre-pet-v1.21.3';
+const CACHE_VERSION = 'encontre-pet-v1.21.4';
 // Versionado junto com o app: antes era fixo e sobrevivia a todos os deploys,
 // podendo servir cópias antigas de páginas/JS (caches.match procura em todos).
 const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';
@@ -103,6 +104,9 @@ self.addEventListener('fetch', event => {
   // Backend Netlify Functions — nunca cachear (respostas dinâmicas/sensíveis)
   if (url.pathname.startsWith('/.netlify/')) return;
 
+  // Páginas de login do Firebase/Google servidas pelo proxy — nunca cachear
+  if (url.pathname.startsWith('/__/')) return;
+
   // API requests (REST) - Network First
   if (url.pathname.startsWith('/tables/')) {
     event.respondWith(networkFirst(request));
@@ -129,6 +133,12 @@ self.addEventListener('fetch', event => {
     event.respondWith(cacheFirstCDN(request));
     return;
   }
+
+  // Outros sites (ex.: apis.google.com do login com Google): deixa o
+  // navegador buscar direto. Antes o SW refazia a busca com fetch(), que o
+  // CSP (connect-src) bloqueia — o login com Google falhava com
+  // auth/internal-error e o SW devolvia 503 "Offline asset unavailable".
+  if (url.origin !== self.location.origin) return;
 
   // Static assets - Cache First
   event.respondWith(cacheFirst(request));
