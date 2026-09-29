@@ -43,7 +43,7 @@ Vanilla JS (sem framework), Firestore, Cloud Functions (TypeScript), Firebase Au
 ## Estado de segurança (2026-07)
 11/11 no código; **rules novas (S-08 + N-01..N-03) já deployadas em produção** (constatado 2026-07-05). Restam as fases manuais: migração `backfill`/`strip` do S-08 e re-run do `migrate-s03-senha-hash.js` **após** o deploy das Cloud Functions.
 **Atenção:** projeto em **Spark** (sem CFs no ar) → regressões silenciosas ativas em produção: tutor não recebe notificação de match, cadastro grava `senha_hash` em `usuarios` (S-03 regride), `countUsersInRadius` bloqueado pela N-01, acesso cruzado LGPD sem `linked_pet_owner_firebase_uid`. Detalhes: `PLANO_LANCAMENTO.md` §"Teste E2E".
-**Decisão 2026-07-20:** sem Blaze — backend = **Netlify Functions** (`netlify/functions/`, Admin SDK) substituindo as CFs; `functions/` fica só como referência. Sem bucket de Storage no Spark: foto cheia em `fotos/{colecao}_{id}` (`AppConfig.USE_FIREBASE_STORAGE=false`). Roteiro de deploy: `docs/DEPLOY_NETLIFY.md`. Produção ainda roda o `main` (v1.18.0) até o merge desta branch.
+**Decisão 2026-07-20:** sem Blaze — backend = **Netlify Functions** (`netlify/functions/`, Admin SDK) substituindo as CFs; `functions/` fica só como referência. Sem bucket de Storage no Spark: foto cheia em `fotos/{colecao}_{id}` (`AppConfig.USE_FIREBASE_STORAGE=false`). Roteiro de deploy: `docs/DEPLOY_NETLIFY.md`. Esse backend já está no `main` e no ar (v1.21.7, verificado 2026-09-29); a branch `spike/s08-ownership-via-privado` agora só carrega documentação.
 
 ## Comandos úteis
 ```bash

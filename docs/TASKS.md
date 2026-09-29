@@ -7,7 +7,8 @@ Legenda: `[ ]` aberta · `[x]` feita · 👤 depende do Breno · 🤖 pode ser f
 ## Em andamento / próximos
 - [ ] 👤 Testar push no celular (notificação de match chegando com app fechado)
 - [ ] 👤 Testar cadastro por e-mail/senha ponta a ponta (login Google já validado)
-- [ ] 🤖 Revisar esta branch (`spike/s08-ownership-via-privado`) e preparar merge no `main` (produção roda v1.18.0 do `main` conforme `CLAUDE.md`; conferir se ainda é verdade — v1.21.7 já consta no ar)
+- [ ] 👤 Fazer o merge do PR de documentação no `main` (só `.md`, sem mudança no app; o backend Netlify já está no `main`/no ar na v1.21.7)
+- [ ] 👤 Conferir no Netlify que `FIREBASE_SERVICE_ACCOUNT` está definida e no Firebase que as rules de 2026-09-23 (`fotos`, `vinculos_avistamento`) foram publicadas
 - [ ] 👤 **S-08 fase `strip`** (~01/10): remover `owner_firebase_uid` dos docs públicos — `node scripts/migrate-s08-owner-firebase-uid.js --phase=strip` (rodar dry-run antes; ver `AUDIT.md`)
 
 ## Backend (Netlify Functions no lugar das CFs — decisão 2026-07-20)
