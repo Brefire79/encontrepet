@@ -11,19 +11,15 @@ Legenda: `[ ]` aberta · `[x]` feita · 👤 depende do Breno · 🤖 pode ser f
 - [ ] 👤 **S-08 fase `strip`** (~01/10): remover `owner_firebase_uid` dos docs públicos — `node scripts/migrate-s08-owner-firebase-uid.js --phase=strip` (rodar dry-run antes; ver `AUDIT.md`)
 
 ## Backend (Netlify Functions no lugar das CFs — decisão 2026-07-20)
-- [ ] 🤖 Conferir paridade das functions em `netlify/functions/` com `functions/src/index.ts` (`getTutorContact`, notificação de match, `saveUserPassword`/`verifyUserPassword`)
 - [ ] 👤 Re-executar `scripts/migrate-s03-senha-hash.js` após functions no ar (S-03 regride enquanto `senha_hash` for gravado em `usuarios`)
-- [ ] 🤖 Validar `countUsersInRadius` (bloqueado pela N-01) via function
-- [ ] 🤖 Garantir `linked_pet_owner_firebase_uid` para acesso cruzado LGPD
 
 ## Qualidade / segurança
-- [ ] 🤖 Rodar Matriz de Acesso do `AUDIT.md` no emulator antes de qualquer deploy de rules
-- [ ] 🤖 S-11: ownership no cliente aceitar `owner_uid` **ou** `owner_firebase_uid` (verificar se já fechado no código)
 
 ## Docs
-- [ ] 🤖 Decidir destino dos `.md` soltos na raiz (`PRD.md`, `PRD_EncontrePet_v2.md`, `PROMPT_ClaudeCode_EncontrePet.md`, `AGENTS.md`, `ESTADO_ATUAL.md`, `PLANO_FASE2.md` estão sem commit) e versioná-los
 
 ## Concluído recente
+- [x] 2026-09-29 — verificação: todas as CFs têm equivalente em `netlify/functions/` (exceto `generateImageHash`, que depende de Storage e não se aplica); `countUsersInRadius` passa pela function; `linked_pet_owner_firebase_uid` é gravado em `db.js` e `_lib/avistamento-core.js`; S-11 já fechado em `app.js` (~2985); rules emulator: 69/69 passando
+- [x] `.md` da raiz e manuais versionados
 - [x] `docs/ARCHITECTURE.md` reescrito para a arquitetura com Netlify Functions (2026-09-29)
 - [x] v1.21.7 — alarme no avistamento compatível + áudio liberado no 1º toque
 - [x] v1.21.6 — login Google no localhost usa authDomain padrão
